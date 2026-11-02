@@ -1,0 +1,7 @@
+# Takes the latest frame of a camera and returns what is on it.
+string camera              # head | torso
+string region              # table | hood
+---
+SceneObjects scene
+bool success
+string message

@@ -1,0 +1,12 @@
+# Moves named joints (head, waist, arms) to target angles with synchronised arrival.
+string[] joints            # names as in /joint_states, e.g. body_yaw_joint
+float64[] positions        # radians
+float32 speed              # rad/s of the slowest-arriving joint, 0 = max (0.8)
+float32 tol                # radians, 0 = default 0.02
+float32 max_time           # seconds of sim time, 0 = default
+---
+bool success
+float32 max_error
+string message
+---
+float32 max_error

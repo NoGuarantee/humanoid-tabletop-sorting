@@ -1,0 +1,14 @@
+# Moves the TCP of one arm (left_tcp_link / right_tcp_link) to a pose in `pelvis`.
+string arm                 # left | right
+geometry_msgs/Pose target
+string mode                # direct (joint-space) | linear (straight line in Cartesian space)
+float32 pos_tol            # metres, 0 = default 0.01
+float32 rot_tol            # radians, 0 = default 0.1
+float32 max_time           # seconds of sim time, 0 = default
+---
+bool success
+float32 pos_error
+float32 rot_error
+string message             # ok | unreachable | timeout | not_implemented
+---
+float32 pos_error

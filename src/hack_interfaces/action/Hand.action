@@ -1,0 +1,11 @@
+# Sets an Inspire hand to a named preset (see hack_motion/presets.py) and reports whether it holds something.
+string hand                # left | right
+string preset              # open | power | pinch | tube50 | tube15 ...
+float32 force              # 0..1 of the 1000 g limit, 0 = keep current
+---
+bool success
+bool object_detected       # fingers stopped before the target with effort above threshold
+float32[] position         # final finger positions 1..6
+float32[] effort           # final finger efforts 1..6
+---
+float32[] position

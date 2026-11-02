@@ -1,0 +1,15 @@
+build/
+install/
+log/
+__pycache__/
+*.pyc
+.vscode/
+# datasets, weights and recordings: keep out of git (100 MB limit); download weights in setup.sh
+data/
+weights/
+*.pt
+*.onnx
+*.mp4
+*.bag
+rosbags/
+*.egg-info/

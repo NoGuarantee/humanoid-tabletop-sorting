@@ -13,3 +13,7 @@ weights/
 *.bag
 rosbags/
 *.egg-info/
+
+# personal Claude Code files
+CLAUDE.local.md
+.claude/settings.local.json

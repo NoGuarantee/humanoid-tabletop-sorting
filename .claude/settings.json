@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "additionalDirectories": ["../nssr-uwt-polygon"],
+    "allow": [
+      "Read(../nssr-uwt-polygon/**)",
+      "Bash(bash tools/check_rules.sh)",
+      "Bash(bash ../nssr-uwt-polygon/hackathon/tools/task.sh info)",
+      "Bash(bash ../nssr-uwt-polygon/hackathon/tools/task.sh check)",
+      "Bash(bash ../nssr-uwt-polygon/hackathon/tools/task.sh list)",
+      "Bash(bash ../nssr-uwt-polygon/hackathon/tools/ros.sh ros2 topic list:*)",
+      "Bash(bash ../nssr-uwt-polygon/hackathon/tools/ros.sh ros2 topic echo:*)",
+      "Bash(bash ../nssr-uwt-polygon/hackathon/tools/ros.sh ros2 topic info:*)",
+      "Bash(bash ../nssr-uwt-polygon/hackathon/tools/ros.sh ros2 interface show:*)",
+      "Bash(bash ../nssr-uwt-polygon/hackathon/tools/ros.sh ros2 run tf2_ros tf2_echo:*)"
+    ],
+    "deny": [
+      "Edit(../nssr-uwt-polygon/**)",
+      "Write(../nssr-uwt-polygon/**)"
+    ]
+  }
+}

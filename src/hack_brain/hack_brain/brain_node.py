@@ -59,8 +59,9 @@ class Brain(Node):
             while rclpy.ok() and (self.task_msg is None or self.now() == 0.0):
                 time.sleep(0.1)  # wait for /sim/task and /clock
             spec = parse_task(self.task_msg)
-            # TODO(brain): confirm with the organisers when the evaluator's clock starts. Assumption: at sim time 0 if
-            # the sim was just started, otherwise now.
+            # The limit runs in sim time from the publication of /sim/task, and our start-up counts (organisers'
+            # answer). The sim publishes the task right after the scene starts, so on a fresh sim that is ~0. If the
+            # sim has been running for longer than the limit (dev reruns), count from now.
             t = self.now()
             start = 0.0 if t < spec.time_limit else t
             self.deadline = start + spec.time_limit - self.get_parameter("time_margin").value
@@ -94,6 +95,8 @@ class Brain(Node):
         log = self.get_logger()
         min_conf = self.get_parameter("min_confidence").value
         cycle = self.get_parameter("cycle_estimate").value
+        # TODO(brain): split failures. Not lifted -> skip (0 points). Lifted and dropped on the table -> it is -10 now,
+        #   retry it first (+20 if it reaches its tray); it may lie elsewhere, so match it by category and position.
         failed = set()
         while rclpy.ok() and self.time_left() > cycle:
             self.clients.move_joints(list(LOOK_TABLE), list(LOOK_TABLE.values()))

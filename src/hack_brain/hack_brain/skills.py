@@ -1,7 +1,9 @@
 """Pick and place built from motion primitives. Owner: grasping.
 
-Scoring reminder: an object taken and left outside a tray is -10, an untouched one is 0. So a skill must know whether
-it holds the object and, on failure, put it back where it was rather than drop it on the way.
+Scoring (organisers' answer): only the final position counts. An object never lifted is 0 even if it was pushed or
+tipped over on the table, so a failed grasp before the lift costs nothing. Once lifted, the only good outcome is the
+right tray (+10); lifted and left on the table, still in the hand or in a wrong tray is -10, on the floor -10 always.
+So a skill must know whether it holds the object, and putting it back on the table after a lift does not help.
 """
 from .grasp_planner import plan_grasps, plan_place
 
@@ -39,7 +41,8 @@ class Skills:
     def place(self, cand, container, put_back_pose=None):
         plan = plan_place(cand.arm, container, self.db)
         if not self.c.move_tcp(cand.arm, plan.approach, "direct"):
-            # TODO(grasping): cannot reach the tray -> put the object back to put_back_pose instead of dropping it
+            # TODO(grasping): cannot reach the tray -> another approach or the other arm. Putting the object back
+            # gives the same -10 as dropping it, but frees the arm for a retry later.
             self.log.error("tray unreachable while holding an object")
             return False
         self.c.move_tcp(cand.arm, plan.release, "linear")

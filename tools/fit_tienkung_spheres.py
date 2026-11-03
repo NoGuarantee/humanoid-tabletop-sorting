@@ -59,12 +59,47 @@ HOME_POSE = {**{f"hip_pitch_{s}_joint": -0.5 for s in "lr"}, **{f"knee_pitch_{s}
 # that touch in the default pose; at home the forearm spheres touch the thighs by a few mm, and ignoring that pair
 # would let the planner put a forearm through a thigh. Motion moves to this pose by joints before planning.
 READY_POSE = {**HOME_POSE, "shoulder_roll_l_joint": 0.2, "shoulder_roll_r_joint": -0.2}
+# A palm-down hand folds the wrist: wrist_roll comes within a fraction of a millimetre of elbow_yaw, two joints
+# away. The ready pose never brings them together and the sampled poses rarely do, so the builder keeps the pair
+# and every top-down hand is then "in collision". The two links are joined through wrist_pitch and cannot pass
+# through each other, so the pair only gives false positives.
+FOLDED_WRIST = {f"elbow_yaw_{s}_link": [f"wrist_roll_{s}_link"] for s in "lr"}
+# Pairs the builder must keep checking, whatever the sampled poses say: the forearm and hand against the pelvis and
+# legs. compute_collision_matrix drops every pair that never touched in its random samples, and it dropped
+# elbow_pitch against pelvis and hip_roll, so a hanging arm could be planned through the hip.
+FOREARM = {f"{j}_{s}_link" for j in ("elbow_pitch", "elbow_yaw", "wrist_pitch", "wrist_roll") for s in "lr"} | {
+    "L_base_link", "R_base_link"}
+LOWER_BODY = {"pelvis"} | {f"{j}_{s}_link" for j in ("hip_roll", "hip_pitch", "hip_yaw", "knee_pitch") for s in "lr"}
 
 # Joints that cuRobo keeps fixed. Legs and head: motion overrides them from /joint_states before creating the
 # solver. Ankle joints are not in the cuRobo tree at all (feet have no spheres), so they are not listed.
 LOCK_JOINTS = {j: HOME_POSE.get(j, 0.0) for j in (
     *(f"{j}_{s}_joint" for j in ("hip_roll", "hip_pitch", "hip_yaw", "knee_pitch") for s in "lr"),
     "head_yaw_joint", "head_pitch_joint", "head_roll_joint")}
+
+
+
+def rigid_pairs(urdf_path, links):
+    """{link: [links]} for every pair of `links` joined only by fixed and LOCK_JOINTS joints: planning never moves
+    them relative to each other, so checking them is useless. Motion re-locks them from /joint_states, and a pair
+    that clears at the generator's lock can touch at the real one: at any head_pitch other than 0, head_roll
+    touches waist_yaw and every IK goal comes out infeasible."""
+    import xml.etree.ElementTree as ET
+    parent = {}
+    for j in ET.parse(urdf_path).getroot().iter("joint"):
+        a, b = j.find("parent").get("link"), j.find("child").get("link")
+        parent[b] = a if j.get("type") == "fixed" or j.get("name") in LOCK_JOINTS else None
+
+    def root(link):
+        while parent.get(link):
+            link = parent[link]
+        return link
+
+    groups = {}
+    for link in links:
+        groups.setdefault(root(link), []).append(link)
+    return {g[i]: g[i + 1:] for g in groups.values() for i in range(len(g) - 1)}
+
 
 # For the report: self-collision ignores between these groups are suspicious (the arm could then pass through
 # the body unnoticed), so they are printed for a human to look at.
@@ -263,8 +298,22 @@ def fit(args):
         print(f"    {a:<24s} {b:<24s} {d * 1e3:6.1f} mm{flag}")
 
     t = time.perf_counter()
-    ignore = builder.compute_collision_matrix(num_samples=args.collision_samples, seed=args.seed)
+    rigid = rigid_pairs(str(OUT_URDF), builder.collision_link_names)
+    log(f"{sum(map(len, rigid.values()))} pairs of links joined only by fixed and locked joints, ignored")
+    custom = {k: list(v) for k, v in rigid.items()}
+    for a, bs in FOLDED_WRIST.items():
+        custom.setdefault(a, []).extend(bs)
+    ignore = builder.compute_collision_matrix(num_samples=args.collision_samples, seed=args.seed,
+                                              custom_ignore=custom)
     log(f"collision matrix in {time.perf_counter() - t:.0f} s")
+    kept = []
+    for a, bs in ignore.items():
+        for b in list(bs):
+            if (a in FOREARM and b in LOWER_BODY) or (a in LOWER_BODY and b in FOREARM):
+                bs.remove(b)
+                kept.append((a, b))
+    log(f"kept checking {len(kept)} forearm/hand vs pelvis/leg pairs the sampling would ignore: {kept}")
+    builder._self_collision_ignore = ignore  # build() writes this one
     cross = sorted({tuple(sorted((a, b))) for a, bs in ignore.items() for b in bs
                     if link_group(a) != link_group(b)})
     log(f"{len(cross)} ignored pairs across groups (left/right/body/legs); check these are really harmless:")
@@ -308,6 +357,10 @@ def load_runtime_cfg():
     return data
 
 
+HEAD_EXTREMES = [{"head_yaw_joint": y, "head_pitch_joint": p, "head_roll_joint": r}
+                 for y in (-1.5, 0.0, 1.5) for p in (-0.43, 0.43) for r in (-0.45, 0.45)]
+
+
 def check(args):
     import torch
     from curobo.inverse_kinematics import InverseKinematics, InverseKinematicsCfg
@@ -329,6 +382,14 @@ def check(args):
                 f"\n    {a:<24s} {b:<24s} {d * 1e3:6.1f} mm" for a, b, d in pairs))
             if name.startswith("ready") and pairs:
                 sys.exit("the default pose is in collision")
+        for lock in HEAD_EXTREMES:  # motion re-locks the head from /joint_states: ready must stay clear
+            data = load_runtime_cfg()
+            data["kinematics"]["lock_joints"].update(lock)
+            pairs = colliding_pairs(KinematicsCfg.from_data_dict(data["kinematics"]),
+                                    torch.tensor([READY_POSE.get(j, 0.0) for j in ik.joint_names]))
+            if pairs:
+                sys.exit(f"ready with the head at {lock} is in collision: {pairs}")
+        log(f"ready is clear at {len(HEAD_EXTREMES)} head extremes")
         q = ik.sample_configs(args.n)  # collision-free, so FK of each is a reachable goal for both hands
         log(f"sample_configs: {q.shape[0]}/{args.n} collision-free configurations")
         if q.shape[0] == 0:

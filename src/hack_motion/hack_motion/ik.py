@@ -1,13 +1,7 @@
-"""Inverse kinematics of the arms. Owner: motion. Status: NOT IMPLEMENTED (milestone M1).
+"""Hand-written IK, the `planner: ik` fallback. Owner: motion. Status: NOT IMPLEMENTED.
 
-Plan (see docs/ARCHITECTURE.md, "motion"):
-- Model: robot/tiangong2pro_with_hands.urdf and the cuRobo config robot/tienkung_curobo.yml in this package,
-  installed to share/hack_motion/robot (published URDF of the manufacturer, see robot/README.md).
-- Shoulders hang off waist_yaw_link, so solve in waist_yaw_link and rotate the target by body_yaw_joint:
-  one model works both at the table and at the fume hood.
-- Damped least squares on the 7 arm joints, joint limits from robot.JOINTS, a null-space pull towards a
-  comfortable posture so consecutive solutions do not jump between elbow configurations.
-- Candidates: pinocchio (pip "pin"), ikpy, or a hand-written Jacobian solver.
+cuRobo passed the first-day checks, so MoveTcp goes through curobo_planner.py. This stays only so a parameter
+switch back does not require a new module. Do not implement it unless cuRobo stops fitting the GPU budget.
 """
 
 

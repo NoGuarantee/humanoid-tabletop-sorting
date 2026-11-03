@@ -32,6 +32,29 @@ ARM_JOINTS = {
 
 TCP_LINK = {"left": "left_tcp_link", "right": "right_tcp_link"}
 
+# Joint moves that bring a hanging arm up in front of the chest, the start of every cuRobo plan. cuRobo has no
+# table until perception gives one, and the hanging hand is below table height: any elbow fold from the hang
+# swings the fingers forward 0.4 m under the pelvis, into the table edge. Out to the side first, fold the elbow
+# there, then bring the upper arm back in. On this path no arm sphere in front of x 0.20 goes below z -0.09 in
+# pelvis (tools/reach_pose_probe.py); it ends with the TCP near (0.37, +-0.30, 0.09). Right arm values; roll flips
+# sign on the left. Each step lists the joints that differ from home.
+RAISE_STEPS = (
+    {"shoulder_roll": -0.9},
+    {"shoulder_roll": -0.9, "elbow_pitch": -1.6},
+    {"shoulder_roll": -0.2, "elbow_pitch": -1.6},
+)
+
+
+def raise_steps(arm):
+    """[[7 positions in ARM_JOINTS[arm] order], ...] for the moves above."""
+    side = arm[0]
+    sign = -1.0 if side == "l" else 1.0
+    out = []
+    for step in RAISE_STEPS:
+        q = {f"{j}_{side}_joint": (sign * v if j == "shoulder_roll" else v) for j, v in step.items()}
+        out.append([q.get(name, 0.0) for name in ARM_JOINTS[arm]])
+    return out
+
 # Hand presets: Inspire actuators 1 little, 2 ring, 3 middle, 4 index, 5 thumb bend, 6 thumb rotation; 1.0 open, 0.0 closed.
 # Starting points only, tune them on real objects (owner: grasping).
 HAND_PRESETS = {

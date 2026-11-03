@@ -1,9 +1,8 @@
 """Inverse kinematics of the arms. Owner: motion. Status: NOT IMPLEMENTED (milestone M1).
 
 Plan (see docs/ARCHITECTURE.md, "motion"):
-- Model from the robot URDF. The solution container has no simulator files, so either copy
-  tiangong_pro_with_hands.urdf into this package (license Apache-2.0, keep attribution) or read /robot_description
-  if the simulator publishes it. Decide and note it in README.
+- Model: robot/tiangong2pro_with_hands.urdf and the cuRobo config robot/tienkung_curobo.yml in this package,
+  installed to share/hack_motion/robot (published URDF of the manufacturer, see robot/README.md).
 - Shoulders hang off waist_yaw_link, so solve in waist_yaw_link and rotate the target by body_yaw_joint:
   one model works both at the table and at the fume hood.
 - Damped least squares on the 7 arm joints, joint limits from robot.JOINTS, a null-space pull towards a

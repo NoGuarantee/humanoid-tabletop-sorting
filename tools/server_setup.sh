@@ -18,6 +18,13 @@ nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader \
   || { echo "no nvidia-smi: this machine has no working NVIDIA driver"; exit 1; }
 drv=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1 | cut -d. -f1)
 [ "$drv" -ge 580 ] || echo "[WARN] driver $drv < 580: the organisers require 580+"
+# unattended-upgrades updates the NVIDIA user-space libraries under a running kernel module, and then every
+# `docker run --gpus` fails with "Driver/library version mismatch" until a reboot (happened 2026-11-03).
+# Keep the driver fixed (apt-mark hold below, after the Container Toolkit) and the security updates manual.
+if [ -f /etc/apt/apt.conf.d/20auto-upgrades ]; then
+  $SUDO sed -i 's/^APT::Periodic::Unattended-Upgrade "1";/APT::Periodic::Unattended-Upgrade "0";/' \
+    /etc/apt/apt.conf.d/20auto-upgrades
+fi
 
 step "tools: tmux, rsync, git, curl"
 command -v tmux >/dev/null && command -v rsync >/dev/null && command -v git >/dev/null && command -v curl >/dev/null \
@@ -52,6 +59,11 @@ if ! docker run --rm --gpus all ubuntu nvidia-smi -L >/dev/null 2>&1; then
   docker run --rm --gpus all ubuntu nvidia-smi -L || { echo "containers still do not see the GPU"; exit 1; }
 fi
 docker run --rm --gpus all ubuntu nvidia-smi -L
+
+step "hold the NVIDIA driver and Container Toolkit packages"
+# shellcheck disable=SC2046
+$SUDO apt-mark hold $(dpkg -l | awk '/^ii +(nvidia-|libnvidia-)/ {print $2}') >/dev/null
+apt-mark showhold | grep -c -E '^(nvidia-|libnvidia-)' | sed 's/^/held packages: /'
 
 step "GitHub CLI"
 if ! command -v gh >/dev/null; then

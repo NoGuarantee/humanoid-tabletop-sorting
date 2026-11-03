@@ -42,8 +42,8 @@ class Brain(Node):
         self.create_subscription(String, "/sim/task", lambda m: setattr(self, "task_msg", m.data), latched)
         self.create_subscription(String, "/sim/objects/names", lambda m: setattr(self, "names_msg", m.data), latched)
         self.done_pub = self.create_publisher(Empty, "/sim/task/done", 10)
-        self.clients = Clients(self)
-        self.skills = Skills(self.clients, load_db(self.get_parameter("grasp_db").value), self.get_logger())
+        self.api = Clients(self)
+        self.skills = Skills(self.api, load_db(self.get_parameter("grasp_db").value), self.get_logger())
         self.deadline = math.inf
 
     def now(self):
@@ -67,7 +67,7 @@ class Brain(Node):
             self.deadline = start + spec.time_limit - self.get_parameter("time_margin").value
             log.info(f"task {spec.task} {spec.variant} | {spec.n_items} items | limit {spec.time_limit:.0f} s, "
                      f"{self.time_left():.0f} s left")
-            if not self.clients.wait_ready(timeout=60.0):
+            if not self.api.wait_ready(timeout=60.0):
                 log.error("perception or motion is not up")
                 return
             if spec.kind == "sort":
@@ -81,7 +81,7 @@ class Brain(Node):
 
     def finish(self):
         try:
-            self.clients.move_joints(list(LOOK_TABLE), list(LOOK_TABLE.values()))
+            self.api.move_joints(list(LOOK_TABLE), list(LOOK_TABLE.values()))
             # TODO(motion): arms to a safe home pose
         except Exception:
             pass
@@ -99,8 +99,8 @@ class Brain(Node):
         #   retry it first (+20 if it reaches its tray); it may lie elsewhere, so match it by category and position.
         failed = set()
         while rclpy.ok() and self.time_left() > cycle:
-            self.clients.move_joints(list(LOOK_TABLE), list(LOOK_TABLE.values()))
-            scene = self.clients.perceive("head", "table")
+            self.api.move_joints(list(LOOK_TABLE), list(LOOK_TABLE.values()))
+            scene = self.api.perceive("head", "table")
             if scene is None:
                 log.warn("no scene, stopping")
                 return
@@ -142,9 +142,26 @@ def dist(a, b):
     return math.hypot(a.x - b.x, a.y - b.y)
 
 
+def publish_done_fallback(err):
+    """Brain() itself failed: still publish /sim/task/done, as the rules require in every outcome."""
+    node = Node("hack_brain_fallback")
+    node.get_logger().error(f"brain failed to start: {err!r}; publishing /sim/task/done")
+    pub = node.create_publisher(Empty, "/sim/task/done", 10)
+    for _ in range(10):  # give discovery time to match the simulator's subscriber
+        pub.publish(Empty())
+        time.sleep(0.5)
+    node.get_logger().info("published /sim/task/done")  # tools/bench.sh waits for this line
+    node.destroy_node()
+
+
 def main():
     rclpy.init()
-    node = Brain()
+    try:
+        node = Brain()
+    except Exception as e:
+        publish_done_fallback(e)
+        rclpy.try_shutdown()
+        raise
     executor = MultiThreadedExecutor()
     executor.add_node(node)
     threading.Thread(target=node.mission, daemon=True).start()

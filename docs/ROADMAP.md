@@ -29,7 +29,11 @@
   в контейнере из образа, память GPU рядом с симулятором, прогрев, время плана; версия V2 v0.8.0. Прошли
 - [ ] motion: установка cuRobo в `setup.sh` (сборка wheel как в `tools/curobo_install.sh`) и прогрев кэша Warp там
   же; проверить через полный `eval`
-- [ ] motion: конфиг TienKung для cuRobo (сферы коллизий рук, корпуса и головы), бэкенд `planner: curobo`
+- [x] motion: конфиг TienKung для cuRobo (сферы коллизий рук, корпуса и головы). 2026-11-03, меши из опубликованного
+  URDF производителя, сферы и матрица самоколлизий в `src/hack_motion/robot/` (см. README там же); IK обеих рук
+  без мешей 20/20, 3 мс
+- [ ] motion: бэкенд `planner: curobo` (конфиг из `share/hack_motion/robot`, `lock_joints` из `/joint_states`,
+  переход в позу «ready» по суставам перед первым планом)
 - [ ] motion: MoveTcp с ошибкой TCP < 1 см, проверить ориентацию `top_down` по tf
 - [ ] ~~motion, только если cuRobo не прошёл первичные проверки: `ik.solve` без коллизий~~ не нужен, cuRobo прошёл
 - [ ] perception: плоскость стола, кластеры, поза (x, y, yaw), размеры, `top_z`

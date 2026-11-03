@@ -59,11 +59,14 @@ ros_cmd() {  # $1=timeout, rest = command run in the sim container with ROS 2 so
 }
 
 wait_task() {  # $1=timeout s: wait until the simulator publishes /sim/task (latched)
+  # --no-daemon: a ros2 daemon spawned while the sim is still loading breaks (!rclpy.ok()) and then every
+  # daemon-backed call (echo, topic list) fails until it is restarted.
   local t0=$SECONDS
   while [ $((SECONDS - t0)) -lt "$1" ]; do
     has sim || { echo "[bench] the simulator exited:"; tail_log sim 40; return 1; }
-    if ros_cmd 15 "ros2 topic echo --once --qos-durability transient_local --qos-reliability reliable /sim/task" \
-        >/dev/null 2>&1; then
+    if ros_cmd 15 "ros2 topic echo --once --no-daemon --qos-durability transient_local --qos-reliability reliable \
+/sim/task" >/dev/null 2>&1; then
+      ros_cmd 30 "ros2 daemon stop; ros2 daemon start" >/dev/null 2>&1 || true   # fresh daemon for remote.sh ros
       echo "[bench] /sim/task published after $((SECONDS - t0)) s"; return 0
     fi
     sleep 5

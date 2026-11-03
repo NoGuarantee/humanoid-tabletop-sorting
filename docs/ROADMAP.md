@@ -16,8 +16,12 @@
 - [x] Пакеты `hack_interfaces`, `hack_motion`, `hack_perception`, `hack_brain`, `hack_bringup`
 - [x] `run.sh`, launch-файл, гарантированная публикация `/sim/task/done`
 - [x] `tools/check_rules.sh`, `tools/dev_shell.sh`
-- [ ] Проверить, что `bash hackathon/tools/solution.sh ~/…/nssr-sol-team-049` собирает и запускает решение (brain/infra)
-- [ ] Задать организаторам вопросы из [ANALYSIS.md](ANALYSIS.md), раздел 9; проверить nvcc и память GPU в образе (brain/infra)
+- [x] Проверить, что `bash hackathon/tools/solution.sh ~/…/nssr-sol-team-049` собирает и запускает решение
+  (brain/infra). 2026-11-03, `remote.sh eval sort3 --pool 4 --seed 1`: сборка 10 с, три узла поднимаются,
+  `/sim/task/done` через 20 с, балл 0 (perception ещё не реализован)
+- [x] Проверить nvcc и память GPU в образе (brain/infra). В `nssr-sim:latest` нет nvcc и CUDA toolkit, cuRobo v0.8
+  собирает ядра через NVRTC; Isaac занимает около 4.3 из 16 ГБ VRAM; драйвер 580, compute capability 12.0
+- [ ] Задать организаторам вопросы из [ANALYSIS.md](ANALYSIS.md), раздел 9 (brain/infra)
 
 ## M1. Каждый модуль работает сам по себе
 

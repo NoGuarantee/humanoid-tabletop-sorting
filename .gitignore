@@ -17,3 +17,7 @@ rosbags/
 # personal Claude Code files
 CLAUDE.local.md
 .claude/settings.local.json
+
+# tools/remote.sh: personal settings and fetched files
+.remote.env
+.fetch/

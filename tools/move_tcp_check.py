@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Grid of top-down MoveTcp goals over the table, checked against tf.
 
-The table top is 0.18 m below the pelvis (scene.yaml: table height 0.70, standing pelvis 0.88).
+The table top in pelvis is z = -0.1792 + 0.0700 x, so 0.16 to 0.14 m below the pelvis under these goals.
 `top_down` is the quaternion grasp_planner will send: fingers down, closing across `yaw`.
-The TCP z axis in pelvis should be (0, 0, 1). The fingertips are 0.21 m below the TCP, so z >= 0.05 clears the table.
+The TCP z axis in pelvis should be (0, 0, 1). Open fingers touch the table at TCP z = 0.039 + 0.070 x (tools/table_touch.py),
+0.070 at x 0.45 and 0.060 at x 0.30; the two lowest goals of --low keep the fingertips 1 cm over it.
 Peak force: external load on each wrist during the move (/arm_6dof_*); a jump means the arm hit something.
 
 With the simulator running, the dev image built (remote.sh dev-image) and only hack_motion up (the full launch exits
@@ -46,9 +47,9 @@ TILTED_GOALS = [("right", 0.40, -0.20, 0.25, 0.0)]
 LOW_GOALS = [
     ("right", 0.40, -0.35, 0.10, 0.0),
     ("right", 0.30, -0.15, 0.10, 0.8),
-    ("right", 0.45, -0.30, 0.05, 1.57),
+    ("right", 0.45, -0.30, 0.08, 1.57),
     ("left", 0.40, 0.35, 0.10, 0.0),
-    ("left", 0.30, 0.15, 0.05, -0.8),
+    ("left", 0.30, 0.15, 0.07, -0.8),
 ]
 POS_LIMIT = 0.01  # m, milestone M1
 ROT_LIMIT = 0.1  # rad, the MoveTcp default

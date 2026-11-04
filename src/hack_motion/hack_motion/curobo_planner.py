@@ -17,6 +17,7 @@ from .robot import JOINTS, TABLE_SCENE, TCP_LINK, plan_limits
 LOCK_TOL = 0.02  # rad
 START_MARGIN = 0.02  # rad inside the limits for the start state: a joint held at its stop reads slightly past it
 LIMIT_MARGIN = 0.1  # rad from a limit: IK solutions closer than this are the last choice
+IK_TRIES = 4  # IK solves before calling a goal unreachable: beside the other, held hand 1-7 of the 32 seeds are free
 MAX_PATHS = 4  # IK solutions to try a joint path to; a failed try costs about 1 s
 SAME_SOLUTION = 0.3  # rad, joint-space distance: closer solutions fail the same way, so one try covers them
 START_CLEARANCE = 0.002  # m past the self-collision buffer that a start state must have, or it is moved
@@ -158,11 +159,14 @@ class CuroboPlanner:
             if self._already(goal, state, arm, pos_tol, rot_tol):
                 q = state.position.detach().reshape(-1).tolist()
                 return list(self.joint_names), [q], None
-            result = self.mp.ik_solver.solve_pose(
-                goal, current_state=state, return_seeds=self.mp.ik_solver.config.num_seeds)
-            # position_error is the worse of the two hands, and cuRobo stops at 5 mm. MoveTcp asks for one
-            # hand, and the other hand is only held so it does not swing through the body.
-            solutions = self._ranked(result, goal, arm, state, pos_tol, rot_tol)
+            for _ in range(IK_TRIES):
+                result = self.mp.ik_solver.solve_pose(
+                    goal, current_state=state, return_seeds=self.mp.ik_solver.config.num_seeds)
+                # position_error is the worse of the two hands, and cuRobo stops at 5 mm. MoveTcp asks for one
+                # hand, and the other hand is only held so it does not swing through the body.
+                solutions = self._ranked(result, goal, arm, state, pos_tol, rot_tol)
+                if solutions:
+                    break
             if not solutions:
                 raise Unreachable(self._fail(result, goal, arm))
             from curobo.types import JointState

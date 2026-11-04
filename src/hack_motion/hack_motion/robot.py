@@ -32,12 +32,14 @@ ARM_JOINTS = {
 
 TCP_LINK = {"left": "left_tcp_link", "right": "right_tcp_link"}
 
-# The table in pelvis, as a cuRobo scene. There is one scene and the robot does not walk (hackathon/docs/TASKS.md): top
-# at z -0.18, near edge at x +0.22, 0.76 deep, 2.44 wide (hackathon/config/scene.yaml, and the simulator log prints the
-# same). The real top is 3 cm thick; 8 cm here so that a coarse path does not step through it. It cannot go down to the
+# The table in pelvis, as a cuRobo scene. There is one scene and the robot does not walk (hackathon/docs/TASKS.md): near
+# edge at x +0.22, 0.76 deep, 2.44 wide (hackathon/config/scene.yaml, and the simulator log prints the same). The top is
+# not level in pelvis: z = -0.1792 + 0.0700 x, 4 degrees. Fitted to depth, and the open fingers touch it there at x 0.28,
+# 0.38 and 0.50 (tools/table_touch.py, tools/motion_trace.py gaps), where a level top at -0.18 is 2.4-4.0 cm off.
+# The real top is 3 cm thick; 8 cm here so that a coarse path does not step through it. It cannot go down to the
 # floor: the locked knees stand under the table at x 0.20, so a solid block puts every pose in collision (0/32 IK seeds).
-# At this thickness the leg spheres clear it by about 3 cm.
-TABLE_SCENE = {"cuboid": {"table": {"dims": [0.76, 2.44, 0.08], "pose": [0.60, 0.0, -0.22, 1.0, 0.0, 0.0, 0.0]}}}
+TABLE_SCENE = {"cuboid": {"table": {"dims": [0.76, 2.44, 0.08],
+                                   "pose": [0.6028, 0.0, -0.1771, 0.99939, 0.0, -0.03494, 0.0]}}}
 
 # Joint moves that bring a hanging arm up in front of the chest, the start of every cuRobo plan. cuRobo cannot plan
 # from the hang, where the forearm is inside the thigh, and the hanging hand is below table height: any elbow fold from

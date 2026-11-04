@@ -241,6 +241,49 @@ def explain(out, threshold):
             i = j + 1
 
 
+def bent(q, side):
+    """The finger joint furthest from its command: the fingers stay open here, so a reading is something pushing them."""
+    names = [n for n in q if n.startswith(f"{side}_") and n.split("_")[1] in ("thumb", "index", "middle", "ring", "little")]
+    name = max(names, key=lambda n: abs(q[n]))
+    return f"{name.replace(side + '_', '').replace('_joint', '')} {q[name]:+.3f}"
+
+
+def fingers(out):
+    """How the open hand meets the table: per finger, the height of the lowest point under the TCP over the table top.
+
+    top_down is level in pelvis, so 4 degrees off the table; the same hand along the table normal is printed next to it.
+    The geometry comes from one sample of a recording with open fingers, moved to the goal orientation.
+    """
+    import numpy as np
+    from trajectory_self_check import load
+
+    robot = Robot(URDF, MESHES)
+    verts = vertices(robot)
+    _, q = load(f"{out}.joints.jsonl")[0]
+    tilt = math.atan(TILTED[1])
+    normal = np.array([-math.sin(tilt), 0.0, math.cos(tilt)])
+    level = np.array([[math.cos(tilt), 0.0, -math.sin(tilt)], [0.0, 1.0, 0.0], [math.sin(tilt), 0.0, math.cos(tilt)]])
+    open_q = {n: (0.0 if n.split("_")[1] in ("thumb", "index", "middle", "ring", "little") else v) for n, v in q.items()}
+    poses = robot.fk(open_q)
+    for side in ("left", "right"):
+        inv = np.linalg.inv(poses[f"{side}_tcp_link"])
+        tips = {}
+        for link in side_links(robot, side):
+            part = link.split("_")[1] if link.startswith(side) else ""
+            if link in verts and part in ("thumb", "index", "middle", "ring", "little"):
+                pose = inv @ poses[link]
+                tips.setdefault(part, []).append(verts[link] @ pose[:3, :3].T + pose[:3, 3])
+        tips = {k: np.vstack(v) for k, v in tips.items()}
+        for yaw in (0.0, 0.8, math.pi / 2):
+            spin = np.array([[math.cos(yaw), -math.sin(yaw), 0.0], [math.sin(yaw), math.cos(yaw), 0.0], [0.0, 0.0, 1.0]])
+            rows = []
+            for part, v in sorted(tips.items()):
+                a = (v @ spin.T) @ normal
+                b = (v @ spin.T @ level.T) @ normal
+                rows.append(f"{part} {-a.min():.4f}/{-b.min():.4f}")
+            print(f"{side} yaw {yaw:.2f} under the TCP along the normal, top_down/aligned, m: " + " ".join(rows), flush=True)
+
+
 def gaps(out, step, start, end):
     """Time series: per arm, TCP, the lowest mesh point against the tilted and the flat table, wrist force and torque."""
     import numpy as np
@@ -253,7 +296,7 @@ def gaps(out, step, start, end):
     t0 = samples[0][0]
     for rows in wrenches.values():
         rows.sort(key=lambda r: r["t"])
-    print("   t  arm  tcp x, y, z          lowest link          at x, y, z            tilted    flat    |F|   |M|")
+    print("   t  arm  tcp x, y, z          lowest link          at x, y, z            tilted    flat    |F|   |M|  finger")
     next_t = start
     for t, q in samples:
         if t - t0 < next_t:
@@ -269,7 +312,7 @@ def gaps(out, step, start, end):
             tcp = (inv @ poses[f"{side}_tcp_link"])[:3, 3]
             print(f"{t - t0:6.2f} {side[0]}  {tcp[0]:+.3f} {tcp[1]:+.3f} {tcp[2]:+.3f}  {low[1]:<20} "
                   f"{low[2][0]:+.3f} {low[2][1]:+.3f} {low[2][2]:+.3f}  {low[0]:+.3f}  {low[3]:+.3f}  "
-                  f"{np.linalg.norm(row['f']):5.1f} {np.linalg.norm(row['m']):5.2f}", flush=True)
+                  f"{np.linalg.norm(row['f']):5.1f} {np.linalg.norm(row['m']):5.2f}  {bent(q, side)}", flush=True)
 
 
 def series(out, side, step, start, end, links=()):
@@ -347,6 +390,7 @@ def main():
     gap.add_argument("--step", type=float, default=1.0)
     gap.add_argument("--from", dest="start", type=float, default=0.0)
     gap.add_argument("--to", dest="end", type=float, default=math.inf)
+    sub.add_parser("fingers").add_argument("out")
     ser = sub.add_parser("series")
     ser.add_argument("out")
     ser.add_argument("side", choices=("left", "right"))
@@ -361,6 +405,8 @@ def main():
         park()
     elif args.cmd == "series":
         series(args.out, args.side, args.step, args.start, args.end, [x for x in args.links.split(",") if x])
+    elif args.cmd == "fingers":
+        fingers(args.out)
     elif args.cmd == "gaps":
         gaps(args.out, args.step, args.start, args.end)
     else:

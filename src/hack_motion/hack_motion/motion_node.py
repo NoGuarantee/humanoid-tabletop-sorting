@@ -27,7 +27,8 @@ from .curobo_planner import Unreachable
 from .robot import ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, TCP_LINK, clip, raise_steps
 
 PERIOD = 0.05  # s, real time between control checks
-STALL_TIME = 0.5  # s of sim time without progress -> compensate the PD undershoot
+# 1/s, integrates the PD undershoot. The arm actuators settle with tau = kd/kp = 0.25 s, so this is damping 0.7.
+COMPENSATION_RATE = 2.0
 MAX_COMPENSATION = 0.3  # rad added on top of the target at most
 HOME_TOL = 0.1  # rad, every arm joint within this of 0 -> the arm hangs at home
 HELD_TOL = 0.05  # rad, the arm MoveTcp did not ask for: it only holds its pose
@@ -123,11 +124,10 @@ class MotionNode(Node):
         max_time = max_time or (2.0 * duration + 3.0)
 
         # The droop changes slowly with the pose, so a move starts from what the last one needed. Without this, every
-        # segment of a path lets the arm sag again and waits out a stall before pushing.
+        # segment of a path lets the arm sag again before anything pushes it back.
         cmd = {n: clip(n, goal[n] + self.compensation.get(n, 0.0)) for n in names}
         self.send(cmd, speeds)
-        t0 = self.now()
-        best, best_t = float("inf"), t0
+        t0 = t_prev = self.now()
         while rclpy.ok():
             time.sleep(PERIOD)
             q = dict(zip(names, self.joints(names)))
@@ -143,16 +143,16 @@ class MotionNode(Node):
                     if abs(err[n]) > tols[n]:
                         self.compensation.pop(n, None)
                 return False, max_err, "timeout"
-            if max_err < best - 1e-3:
-                best, best_t = max_err, t
-            elif t - best_t > STALL_TIME:  # stopped short of the target: push the command past it
-                for n in names:
-                    if abs(err[n]) > tols[n]:
-                        extra = max(-MAX_COMPENSATION, min(MAX_COMPENSATION, cmd[n] - goal[n] + err[n]))
-                        cmd[n] = clip(n, goal[n] + extra)
-                        self.compensation[n] = extra
-                self.send(cmd, {n: max(abs(err[n]) / STALL_TIME, 0.05) for n in names})
-                best, best_t = max_err, t
+            if t - t0 > duration:  # the profile has arrived: what is left is droop
+                short = [n for n in names if abs(err[n]) > tols[n]]
+                for n in short:
+                    extra = cmd[n] - goal[n] + COMPENSATION_RATE * err[n] * (t - t_prev)
+                    extra = max(-MAX_COMPENSATION, min(MAX_COMPENSATION, extra))
+                    cmd[n] = clip(n, goal[n] + extra)
+                    self.compensation[n] = extra
+                if short:
+                    self.send(cmd, {n: MAX_SPEED for n in names})
+            t_prev = t
         return False, 0.0, "shutdown"
 
     def follow(self, names, waypoints, dt, tol, max_time, held=()):

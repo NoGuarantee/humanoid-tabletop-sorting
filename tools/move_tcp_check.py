@@ -118,7 +118,7 @@ class Check(Node):
     def measure(self, arm, target):
         link = "left_tcp_link" if arm == "left" else "right_tcp_link"
         tf = None
-        for _ in range(20):
+        for _ in range(400):  # up to 20 s: right after start the buffer may still be empty
             try:
                 tf = self.tf.lookup_transform("pelvis", link, rclpy.time.Time())
                 break
@@ -141,7 +141,8 @@ def main():
     node = Check()
     executor = MultiThreadedExecutor()
     executor.add_node(node)
-    threading.Thread(target=executor.spin, daemon=True).start()
+    spin = threading.Thread(target=executor.spin, daemon=True)
+    spin.start()
     reached = 0
     bad = 0
     linear_done = False
@@ -209,6 +210,9 @@ def main():
                           f"z-axis ({axis[0]:+.2f},{axis[1]:+.2f},{axis[2]:+.2f})  "
                           f"{result.message}  {node.take_peak()}  wall {wall:.1f}s", flush=True)
     finally:
+        # Stop the executor's threads first: left running, they abort the process at exit and hide the exit code.
+        executor.shutdown()
+        spin.join(timeout=5.0)
         node.destroy_node()
         rclpy.try_shutdown()
     print(f"reached {reached}/{len(goals) + len(TILTED_GOALS)} direct goals, failures {bad}", flush=True)

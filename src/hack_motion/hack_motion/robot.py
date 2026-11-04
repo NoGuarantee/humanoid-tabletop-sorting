@@ -45,6 +45,20 @@ RAISE_STEPS = (
 )
 
 
+# At shoulder_roll = +-pi/2 the shoulder_yaw axis lies on the shoulder_pitch axis. Around that pose shoulder_pitch stops
+# short of its command by up to 60 Nm over gravity, on both sides of the singularity, with no force at the wrist:
+# 13 Nm at 1.3 rad, 30 Nm at 1.5, 47 Nm at pi/2 (tools/shoulder_roll_sweep.py). The planner stays below it.
+PLAN_ROLL_LIMIT = 1.3  # rad
+
+
+def plan_limits(name):
+    """(lower, upper) of a joint for planning: JOINTS narrowed by the shoulder singularity."""
+    _, _, lo, hi = JOINTS[name]
+    if name.startswith("shoulder_roll_"):
+        lo, hi = max(lo, -PLAN_ROLL_LIMIT), min(hi, PLAN_ROLL_LIMIT)
+    return lo, hi
+
+
 def raise_steps(arm):
     """[[7 positions in ARM_JOINTS[arm] order], ...] for the moves above."""
     side = arm[0]

@@ -10,7 +10,7 @@ import copy
 import time
 
 from .curobo_robot import load_robot_cfg
-from .robot import JOINTS, TCP_LINK
+from .robot import JOINTS, TCP_LINK, plan_limits
 
 
 LOCK_TOL = 0.02  # rad
@@ -166,6 +166,9 @@ class CuroboPlanner:
                 traj = self.mp.plan_cspace(goal_js, state)
                 if traj is not None and _flag(traj.success, any_ok=True):
                     return self._trajectory(traj)
+            traj = self.mp.plan_pose(goal, state)  # free to end at any solution, not one fixed in advance
+            if traj is not None and _flag(traj.success, any_ok=True):
+                return self._trajectory(traj)
             start = [round(v, 3) for v in state.position.detach().reshape(-1).tolist()]
             raise Unreachable(f"no collision-free joint path to {min(len(solutions), MAX_PATHS)} IK solutions from {start}")
         return self._plan_linear(arm, goal, state)
@@ -269,7 +272,7 @@ class CuroboPlanner:
     def _near_limit(self, q):
         for name, value in zip(self.joint_names, q):
             if name in JOINTS:
-                _, _, lo, hi = JOINTS[name]
+                lo, hi = plan_limits(name)
                 if value < lo + LIMIT_MARGIN or value > hi - LIMIT_MARGIN:
                     return True
         return False
@@ -277,7 +280,7 @@ class CuroboPlanner:
     def _inside_limits(self, name, value):
         if name not in JOINTS:
             return value
-        _, _, lo, hi = JOINTS[name]
+        lo, hi = plan_limits(name)
         return min(max(value, lo + START_MARGIN), hi - START_MARGIN)
 
     def _fail(self, result, goal, arm):

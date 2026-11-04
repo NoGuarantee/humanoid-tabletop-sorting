@@ -64,7 +64,8 @@
 | Команда | Что делает |
 |---|---|
 | `remote.sh sync` | копирует рабочее дерево в `~/nssr/work/<имя>/` без коммита, `.gitignore` учитывается |
-| `remote.sh eval sort3 --pool 4 [--seed S]` | sync, симулятор, `solution.sh`, ожидание `/sim/task/done`, самопроверка, остановка. `--keep` оставляет всё запущенным, `--timeout S` |
+| `remote.sh eval sort3 --pool 4 [--seed S]` | sync, симулятор, `solution.sh`, ожидание `/sim/task/done` и выхода `run.sh`, самопроверка, остановка. `--keep` оставляет всё запущенным, `--timeout S` |
+| `remote.sh eval sort3 --pool 4 --layouts N` | Как на проверке: установка один раз, затем `run.sh` в чистом контейнере на каждой из N раскладок одного симулятора. Раскладки меняет отладочный `randomize`, логи в `logs/solution.layoutI.log`, `--timeout S` на раскладку |
 | `remote.sh sim start sort3 --pool 4` / `sim stop` | симулятор в tmux на сервере, ждёт публикации `/sim/task`. Без экрана запускается с `--headless` |
 | `remote.sh solution` / `solution wait 600` / `solution stop` | `solution.sh` из вашей копии, как на проверке |
 | `remote.sh dev -- 'colcon build --symlink-install && ros2 run …'` | команда в свежем контейнере из образа, ваша копия смонтирована в `/solution`; быстрее, чем полная установка `solution.sh` |

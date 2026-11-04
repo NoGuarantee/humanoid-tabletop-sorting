@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Compile cuRobo / Warp kernels for TienKung into the on-disk cache.
 
-setup.sh runs this in the fresh solution container, before colcon. The cache (~/.cache/warp and the NVRTC
-cache) is then there for run.sh in the same container. A second process still builds CUDA graphs; this only
-removes the cold compile, which was 25 s of the first IK (docs/ANALYSIS.md, 7.3).
+setup.sh runs this during the install, before colcon. The cache (~/.cache/warp and the NVRTC cache) has to reach
+run.sh, which the final check starts on every layout in a clean container with the solution installed; `remote.sh
+eval TASK --layouts N` runs it that way. A new process still builds CUDA graphs; this only removes the cold compile,
+which was 25 s of the first IK (docs/ANALYSIS.md, 7.3).
 """
 import json
 import sys

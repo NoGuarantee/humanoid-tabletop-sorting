@@ -19,6 +19,7 @@ LOCK=$BASE/bench.lock
 SIM=${SIM_CONTAINER:-nssr-sim}
 SOL=${SOLUTION_CONTAINER:-nssr-solution}
 IMAGE=${SIM_IMAGE:-nssr-sim:latest}
+INSTALLED=nssr-solution-installed:$(printf '%s' "$WHO" | tr -c 'a-zA-Z0-9_.-' '_')
 DDS=$SIMREPO/hackathon/docker/fastdds_hack.xml
 ROS_PRE="source /opt/ros/humble/setup.bash; export ROS_DOMAIN_ID=146; \
 export FASTRTPS_DEFAULT_PROFILES_FILE=/nssr_sim/hackathon/docker/fastdds_hack.xml"
@@ -124,16 +125,84 @@ solution_stop() {
   echo "[bench] solution stopped"
 }
 
-solution_wait() {  # $1=timeout s: until /sim/task/done appears in the log or the solution exits
+solution_wait() {  # $1=timeout s: until /sim/task/done appears in the log and run.sh ends, or the solution exits
   local t0=$SECONDS
   while [ $((SECONDS - t0)) -lt "$1" ]; do
     if grep -q "published /sim/task/done" "$LOGS/solution.log" 2>/dev/null; then
-      echo "[bench] /sim/task/done after $((SECONDS - t0)) s (wall clock, including install)"; return 0
+      echo "[bench] /sim/task/done after $((SECONDS - t0)) s (wall clock from the solution start; includes the install unless --layouts)"
+      solution_wait_exit 60; return $?
     fi
     has solution || { echo "[bench] the solution exited without /sim/task/done"; return 1; }
     sleep 5
   done
   echo "[bench] timeout $1 s: no /sim/task/done"; return 1
+}
+
+solution_wait_exit() {  # $1=timeout s: the final check expects run.sh to end after /sim/task/done
+  local t0=$SECONDS
+  while has solution; do
+    [ $((SECONDS - t0)) -lt "$1" ] || { echo "[bench] run.sh still running $1 s after /sim/task/done"; return 1; }
+    sleep 1
+  done
+  echo "[bench] run.sh ended $((SECONDS - t0)) s after /sim/task/done"
+}
+
+solution_docker() {  # $1=image, $2=script; the rest are extra docker run options. Same container as solution.sh, no TTY
+  local image=$1 script=$2; shift 2
+  docker run --name "$SOL" --gpus all --network host --ipc host "$@" \
+    -v "$DDS:/etc/nssr/fastdds.xml:ro" \
+    -e ROS_DOMAIN_ID=146 -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/nssr/fastdds.xml \
+    --entrypoint bash "$image" -c "$script"
+}
+
+solution_install() {  # the install of hackathon/tools/solution.sh, kept as an image: it runs once, run.sh on every layout
+  need_bench
+  [ -f "$WORK/run.sh" ] || die "no $WORK/run.sh: remote.sh sync"
+  has solution && solution_stop
+  docker rm -f "$SOL" >/dev/null 2>&1
+  : > "$LOGS/solution.log"
+  echo "[bench] installing the solution as in solution.sh"
+  solution_docker "$IMAGE" '
+set -e
+mkdir -p /solution && cp -a /mnt/solution/. /solution/ && cd /solution && rm -rf build install log
+if [ -s apt.txt ]; then apt-get update -qq && xargs -a apt.txt apt-get install -y --no-install-recommends; fi
+if [ -s requirements.txt ]; then /usr/bin/python3 -m pip install -r requirements.txt; fi
+if [ -f setup.sh ]; then bash setup.sh; fi
+source /opt/ros/humble/setup.bash
+colcon build' -v "$WORK:/mnt/solution:ro" 2>&1 | clean >> "$LOGS/solution.log"
+  local rc=${PIPESTATUS[0]}
+  [ "$rc" = 0 ] || { docker rm -f "$SOL" >/dev/null 2>&1; echo "[bench] install failed, exit $rc:"; tail_log solution 40; return 1; }
+  docker commit "$SOL" "$INSTALLED" >/dev/null && docker rm "$SOL" >/dev/null
+}
+
+layout_start() {  # run.sh in a clean container from the installed image; a new log for each layout
+  : > "$LOGS/solution.log"
+  local script='cd /solution && source install/setup.bash && bash run.sh'
+  tmux new-session -d -s solution "docker run --rm --name '$SOL' --gpus all --network host --ipc host \
+-v '$DDS:/etc/nssr/fastdds.xml:ro' -e ROS_DOMAIN_ID=146 -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/nssr/fastdds.xml \
+--entrypoint bash '$INSTALLED' -c '$script' 2>&1 | tee -a '$LOGS/solution.log'"
+}
+
+eval_layouts() {  # $1=layouts, $2=timeout s for each. As at the final check: one simulator, run.sh anew on each layout
+  local n=$1 timeout=$2 i seed rc=0
+  solution_install || return 1
+  for i in $(seq 1 "$n"); do
+    if [ "$i" -gt 1 ]; then  # moves the objects only, the robot stays where the last run left it
+      seed=$RANDOM
+      ( cd "$SIMREPO" && bash hackathon/tools/objects.sh randomize "$seed" ) || { rc=1; break; }
+      sleep 3
+    fi
+    echo "===== layout $i/$n, seed ${seed:-of the sim start}"
+    layout_start
+    solution_wait "$timeout" || rc=1
+    has solution && solution_stop
+    echo "----- solution log (start-up and end)"
+    clean < "$LOGS/solution.log" | grep -E "limit [0-9]+ s|curobo|published /sim/task/done|mission failed" | tail -n 12
+    cp "$LOGS/solution.log" "$LOGS/solution.layout$i.log"
+    echo "----- self-check"; ( cd "$SIMREPO" && bash hackathon/tools/task.sh check )
+  done
+  docker rmi "$INSTALLED" >/dev/null 2>&1
+  return $rc
 }
 
 status() {
@@ -160,7 +229,7 @@ bench.sh (usually through tools/remote.sh):
   sim start TASK [task.sh args]   e.g. sim start sort3 --pool 4 --seed 7; waits for /sim/task. --self-collision turns on physics self-collisions (debug). --force takes the bench
   sim stop | sim restart ...      stop the simulator and release the bench
   solution [start|stop|wait S]    solution.sh as at the final check, from your synced copy
-  eval TASK [args] [--keep] [--timeout S]  sim start, solution, wait for done, self-check, stop
+  eval TASK [args] [--keep] [--timeout S] [--layouts N]  sim start, solution, wait for done and exit, self-check, stop. --layouts: install once, then run.sh in a clean container on each of N layouts of one simulator; --timeout is per layout
   check                           self-check (/sim/task/check, debug only: tools/, never src/)
   ros CMD...                      a ROS 2 command in the sim container, 20 s timeout (NSSR_ROS_TIMEOUT)
   dev [--timeout S] -- CMD        CMD in a fresh container from the image, your copy at /solution (colcon, ros2 run)
@@ -189,19 +258,24 @@ case "$cmd" in
       *) die "usage: solution start|stop|wait S" ;;
     esac ;;
   eval)
-    keep=0; timeout=900; args=()
+    keep=0; timeout=900; layouts=0; args=()
     while [ $# -gt 0 ]; do
       case "$1" in
         --keep) keep=1; shift ;;
         --timeout) timeout=$2; shift 2 ;;
+        --layouts) layouts=$2; shift 2 ;;
         *) args+=("$1"); shift ;;
       esac
     done
     sim_start "${args[@]}" || exit 1
-    solution_start
-    solution_wait "$timeout"; rc=$?
-    echo "----- solution log (tail)"; tail_log solution 40
-    echo "----- self-check"; ( cd "$SIMREPO" && bash hackathon/tools/task.sh check )
+    if [ "$layouts" -gt 0 ]; then
+      eval_layouts "$layouts" "$timeout"; rc=$?
+    else
+      solution_start
+      solution_wait "$timeout"; rc=$?
+      echo "----- solution log (tail)"; tail_log solution 40
+      echo "----- self-check"; ( cd "$SIMREPO" && bash hackathon/tools/task.sh check )
+    fi
     seed=$(grep -o 'layout seed [0-9]*' "$LOGS/sim.log" | head -1)
     echo "----- ${seed:-layout seed unknown}"
     if [ "$keep" = 1 ]; then echo "[bench] --keep: sim and solution left running"; else sim_stop; fi

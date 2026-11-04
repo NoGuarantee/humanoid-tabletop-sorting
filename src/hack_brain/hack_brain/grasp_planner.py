@@ -38,10 +38,13 @@ def quat_from_rpy(roll, pitch, yaw):
 
 
 def top_down(yaw):
-    """TCP orientation for a grasp from above, fingers closing across `yaw`.
-    ASSUMPTION, to verify with `tf2_echo pelvis right_tcp_link` (owner: motion): the TCP z axis points out of the
-    palm, so "palm down" is a rotation by pi about x, then yaw about the vertical."""
-    return quat_from_rpy(math.pi, 0.0, yaw)
+    """TCP orientation for a grasp from above: fingers down, closing across `yaw`.
+
+    Checked against the URDF and tf: the TCP sits at the hand mount, the fingers run along its -z (tips 0.21 m away)
+    and the palm faces +y on the right hand, -y on the left. So the TCP z axis points up, as on the hanging arm, and
+    the thumb closes on the fingers along y. Rotation by pi about x would point the fingers at the ceiling.
+    """
+    return quat_from_rpy(0.0, 0.0, yaw)
 
 
 def pose(x, y, z, q):

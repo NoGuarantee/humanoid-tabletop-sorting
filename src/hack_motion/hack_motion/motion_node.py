@@ -30,6 +30,7 @@ PERIOD = 0.05  # s, real time between control checks
 STALL_TIME = 0.5  # s of sim time without progress -> compensate the PD undershoot
 MAX_COMPENSATION = 0.3  # rad added on top of the target at most
 HOME_TOL = 0.1  # rad, every arm joint within this of 0 -> the arm hangs at home
+HELD_TOL = 0.05  # rad, the arm MoveTcp did not ask for: it only holds its pose
 
 
 class MotionNode(Node):
@@ -101,8 +102,8 @@ class MotionNode(Node):
             self.cmd[group].publish(msg)
 
     # ---------------------------------------------------------------- MoveJoints
-    def move_joints(self, names, positions, speed=0.0, tol=0.0, max_time=0.0, feedback=None):
-        """Blocking joint move. Returns (success, max_error, message)."""
+    def move_joints(self, names, positions, speed=0.0, tol=0.0, max_time=0.0, feedback=None, held=()):
+        """Blocking joint move. Returns (success, max_error, message). Joints in `held` only need HELD_TOL."""
         unknown = [n for n in names if n not in JOINTS]
         if unknown:
             return False, 0.0, f"unknown joints {unknown}"
@@ -110,6 +111,7 @@ class MotionNode(Node):
             return False, 0.0, "joints and positions differ in length"
         speed = min(speed or MAX_SPEED, MAX_SPEED)
         tol = tol or 0.02
+        tols = {n: max(tol, HELD_TOL) if n in held else tol for n in names}
         goal = {n: clip(n, p) for n, p in zip(names, positions)}
         start = self.joints(names)
         if any(v is None for v in start):
@@ -130,7 +132,7 @@ class MotionNode(Node):
             max_err = max(abs(e) for e in err.values())
             if feedback:
                 feedback(max_err)
-            if max_err < tol:
+            if all(abs(err[n]) < tols[n] for n in names):
                 return True, max_err, "ok"
             t = self.now()
             if t - t0 > max_time:
@@ -139,14 +141,14 @@ class MotionNode(Node):
                 best, best_t = max_err, t
             elif t - best_t > STALL_TIME:  # stopped short of the target: push the command past it
                 for n in names:
-                    if abs(err[n]) > tol:
+                    if abs(err[n]) > tols[n]:
                         extra = max(-MAX_COMPENSATION, min(MAX_COMPENSATION, cmd[n] - goal[n] + err[n]))
                         cmd[n] = clip(n, goal[n] + extra)
                 self.send(cmd, {n: max(abs(err[n]) / STALL_TIME, 0.05) for n in names})
                 best, best_t = max_err, t
         return False, 0.0, "shutdown"
 
-    def follow(self, names, waypoints, dt, tol, max_time):
+    def follow(self, names, waypoints, dt, tol, max_time, held=()):
         """Joint-space target, or closed-loop segments along a path.
 
         Streaming waypoints open-loop lets the arm cut the corner into the body. Each segment is short
@@ -155,7 +157,7 @@ class MotionNode(Node):
         """
         deadline = self.now() + max_time if max_time else None
         if dt is None or len(waypoints) <= 1:
-            return self.move_joints(names, waypoints[-1], tol=tol, max_time=max_time or 0.0)
+            return self.move_joints(names, waypoints[-1], tol=tol, max_time=max_time or 0.0, held=held)
         anchors = []
         prev = None
         for q in waypoints:
@@ -172,17 +174,12 @@ class MotionNode(Node):
                 if left <= 0.0:
                     self.get_logger().info(f"segment {i + 1}/{len(anchors)}: out of max_time {max_time:.1f} s")
                     return False, 0.0, "timeout"
-            ok, err, msg = self.move_joints(names, q, tol=tol if i == len(anchors) - 1 else 0.08, max_time=left)
+            ok, err, msg = self.move_joints(names, q, tol=tol if i == len(anchors) - 1 else 0.08, max_time=left, held=held)
             if not ok:
                 here = self.joints(names)
-                worst = 0.0
-                who = ""
-                if not any(v is None for v in here):
-                    for n, target, cur in zip(names, q, here):
-                        if abs(target - cur) > worst:
-                            worst, who = abs(target - cur), n
-                self.get_logger().info(
-                    f"segment {i + 1}/{len(anchors)} {msg} err {err:.3f} worst {who} {worst:.3f}")
+                short = [f"{n} {t - c:+.3f}" for n, t, c in zip(names, q, here)
+                         if c is not None and abs(t - c) > tol]
+                self.get_logger().info(f"segment {i + 1}/{len(anchors)} {msg} err {err:.3f}: {', '.join(short)}")
                 return False, err, msg
         return True, 0.0, "ok"
 
@@ -287,7 +284,7 @@ class MotionNode(Node):
                 continue
             self.get_logger().info(f"{arm} arm at home, raising it in front of the chest")
             for i, step in enumerate(raise_steps(arm)):
-                ok, err, msg = self.move_joints(names, step, tol=0.05)
+                ok, err, msg = self.move_joints(names, step, tol=0.1)
                 if not ok:
                     raise RuntimeError(f"{arm} arm stopped on raise step {i + 1}: {msg} (err {err:.3f})")
 
@@ -343,11 +340,13 @@ class MotionNode(Node):
             names = [n for n, _ in known]
             waypoints = [[q[i] for _, i in known] for q in waypoints]
             self.get_logger().info(f"move_tcp {g.arm} {mode}: {len(waypoints)} waypoints, {len(names)} joints")
-            ok, _, msg = self.follow(names, waypoints, dt, tol=0.01, max_time=g.max_time)
+            other = next(joints for arm, joints in ARM_JOINTS.items() if arm != g.arm)
+            ok, _, msg = self.follow(names, waypoints, dt, tol=0.01, max_time=g.max_time, held=other)
         pos_err, rot_err = self.tcp_error(g.arm, g.target)
         if pos_err is None:
             return MoveTcp.Result(success=False, pos_error=0.0, rot_error=0.0, message=f"{msg}; no tf")
-        reached = ok and pos_err <= pos_tol and rot_err <= rot_tol
+        # The goal is the TCP pose: a joint stalled a few mrad short must not fail a TCP that is in tolerance.
+        reached = (ok or msg == "timeout") and pos_err <= pos_tol and rot_err <= rot_tol
         if reached:
             message = "ok"
         elif ok:

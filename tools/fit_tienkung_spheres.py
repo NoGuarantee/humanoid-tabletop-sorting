@@ -59,10 +59,9 @@ HOME_POSE = {**{f"hip_pitch_{s}_joint": -0.5 for s in "lr"}, **{f"knee_pitch_{s}
 # that touch in the default pose; at home the forearm spheres touch the thighs by a few mm, and ignoring that pair
 # would let the planner put a forearm through a thigh. Motion moves to this pose by joints before planning.
 READY_POSE = {**HOME_POSE, "shoulder_roll_l_joint": 0.2, "shoulder_roll_r_joint": -0.2}
-# A palm-down hand folds the wrist: wrist_roll comes within a fraction of a millimetre of elbow_yaw, two joints
-# away. The ready pose never brings them together and the sampled poses rarely do, so the builder keeps the pair
-# and every top-down hand is then "in collision". The two links are joined through wrist_pitch and cannot pass
-# through each other, so the pair only gives false positives.
+# A wrist bent far enough brings wrist_roll within a fraction of a millimetre of elbow_yaw, two joints away. The
+# ready pose never brings them together and the sampled poses rarely do, so the builder keeps the pair. The two
+# links are joined through wrist_pitch and cannot pass through each other, so the pair only gives false positives.
 FOLDED_WRIST = {f"elbow_yaw_{s}_link": [f"wrist_roll_{s}_link"] for s in "lr"}
 # Pairs the builder must keep checking, whatever the sampled poses say: the forearm and hand against the pelvis and
 # legs. compute_collision_matrix drops every pair that never touched in its random samples, and it dropped

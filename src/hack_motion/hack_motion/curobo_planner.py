@@ -135,7 +135,7 @@ class CuroboPlanner:
         """Return (joint names, waypoints [N x dof], dt or None).
 
         `direct` is one IK solution, then a collision-free joint-space path to it. A straight line in joint
-        space from the arms-out pose to a palm-down hand passes through the body, so the motors stall.
+        space can pass through the body, and the motors stall against it.
         `linear` is a Cartesian trajectory. The caller retimes either path to the 0.8 rad/s motor limit.
         dt is None only when the TCP is already at the goal and the waypoint is the current joints.
         """
@@ -159,12 +159,9 @@ class CuroboPlanner:
                 picked.detach().clone().reshape(1, -1), joint_names=self.joint_names)
             traj = self.mp.plan_cspace(goal_js, state)
             if traj is None or not _flag(traj.success, any_ok=True):
-                raise Unreachable("no collision-free joint path")
-            names, waypoints, dt = self._trajectory(traj)
-            # A straight fold turns the forearm through the thigh. The spheres call that path free and the
-            # real arm stops. Reach forward first, then turn the wrist while the hand is up in front.
-            lifted = self._lift_first(names, waypoints, dt, state, goal_js, arm)
-            return lifted if lifted is not None else (names, waypoints, dt)
+                start = [round(v, 3) for v in state.position.detach().reshape(-1).tolist()]
+                raise Unreachable(f"no collision-free joint path, status {getattr(traj, 'status', None)}, from {start}")
+            return self._trajectory(traj)
         return self._plan_linear(arm, goal, state)
 
     def _plan_linear(self, arm, goal, state):
@@ -211,59 +208,6 @@ class CuroboPlanner:
         cfg = getattr(getattr(self.mp, "trajopt_solver", None), "config", None)
         dt = float(getattr(cfg, "interpolation_dt", 0.05) or 0.05)
         return names, waypoints, dt
-
-    def _lift_first(self, names, waypoints, dt, state, goal_js, arm):
-        """Two-step joint path when a direct fold would sweep the forearm through the hip, or None."""
-        import torch
-        from curobo.types import JointState
-
-        side = "l" if arm == "left" else "r"
-        yaw_name = f"elbow_yaw_{side}_joint"
-        if yaw_name not in names:
-            return None
-        yaw_i = names.index(yaw_name)
-        if abs(waypoints[-1][yaw_i] - waypoints[0][yaw_i]) < 1.0:
-            return None
-        if self._path_min_z(names, waypoints, arm) >= 0.05:
-            return None
-        q = state.position.detach().clone().reshape(1, -1)
-        for name, value in (
-            (f"shoulder_pitch_{side}_joint", -1.2),  # forward
-            (f"elbow_pitch_{side}_joint", -0.6),
-        ):
-            i = self.joint_names.index(name)
-            q[0, i] = min(float(q[0, i]), value)
-        via = JointState.from_position(q, joint_names=self.joint_names)
-        # plan_cspace writes into the tensors it is given. Keep a private copy of the IK solution.
-        goal_hold = JointState.from_position(
-            goal_js.position.detach().clone(), joint_names=self.joint_names)
-        leg1 = self.mp.plan_cspace(via, state)
-        via_hold = JointState.from_position(q.clone(), joint_names=self.joint_names)
-        leg2 = self.mp.plan_cspace(goal_hold, via_hold)
-        if leg1 is None or leg2 is None or not _flag(leg1.success, any_ok=True) or not _flag(leg2.success, any_ok=True):
-            return None
-        n1, w1, dt1 = self._trajectory(leg1)
-        n2, w2, dt2 = self._trajectory(leg2)
-        if n1 != n2:
-            return None
-        return n1, w1 + w2, min(dt1, dt2)
-
-    def _path_min_z(self, names, waypoints, arm):
-        import torch
-        from curobo.types import JointState
-
-        order = self.joint_names
-        idx = [names.index(n) for n in order]
-        link = TCP_LINK[arm]
-        zs = []
-        step = max(1, len(waypoints) // 8)
-        rows = list(waypoints[::step]) + [waypoints[-1]]
-        for row in rows:
-            q = torch.tensor([[row[i] for i in idx]], device="cuda", dtype=torch.float32)
-            pose = self.mp.compute_kinematics(JointState.from_position(q, joint_names=order)).tool_poses
-            i = pose.tool_frames.index(link)
-            zs.append(float(pose.position[0, 0, i, 2]))
-        return min(zs)
 
     def _already(self, goal, state, arm, pos_tol, rot_tol):
         """True when the commanded TCP is already inside the MoveTcp tolerance, so the joints must not move."""

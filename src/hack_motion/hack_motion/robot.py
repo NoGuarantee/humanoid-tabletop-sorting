@@ -39,9 +39,9 @@ TCP_LINK = {"left": "left_tcp_link", "right": "right_tcp_link"}
 # pelvis (tools/reach_pose_probe.py); it ends with the TCP near (0.37, +-0.30, 0.09). Right arm values; roll flips
 # sign on the left. Each step lists the joints that differ from home.
 RAISE_STEPS = (
-    {"shoulder_roll": -0.9},
-    {"shoulder_roll": -0.9, "elbow_pitch": -1.6},
-    {"shoulder_roll": -0.2, "elbow_pitch": -1.6},
+    {"shoulder_roll": -1.2},
+    {"shoulder_roll": -1.2, "elbow_pitch": -2.0},
+    {"shoulder_roll": -0.2, "elbow_pitch": -2.0},
 )
 
 

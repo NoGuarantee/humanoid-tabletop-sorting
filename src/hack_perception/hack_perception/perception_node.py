@@ -3,7 +3,7 @@
 Keeps the latest colour, depth and camera_info of both cameras; on request turns them into SceneObjects in `pelvis`.
 Runs on request only (not a stream): saves CPU, which counts in tie-breaks.
 
-Status: frames, tf and point cloud in pelvis are wired; detect() is NOT IMPLEMENTED (milestone M1-M2):
+Status: M1 is done, the geometry is in table_clusters.py. Names, categories and containers stay empty until M2:
   M1: table plane (RANSAC) -> points above it -> clusters -> centre / yaw (PCA) / size / top_z
   M2: trays by colour (red / blue / green), category per cluster (CLIP zero-shot as a baseline)
   M3: YOLO-seg trained on sim frames of all 6 pools
@@ -13,7 +13,8 @@ import threading
 
 import numpy as np
 import rclpy
-from hack_interfaces.msg import SceneObjects
+from geometry_msgs.msg import Point, Vector3
+from hack_interfaces.msg import DetectedObject, SceneObjects
 from hack_interfaces.srv import Perceive
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.duration import Duration
@@ -21,12 +22,16 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.time import Time
 from sensor_msgs.msg import CameraInfo, Image
-from tf2_ros import Buffer, TransformListener
+from tf2_ros import Buffer, TransformException, TransformListener
 
 from . import geometry as geo
+from . import table_clusters as tc
 
 CAMERAS = {"head": "cam_head", "torso": "cam_torso"}
 BASE = "pelvis"
+ARM_FRAMES = (("elbow_pitch_l_link", "wrist_pitch_l_link", "left_tcp_link"),
+              ("elbow_pitch_r_link", "wrist_pitch_r_link", "right_tcp_link"))
+FINGERS = 0.21  # the finger tips are this far along -z of the TCP (see grasp_planner.top_down)
 
 
 class PerceptionNode(Node):
@@ -34,6 +39,7 @@ class PerceptionNode(Node):
         super().__init__("hack_perception")
         self.lock = threading.Lock()
         self.frames = {cam: {} for cam in CAMERAS}
+        self.tracker = tc.Tracker()
         cb = ReentrantCallbackGroup()
         for cam, topic in CAMERAS.items():
             for kind in ("color", "depth"):
@@ -57,7 +63,7 @@ class PerceptionNode(Node):
             return None
         return f
 
-    def cloud_in_pelvis(self, f, stride=2):
+    def cloud_in_pelvis(self, f, stride=1):
         """Organised point cloud of the depth frame in pelvis: (HxWx3 array with NaN where no depth, 4x4 cam->pelvis)."""
         depth = f["depth"]
         tf = self.tf.lookup_transform(BASE, depth.header.frame_id, Time.from_msg(depth.header.stamp),
@@ -88,9 +94,37 @@ class PerceptionNode(Node):
             res.success, res.message = False, repr(e)
         return res
 
+    def arm_segments(self, stamp):
+        """Forearms and hands in pelvis at the frame time, as pairs of points. A missing transform leaves that arm out."""
+        segments = []
+        for frames in ARM_FRAMES:
+            try:
+                poses = [geo.transform_matrix(self.tf.lookup_transform(BASE, name, Time.from_msg(stamp),
+                                                                       timeout=Duration(seconds=0.2)))
+                         for name in frames]
+            except TransformException as e:
+                self.get_logger().warning(f"no arm mask: {e}")
+                continue
+            points = [m[:3, 3] for m in poses] + [poses[-1][:3, 3] - FINGERS * poses[-1][:3, 2]]
+            segments += list(zip(points[:-1], points[1:]))
+        return segments
+
     def detect(self, f, region, scene):
-        """Fill scene.table_z, scene.objects, scene.containers from one frame set."""
-        raise NotImplementedError("detection is not implemented yet (owner: perception, milestone M1)")
+        """Fill scene.table_z and scene.objects from one frame set. Containers and hood: not yet (milestones M2, M4)."""
+        if region != "table":
+            raise NotImplementedError(f"region '{region}'")
+        cloud, _ = self.cloud_in_pelvis(f)
+        result = tc.detect(cloud, self.arm_segments(f["depth"].header.stamp))
+        if result is None:
+            raise RuntimeError("table plane not found")
+        scene.table_z = result.table_z
+        with self.lock:
+            self.tracker.update(result.objects)
+        for c in result.objects:
+            scene.objects.append(DetectedObject(
+                track_id=c.track_id, yaw=float(c.yaw), top_z=float(c.top_z), partially_visible=c.partially_visible,
+                center=Point(x=float(c.center[0]), y=float(c.center[1]), z=float(c.center[2])),
+                size=Vector3(x=float(c.size[0]), y=float(c.size[1]), z=float(c.size[2]))))
 
 
 def main():

@@ -10,7 +10,7 @@ With the simulator running, the dev image built (remote.sh dev-image) and only h
 when brain publishes done):
 
   bash tools/remote.sh dev --timeout 2400 -- 'source /opt/ros/humble/setup.bash && \
-    colcon build --symlink-install --build-base /tmp/b --install-base /tmp/i && source /tmp/i/setup.bash && \
+    colcon build --symlink-install && source install/setup.bash && \
     { ros2 run hack_motion motion_node --ros-args -p use_sim_time:=true & pid=$!; \
       for i in $(seq 60); do ros2 action list | grep -q motion/move_tcp && break; sleep 2; done; \
       python3 tools/move_tcp_check.py; status=$?; kill $pid; exit $status; }'

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Time CuroboPlanner.plan without the simulator: direct, linear, direct again, with one CUDA graph mode.
 
-  bash tools/remote.sh dev -- 'bash tools/curobo_install.sh && python3 tools/curobo_bench.py reset [head_pitch]'
+  bash tools/remote.sh dev -- 'python3 tools/curobo_bench.py reset [head_pitch]'
+
+torch and cuRobo come from the dev image (remote.sh dev-image), not from curobo_install.sh.
 
 Mode: reset (graphs, re-captured on shape change) or off. Each plan starts at the last waypoint of the previous one.
 """

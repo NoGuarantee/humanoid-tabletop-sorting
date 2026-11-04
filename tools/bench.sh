@@ -13,6 +13,10 @@ BASE=${NSSR_BASE:-$HOME/nssr}
 [ -f "$BASE/bench.env" ] && . "$BASE/bench.env"
 SIMREPO=${NSSR_SIM:-$BASE/nssr-uwt-polygon}
 WHO=${NSSR_WHO:-$USER}
+# one path segment: a slash or ".." would point this dev container at another name's copy
+case "$WHO" in
+  ""|*[!A-Za-z0-9_-]*) echo "[bench] NSSR_WHO must be one name of letters, digits, _ and -" >&2; exit 1 ;;
+esac
 WORK=$BASE/work/$WHO/nssr-sol-team-049
 LOGS=$BASE/logs
 LOCK=$BASE/bench.lock
@@ -235,8 +239,17 @@ dev_image() {  # $1=--force rebuilds: the install of solution.sh, frozen into an
   [ -f "$WORK/setup.sh" ] || die "no $WORK/setup.sh: remote.sh sync"
   local img name rc
   img="$DEV_REPO:$(dev_tag)"; name="nssr-dev-build-$WHO"
+  # Agents keep this tag. A new hash gets its own tag; this one is never moved.
+  if [ "$img" = "nssr-dev:6057b5989a06" ] && docker image inspect "$img" >/dev/null 2>&1; then
+    echo "[bench] $img is kept as-is"; return 0
+  fi
   if [ "${1:-}" != --force ] && docker image inspect "$img" >/dev/null 2>&1; then
     echo "[bench] $img is already built"; return 0
+  fi
+  if docker image inspect "$img" >/dev/null 2>&1; then
+    local users
+    users=$(docker ps -a --filter "ancestor=$img" --format '{{.Names}}' | grep -v "^${name}$" || true)
+    [ -z "$users" ] || die "refusing to overwrite $img; containers still use it: $users"
   fi
   docker rm -f "$name" >/dev/null 2>&1
   echo "[bench] building $img (log: remote.sh logs dev-image)"
@@ -260,12 +273,77 @@ cd / && rm -rf /tmp/dev-image /root/.cache/pip' 2>&1 | tee "$LOGS/dev-image.log"
   echo "[bench] built $img: remote.sh dev now starts from it, drop 'bash setup.sh' from dev commands"
 }
 
+dev_name() { echo "nssr-dev-$WHO"; }
+
+dev_stop_cmd() {  # $1=container. The previous command in our container only; pid 1 is sleep and stays.
+  docker exec "$1" bash -c 'pid=$(cat /tmp/nssr-dev.pid 2>/dev/null || true)
+[ -n "${pid:-}" ] && [ "$pid" != 1 ] || exit 0
+pkill -TERM -P "$pid" 2>/dev/null || true
+kill -TERM "$pid" 2>/dev/null || true
+sleep 1
+pkill -KILL -P "$pid" 2>/dev/null || true
+kill -KILL "$pid" 2>/dev/null || true
+rm -f /tmp/nssr-dev.pid' >/dev/null 2>&1 || true
+}
+
+dev_up() {  # $1=image to create from. Reuse only our keepalive container, and only when /solution is $WORK.
+  local img=$1 name running mount cimg label
+  name=$(dev_name)
+  running=$(docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null || echo no)
+  mount=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/solution"}}{{.Source}}{{end}}{{end}}' "$name" 2>/dev/null || true)
+  cimg=$(docker inspect -f '{{.Config.Image}}' "$name" 2>/dev/null || true)
+  label=$(docker inspect -f '{{index .Config.Labels "nssr.dev"}}' "$name" 2>/dev/null || true)
+  if [ "$running" = true ] && [ "$mount" = "$WORK" ] && [ "$label" = 1 ]; then
+    if [ "$cimg" = "$img" ]; then
+      echo "[bench] reusing $name" >&2
+      dev_stop_cmd "$name"
+      return 0
+    fi
+    # This tree's tag is not built. Do not throw away a container that already has torch and cuRobo.
+    if [ "$img" = "$IMAGE" ] && [[ "$cimg" == "$DEV_REPO:"* ]]; then
+      echo "[bench] reusing $name on $cimg; the tag for this tree is not built" >&2
+      dev_stop_cmd "$name"
+      return 0
+    fi
+  fi
+  if [ "$running" != no ]; then
+    docker rm -f "$name" >/dev/null 2>&1 || true
+  fi
+  echo "[bench] starting $name from $img" >&2
+  docker run -d --name "$name" --label nssr.dev=1 --gpus all --network host --ipc host \
+    -v "$WORK:/solution" -v "$DDS:/etc/nssr/fastdds.xml:ro" \
+    -e ROS_DOMAIN_ID=146 -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/nssr/fastdds.xml \
+    -w /solution --entrypoint bash "$img" -c 'sleep infinity' >/dev/null \
+    || die "cannot start $name"
+}
+
+dev_exec() {  # $1=timeout, rest = command. install/ is sourced only when it is not older than the synced sources.
+  local t=$1; shift
+  docker exec -e CMD="$*" -e T="$t" "$(dev_name)" bash -c 'source /opt/ros/humble/setup.bash
+if [ -f install/setup.bash ] && [ -z "$(find src -type f -newer install/setup.bash \
+  ! -path "*/__pycache__/*" ! -path "*.egg-info/*" -print -quit 2>/dev/null)" ]; then
+  source install/setup.bash
+elif [ -f install/setup.bash ]; then
+  echo "[bench] install/ is older than the synced sources, not sourcing it" >&2
+fi
+echo $$ > /tmp/nssr-dev.pid
+timeout "$T" bash -c "$CMD"
+rc=$?
+rm -f /tmp/nssr-dev.pid
+exit $rc'
+}
+
 status() {
   echo "bench:$( [ -f "$LOCK" ] && cat "$LOCK" || echo free)"
   echo "you:      $WHO ($WORK $( [ -d "$WORK" ] && echo present || echo 'missing: remote.sh sync'))"
   echo "sessions: $(tmux ls -F '#S' 2>/dev/null | tr '\n' ' ')"
   echo "sim:      container $(sim_up && echo running || echo stopped), simulator $(has sim && echo running || echo stopped)"
   echo "solution: $(has solution && echo running || echo stopped)"
+  if docker inspect "$(dev_name)" >/dev/null 2>&1; then
+    echo "dev:      $(docker inspect -f '{{.State.Status}} {{.Config.Image}} mount {{range .Mounts}}{{if eq .Destination "/solution"}}{{.Source}}{{end}}{{end}}' "$(dev_name)")"
+  else
+    echo "dev:      stopped"
+  fi
   nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu --format=csv,noheader | sed 's/^/gpu:      /'
 }
 
@@ -287,9 +365,13 @@ bench.sh (usually through tools/remote.sh):
   eval TASK [args] [--keep] [--timeout S] [--layouts N] [--run CMD]  sim start, solution, wait for done and exit, self-check, stop. --layouts: install once, then run.sh in a clean container on each of N layouts of one simulator; --timeout is per layout, --run replaces run.sh there (tools/startup_probe.py)
   check                           self-check (/sim/task/check, debug only: tools/, never src/)
   ros CMD...                      a ROS 2 command in the sim container, 20 s timeout (NSSR_ROS_TIMEOUT)
-  dev [--timeout S] -- CMD        CMD in a fresh container, your copy at /solution (colcon, ros2 run); uses the
-                                  dev image for your setup.sh if it is built, otherwise the bare image
-  dev-image [--force]             build that image: torch, cuRobo and the kernel cache, ~6 min once instead of every dev
+  dev [--timeout S] -- CMD        CMD in nssr-dev-<you>, your copy mounted at /solution. The container stays up.
+                                  colcon build/ and install/ stay in that copy. A second dev with the same name
+                                  stops the previous command in that container only. Uses the dev image for your
+                                  setup.sh if it is built, otherwise an existing nssr-dev container for this name,
+                                  otherwise the bare image
+  dev-image [--force]             build that image: torch, cuRobo and the kernel cache, ~6 min once. Does not
+                                  overwrite a tag a container is using, and does not replace nssr-dev:6057b5989a06
   logs sim|solution|setup|dev-image [N]  the last N lines (default 60)
   gpu                             VRAM, RAM, containers
 TXT
@@ -348,16 +430,13 @@ case "$cmd" in
     shift || true
     [ $# -gt 0 ] || die "usage: dev [--timeout S] -- CMD"
     [ -d "$WORK" ] || die "no $WORK: remote.sh sync"
-    name="nssr-dev-$WHO"
     img="$DEV_REPO:$(dev_tag)"
-    docker image inspect "$img" >/dev/null 2>&1 || {
-      echo "[bench] no $img, using $IMAGE without torch and cuRobo: remote.sh dev-image" >&2; img=$IMAGE; }
-    docker rm -f "$name" >/dev/null 2>&1
-    docker run --rm --name "$name" --gpus all --network host --ipc host \
-      -v "$WORK:/solution" -v "$DDS:/etc/nssr/fastdds.xml:ro" \
-      -e ROS_DOMAIN_ID=146 -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/nssr/fastdds.xml -e CMD="$*" -e T="$t" \
-      -w /solution --entrypoint bash "$img" -c 'source /opt/ros/humble/setup.bash; \
-        [ -f install/setup.bash ] && source install/setup.bash; timeout "$T" bash -c "$CMD"' ;;
+    if ! docker image inspect "$img" >/dev/null 2>&1; then
+      echo "[bench] no $img; reusing this name's nssr-dev container if it is already up, else $IMAGE: remote.sh dev-image" >&2
+      img=$IMAGE
+    fi
+    dev_up "$img"
+    dev_exec "$t" "$@" ;;
   dev-image) dev_image "$@" ;;
   logs) tail_log "${1:-sim}" "${2:-60}" ;;
   gpu) gpu ;;

@@ -67,10 +67,11 @@
 | `remote.sh eval sort3 --pool 4 [--seed S]` | sync, симулятор, `solution.sh`, ожидание `/sim/task/done`, самопроверка, остановка. `--keep` оставляет всё запущенным, `--timeout S` |
 | `remote.sh sim start sort3 --pool 4` / `sim stop` | симулятор в tmux на сервере, ждёт публикации `/sim/task`. Без экрана запускается с `--headless` |
 | `remote.sh solution` / `solution wait 600` / `solution stop` | `solution.sh` из вашей копии, как на проверке |
-| `remote.sh dev -- 'colcon build --symlink-install && ros2 run …'` | команда в свежем контейнере из образа, ваша копия смонтирована в `/solution`; быстрее, чем полная установка `solution.sh` |
+| `remote.sh dev -- 'colcon build --symlink-install && ros2 run …'` | команда в свежем контейнере, ваша копия смонтирована в `/solution`; быстрее, чем полная установка `solution.sh` |
+| `remote.sh dev-image` | один раз ставит torch и cuRobo с кэшем ядер и замораживает в образ `nssr-dev:<хэш>`, около 6 минут. `dev` берёт его сам, поэтому `bash setup.sh` в командах `dev` не нужен. Хэш считается по `setup.sh`, `requirements.txt`, `apt.txt` и скриптам установки: изменили их, соберите заново |
 | `remote.sh ros ros2 topic list` | команда ROS 2 в контейнере симулятора, таймаут 20 с |
 | `remote.sh check` | самопроверка `/sim/task/check` (только отладка, в `src/` нельзя) |
-| `remote.sh logs sim\|solution\|setup [N]` | хвост лога |
+| `remote.sh logs sim\|solution\|setup\|dev-image [N]` | хвост лога |
 | `remote.sh gpu` | VRAM, RAM, контейнеры против бюджета 16 ГБ и 32 ГБ |
 | `remote.sh status` | кто занял стенд, что запущено |
 | `remote.sh fetch logs/solution.log` | скачать файл или папку из `~/nssr` в `.fetch/` (кадры, rosbag) |
@@ -78,6 +79,8 @@
 **Стенд один.** На видеокарте помещается один симулятор, ROS-домен и имя контейнера решения общие. Поэтому
 `sim start` занимает стенд за вами (`~/nssr/bench.lock`), а `sim stop` освобождает. Чужой стенд `sim start`
 не перехватит без `--force`; прежде чем так делать, спросите в чате. Если стенда не хватает, арендуем второй сервер.
+
+**Образ `dev` не заменяет `eval`.** `eval` всегда идёт через `solution.sh` на чистом образе `nssr-sim`: только он проверяет настоящую установку, как на проверке. Перед PR в `main` гоняйте `eval`. Старые образы занимают диск (`docker images nssr-dev`), после смены установки удаляйте их через `docker rmi`.
 
 **Окно Isaac и скринкасты.** Через `remote.sh` симулятор идёт без экрана. Для окна симулятора нужен шаблон
 «Ubuntu Desktop (VM)»: запустите `task.sh` руками из сессии рабочего стола.

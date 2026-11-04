@@ -162,7 +162,12 @@ def main():
         raise
     executor = MultiThreadedExecutor()
     executor.add_node(node)
-    threading.Thread(target=node.mission, daemon=True).start()
+
+    def mission_then_exit():  # run.sh must end after /sim/task/done: brain's exit stops the launch (on_exit=Shutdown)
+        node.mission()
+        rclpy.try_shutdown()
+
+    threading.Thread(target=mission_then_exit, daemon=True).start()
     try:
         executor.spin()
     except KeyboardInterrupt:

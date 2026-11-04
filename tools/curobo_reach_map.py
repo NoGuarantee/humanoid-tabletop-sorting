@@ -44,5 +44,5 @@ for mode in ("held", "free"):
                 for x in XS:
                     goal, state = p._goal("right", NS(position=NS(x=x, y=y, z=z), orientation=down(yaw)), q)
                     r = p.mp.ik_solver.solve_pose(goal, current_state=state, return_seeds=4)
-                    row.append(" ok " if p._pick(r, goal, "right", state, 0.01, 0.1) is not None else "  . ")
+                    row.append(" ok " if p._ranked(r, goal, "right", state, 0.01, 0.1) else "  . ")
                 print(f"  z {z:+.2f} y {y:+.2f} " + " ".join(row), flush=True)

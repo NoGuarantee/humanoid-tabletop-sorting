@@ -16,6 +16,8 @@ from .robot import JOINTS, TCP_LINK
 LOCK_TOL = 0.02  # rad
 START_MARGIN = 0.02  # rad inside the limits for the start state: a joint held at its stop reads slightly past it
 LIMIT_MARGIN = 0.1  # rad from a limit: IK solutions closer than this are the last choice
+MAX_PATHS = 4  # IK solutions to try a joint path to; a failed try costs about 1 s
+SAME_SOLUTION = 0.3  # rad, joint-space distance: closer solutions fail the same way, so one try covers them
 
 
 class Unreachable(Exception):
@@ -154,17 +156,18 @@ class CuroboPlanner:
                 goal, current_state=state, return_seeds=self.mp.ik_solver.config.num_seeds)
             # position_error is the worse of the two hands, and cuRobo stops at 5 mm. MoveTcp asks for one
             # hand, and the other hand is only held so it does not swing through the body.
-            picked = self._pick(result, goal, arm, state, pos_tol, rot_tol)
-            if picked is None:
+            solutions = self._ranked(result, goal, arm, state, pos_tol, rot_tol)
+            if not solutions:
                 raise Unreachable(self._fail(result, goal, arm))
             from curobo.types import JointState
-            goal_js = JointState.from_position(
-                picked.detach().clone().reshape(1, -1), joint_names=self.joint_names)
-            traj = self.mp.plan_cspace(goal_js, state)
-            if traj is None or not _flag(traj.success, any_ok=True):
-                start = [round(v, 3) for v in state.position.detach().reshape(-1).tolist()]
-                raise Unreachable(f"no collision-free joint path from {start}")
-            return self._trajectory(traj)
+            for solution in solutions[:MAX_PATHS]:
+                goal_js = JointState.from_position(
+                    solution.detach().clone().reshape(1, -1), joint_names=self.joint_names)
+                traj = self.mp.plan_cspace(goal_js, state)
+                if traj is not None and _flag(traj.success, any_ok=True):
+                    return self._trajectory(traj)
+            start = [round(v, 3) for v in state.position.detach().reshape(-1).tolist()]
+            raise Unreachable(f"no collision-free joint path to {min(len(solutions), MAX_PATHS)} IK solutions from {start}")
         return self._plan_linear(arm, goal, state)
 
     def _plan_linear(self, arm, goal, state):
@@ -224,12 +227,12 @@ class CuroboPlanner:
         ang = 2.0 * torch.acos(torch.tensor(dot)).item()
         return err <= pos_tol and ang <= rot_tol
 
-    def _pick(self, result, goal, arm, state, pos_tol, rot_tol):
-        """Joint vector of a collision-free seed whose commanded TCP is inside tolerance, or None.
+    def _ranked(self, result, goal, arm, state, pos_tol, rot_tol):
+        """Joint vectors of the collision-free seeds whose commanded TCP is inside tolerance, best first.
 
-        Among those seeds, the one closest to the current joints. A far seed matches the TCP and still
-        swings the other arm through the body. Seeds clear of the joint limits go first: the wrist range makes many
-        top-down solutions sit on a stop, and a start state past a limit cannot be planned from.
+        Closest to the current joints first: a far seed matches the TCP and still swings the other arm through the
+        body. Seeds clear of the joint limits go ahead of the rest: the wrist range makes many top-down solutions
+        sit on a stop, and a start state past a limit cannot be planned from. Near-duplicates are dropped.
         """
         import torch
         from curobo.types import JointState
@@ -241,7 +244,7 @@ class CuroboPlanner:
         current = state.position.detach().reshape(-1)
         sols = result.solution.detach().reshape(-1, result.solution.shape[-1])
         feas = result.feasible
-        best, best_key = None, (True, 1e9)
+        found = []
         for s in range(sols.shape[0]):
             if not isinstance(feas, bool) and not bool(feas.detach().reshape(-1)[s].item()):
                 continue
@@ -255,10 +258,13 @@ class CuroboPlanner:
             dot = torch.abs(torch.dot(got_q, want_q)).clamp(max=1.0).item()
             ang = 2.0 * torch.acos(torch.tensor(dot)).item()
             dist = torch.linalg.norm(sols[s] - current).item()
-            key = (self._near_limit(sols[s].tolist()), dist)
-            if err <= pos_tol and ang <= rot_tol and key < best_key:
-                best, best_key = sols[s], key
-        return best
+            if err <= pos_tol and ang <= rot_tol:
+                found.append((self._near_limit(sols[s].tolist()), dist, s))
+        ranked = []
+        for _, _, s in sorted(found):
+            if all(torch.linalg.norm(sols[s] - other).item() > SAME_SOLUTION for other in ranked):
+                ranked.append(sols[s])
+        return ranked
 
     def _near_limit(self, q):
         for name, value in zip(self.joint_names, q):

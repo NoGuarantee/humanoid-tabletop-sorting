@@ -38,6 +38,7 @@ class MotionNode(Node):
         super().__init__("hack_motion")
         self.lock = threading.Lock()
         self.q = {}
+        self.compensation = {}  # joint -> rad on top of the target, kept between moves (see move_joints)
         self.hand_state = {"left": None, "right": None}
         cb = ReentrantCallbackGroup()
         self.create_subscription(JointState, "/joint_states", self.on_joints, 10, callback_group=cb)
@@ -121,7 +122,9 @@ class MotionNode(Node):
         speeds = {n: dist[n] / duration for n in names}  # every joint arrives at the same time
         max_time = max_time or (2.0 * duration + 3.0)
 
-        cmd = dict(goal)
+        # The droop changes slowly with the pose, so a move starts from what the last one needed. Without this, every
+        # segment of a path lets the arm sag again and waits out a stall before pushing.
+        cmd = {n: clip(n, goal[n] + self.compensation.get(n, 0.0)) for n in names}
         self.send(cmd, speeds)
         t0 = self.now()
         best, best_t = float("inf"), t0
@@ -136,6 +139,9 @@ class MotionNode(Node):
                 return True, max_err, "ok"
             t = self.now()
             if t - t0 > max_time:
+                for n in names:  # blocked by something, maybe: the next move must not start by pushing harder
+                    if abs(err[n]) > tols[n]:
+                        self.compensation.pop(n, None)
                 return False, max_err, "timeout"
             if max_err < best - 1e-3:
                 best, best_t = max_err, t
@@ -144,6 +150,7 @@ class MotionNode(Node):
                     if abs(err[n]) > tols[n]:
                         extra = max(-MAX_COMPENSATION, min(MAX_COMPENSATION, cmd[n] - goal[n] + err[n]))
                         cmd[n] = clip(n, goal[n] + extra)
+                        self.compensation[n] = extra
                 self.send(cmd, {n: max(abs(err[n]) / STALL_TIME, 0.05) for n in names})
                 best, best_t = max_err, t
         return False, 0.0, "shutdown"

@@ -10,10 +10,12 @@ import copy
 import time
 
 from .curobo_robot import load_robot_cfg
-from .robot import TCP_LINK
+from .robot import JOINTS, TCP_LINK
 
 
 LOCK_TOL = 0.02  # rad
+START_MARGIN = 0.02  # rad inside the limits for the start state: a joint held at its stop reads slightly past it
+LIMIT_MARGIN = 0.1  # rad from a limit: IK solutions closer than this are the last choice
 
 
 class Unreachable(Exception):
@@ -148,7 +150,8 @@ class CuroboPlanner:
             if self._already(goal, state, arm, pos_tol, rot_tol):
                 q = state.position.detach().reshape(-1).tolist()
                 return list(self.joint_names), [q], None
-            result = self.mp.ik_solver.solve_pose(goal, current_state=state, return_seeds=4)
+            result = self.mp.ik_solver.solve_pose(
+                goal, current_state=state, return_seeds=self.mp.ik_solver.config.num_seeds)
             # position_error is the worse of the two hands, and cuRobo stops at 5 mm. MoveTcp asks for one
             # hand, and the other hand is only held so it does not swing through the body.
             picked = self._pick(result, goal, arm, state, pos_tol, rot_tol)
@@ -160,7 +163,7 @@ class CuroboPlanner:
             traj = self.mp.plan_cspace(goal_js, state)
             if traj is None or not _flag(traj.success, any_ok=True):
                 start = [round(v, 3) for v in state.position.detach().reshape(-1).tolist()]
-                raise Unreachable(f"no collision-free joint path, status {getattr(traj, 'status', None)}, from {start}")
+                raise Unreachable(f"no collision-free joint path from {start}")
             return self._trajectory(traj)
         return self._plan_linear(arm, goal, state)
 
@@ -225,7 +228,8 @@ class CuroboPlanner:
         """Joint vector of a collision-free seed whose commanded TCP is inside tolerance, or None.
 
         Among those seeds, the one closest to the current joints. A far seed matches the TCP and still
-        swings the other arm through the body.
+        swings the other arm through the body. Seeds clear of the joint limits go first: the wrist range makes many
+        top-down solutions sit on a stop, and a start state past a limit cannot be planned from.
         """
         import torch
         from curobo.types import JointState
@@ -237,7 +241,7 @@ class CuroboPlanner:
         current = state.position.detach().reshape(-1)
         sols = result.solution.detach().reshape(-1, result.solution.shape[-1])
         feas = result.feasible
-        best, best_dist = None, 1e9
+        best, best_key = None, (True, 1e9)
         for s in range(sols.shape[0]):
             if not isinstance(feas, bool) and not bool(feas.detach().reshape(-1)[s].item()):
                 continue
@@ -251,9 +255,24 @@ class CuroboPlanner:
             dot = torch.abs(torch.dot(got_q, want_q)).clamp(max=1.0).item()
             ang = 2.0 * torch.acos(torch.tensor(dot)).item()
             dist = torch.linalg.norm(sols[s] - current).item()
-            if err <= pos_tol and ang <= rot_tol and dist < best_dist:
-                best, best_dist = sols[s], dist
+            key = (self._near_limit(sols[s].tolist()), dist)
+            if err <= pos_tol and ang <= rot_tol and key < best_key:
+                best, best_key = sols[s], key
         return best
+
+    def _near_limit(self, q):
+        for name, value in zip(self.joint_names, q):
+            if name in JOINTS:
+                _, _, lo, hi = JOINTS[name]
+                if value < lo + LIMIT_MARGIN or value > hi - LIMIT_MARGIN:
+                    return True
+        return False
+
+    def _inside_limits(self, name, value):
+        if name not in JOINTS:
+            return value
+        _, _, lo, hi = JOINTS[name]
+        return min(max(value, lo + START_MARGIN), hi - START_MARGIN)
 
     def _fail(self, result, goal, arm):
         """One line: best position and rotation error, and where the TCP actually ended up."""
@@ -285,7 +304,8 @@ class CuroboPlanner:
         missing = [name for name in self.joint_names if q_by_name.get(name) is None]
         if missing:
             raise RuntimeError(f"no /joint_states for {missing}")
-        q = torch.tensor([[q_by_name[name] for name in self.joint_names]], device="cuda", dtype=torch.float32)
+        q = torch.tensor([[self._inside_limits(name, q_by_name[name]) for name in self.joint_names]],
+                         device="cuda", dtype=torch.float32)
         state = JointState.from_position(q, joint_names=self.joint_names)
         goal = self.mp.compute_kinematics(state).tool_poses.clone().as_goal()
         link = TCP_LINK[arm]

@@ -75,9 +75,15 @@ wait_task() {  # $1=timeout s: wait until the simulator publishes /sim/task (lat
 }
 
 sim_start() {  # task.sh arguments; --force takes the bench over; without a display the sim runs headless
-  local force=0 args=() a
-  for a in "$@"; do [ "$a" = --force ] && force=1 || args+=("$a"); done
-  [ ${#args[@]} -gt 0 ] || die "usage: sim start sort3 --pool 4 [--seed S] [--force]"
+  local force=0 envs="" args=() a
+  for a in "$@"; do
+    case "$a" in
+      --force) force=1 ;;
+      --self-collision) envs="HACK_SELF_COLLISION=1 " ;;  # debug only: off at the final check
+      *) args+=("$a") ;;
+    esac
+  done
+  [ ${#args[@]} -gt 0 ] || die "usage: sim start sort3 --pool 4 [--seed S] [--force] [--self-collision]"
   [ -n "${DISPLAY:-}" ] || [[ " ${args[*]} " == *" --headless "* ]] || args+=(--headless)
   take_bench "$force" "sim ${args[*]}"
   has solution && solution_stop
@@ -85,7 +91,7 @@ sim_start() {  # task.sh arguments; --force takes the bench over; without a disp
   ( cd "$SIMREPO" && bash hackathon/docker/run.sh start >/dev/null ) || die "cannot start container $SIM"
   : > "$LOGS/sim.log"
   local q; q=$(printf '%q ' "${args[@]}")
-  tmux new-session -d -s sim "cd '$SIMREPO' && bash hackathon/tools/task.sh $q 2>&1 | tee -a '$LOGS/sim.log'"
+  tmux new-session -d -s sim "cd '$SIMREPO' && ${envs}bash hackathon/tools/task.sh $q 2>&1 | tee -a '$LOGS/sim.log'"
   echo "[bench] sim started: ${args[*]} (log: remote.sh logs sim)"
   wait_task "${NSSR_SIM_WAIT:-300}"
 }
@@ -151,7 +157,7 @@ usage() {
   cat <<'TXT'
 bench.sh (usually through tools/remote.sh):
   status                          who holds the bench, what is running, GPU
-  sim start TASK [task.sh args]   e.g. sim start sort3 --pool 4 --seed 7; waits for /sim/task. --force takes the bench
+  sim start TASK [task.sh args]   e.g. sim start sort3 --pool 4 --seed 7; waits for /sim/task. --self-collision turns on physics self-collisions (debug). --force takes the bench
   sim stop | sim restart ...      stop the simulator and release the bench
   solution [start|stop|wait S]    solution.sh as at the final check, from your synced copy
   eval TASK [args] [--keep] [--timeout S]  sim start, solution, wait for done, self-check, stop

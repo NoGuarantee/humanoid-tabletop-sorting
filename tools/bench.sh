@@ -134,7 +134,7 @@ solution_wait() {  # $1=timeout s: until /sim/task/done appears in the log and r
       solution_wait_exit 60; return $?
     fi
     has solution || { echo "[bench] the solution exited without /sim/task/done"; return 1; }
-    sleep 5
+    sleep 1  # "run.sh ended N s after /sim/task/done" counts from here: a longer sleep hides seconds of N
   done
   echo "[bench] timeout $1 s: no /sim/task/done"; return 1
 }
@@ -174,18 +174,34 @@ colcon build' -v "$WORK:/mnt/solution:ro" 2>&1 | clean >> "$LOGS/solution.log"
   local rc=${PIPESTATUS[0]}
   [ "$rc" = 0 ] || { docker rm -f "$SOL" >/dev/null 2>&1; echo "[bench] install failed, exit $rc:"; tail_log solution 40; return 1; }
   docker commit "$SOL" "$INSTALLED" >/dev/null && docker rm "$SOL" >/dev/null
+  cp "$LOGS/solution.log" "$LOGS/solution.install.log"  # the layouts start solution.log anew
+  clean < "$LOGS/solution.log" | grep -E "^\[(curobo_install|curobo_warmup|setup)\]|^Summary:" | cut -c1-200
+}
+
+mem_peak() {  # what the budget of the final check is about, simulator and solution together, while run.sh runs
+  local v r vmax=0 rmax=0 i=0
+  while has solution; do
+    v=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
+    r=$(free -m | awk '/^Mem:/{print $3}')
+    [ "$v" -gt "$vmax" ] && vmax=$v
+    [ "$r" -gt "$rmax" ] && rmax=$r
+    i=$((i + 1))
+    [ "$i" = 15 ] && gpu | grep -E "MiB|Mem:|nssr-"  # a breakdown while cuRobo is up, if run.sh lasts that long
+    sleep 1
+  done
+  echo "[bench] peak while run.sh ran: VRAM $vmax MiB, RAM $rmax MiB (budget 16 GB, 32 GB; sampled once a second)"
 }
 
 layout_start() {  # run.sh in a clean container from the installed image; a new log for each layout
-  : > "$LOGS/solution.log"
-  local script='cd /solution && source install/setup.bash && bash run.sh'
+  echo "[bench] layout start $(date +%s.%N)" > "$LOGS/solution.log"  # t=0 for tools/startup_report.py
+  local script="export LAYOUT=$1; cd /solution && source install/setup.bash && ${RUN_CMD:-bash run.sh}"
   tmux new-session -d -s solution "docker run --rm --name '$SOL' --gpus all --network host --ipc host \
 -v '$DDS:/etc/nssr/fastdds.xml:ro' -e ROS_DOMAIN_ID=146 -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/nssr/fastdds.xml \
 --entrypoint bash '$INSTALLED' -c '$script' 2>&1 | tee -a '$LOGS/solution.log'"
 }
 
 eval_layouts() {  # $1=layouts, $2=timeout s for each. As at the final check: one simulator, run.sh anew on each layout
-  local n=$1 timeout=$2 i seed rc=0
+  local n=$1 timeout=$2 i seed mem rc=0
   solution_install || return 1
   for i in $(seq 1 "$n"); do
     if [ "$i" -gt 1 ]; then  # moves the objects only, the robot stays where the last run left it
@@ -194,11 +210,15 @@ eval_layouts() {  # $1=layouts, $2=timeout s for each. As at the final check: on
       sleep 3
     fi
     echo "===== layout $i/$n, seed ${seed:-of the sim start}"
-    layout_start
-    solution_wait "$timeout" || rc=1
+    layout_start "$i"
+    sleep 1; { mem_peak | tee -a "$LOGS/solution.log"; } & mem=$!
+    # into the log too: stdout dies with the ssh connection, the log stays on the server
+    solution_wait "$timeout" | tee -a "$LOGS/solution.log"; [ "${PIPESTATUS[0]}" = 0 ] || rc=1
     has solution && solution_stop
+    wait "$mem"
     echo "----- solution log (start-up and end)"
-    clean < "$LOGS/solution.log" | grep -E "limit [0-9]+ s|curobo|published /sim/task/done|mission failed" | tail -n 12
+    clean < "$LOGS/solution.log" | grep -E "limit [0-9]+ s|curobo|startup:|escalating|published /sim/task/done|mission failed" | tail -n 12
+    python3 "$WORK/tools/startup_report.py" "$LOGS/solution.log" 2>&1 | tail -n 25
     cp "$LOGS/solution.log" "$LOGS/solution.layout$i.log"
     echo "----- self-check"; ( cd "$SIMREPO" && bash hackathon/tools/task.sh check )
   done
@@ -264,7 +284,7 @@ bench.sh (usually through tools/remote.sh):
   sim start TASK [task.sh args]   e.g. sim start sort3 --pool 4 --seed 7; waits for /sim/task. --self-collision turns on physics self-collisions (debug). --force takes the bench
   sim stop | sim restart ...      stop the simulator and release the bench
   solution [start|stop|wait S]    solution.sh as at the final check, from your synced copy
-  eval TASK [args] [--keep] [--timeout S] [--layouts N]  sim start, solution, wait for done and exit, self-check, stop. --layouts: install once, then run.sh in a clean container on each of N layouts of one simulator; --timeout is per layout
+  eval TASK [args] [--keep] [--timeout S] [--layouts N] [--run CMD]  sim start, solution, wait for done and exit, self-check, stop. --layouts: install once, then run.sh in a clean container on each of N layouts of one simulator; --timeout is per layout, --run replaces run.sh there (tools/startup_probe.py)
   check                           self-check (/sim/task/check, debug only: tools/, never src/)
   ros CMD...                      a ROS 2 command in the sim container, 20 s timeout (NSSR_ROS_TIMEOUT)
   dev [--timeout S] -- CMD        CMD in a fresh container, your copy at /solution (colcon, ros2 run); uses the
@@ -301,6 +321,7 @@ case "$cmd" in
         --keep) keep=1; shift ;;
         --timeout) timeout=$2; shift 2 ;;
         --layouts) layouts=$2; shift 2 ;;
+        --run) RUN_CMD=$2; shift 2 ;;  # debug: instead of bash run.sh on each layout, no single quotes in it
         *) args+=("$1"); shift ;;
       esac
     done

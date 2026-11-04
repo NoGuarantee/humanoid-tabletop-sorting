@@ -65,15 +65,22 @@ class MotionNode(Node):
     def _preload(self):
         """Build the planner while brain is still scanning the scene, so the first MoveTcp does not wait
         for it. On failure move_tcp tries again and reports the error."""
+        self._startup("preload starts")
         if not self._wait_joints(timeout=60.0):
             return
+        self._startup("first /joint_states")
         with self._tcp_lock:
             try:
                 with self.lock:
                     snapshot = dict(self.q)
                 self.get_logger().info(self._planner_obj().load(snapshot))
+                self._startup("planner loaded")
             except Exception:
                 self.get_logger().error(traceback.format_exc())
+
+    def _startup(self, what):
+        """Start-up timeline for tools/startup_report.py: the log prefix has the wall clock, this adds the sim clock."""
+        self.get_logger().info(f"startup: {what}, sim {self.now():.2f}")
 
     # ---------------------------------------------------------------- state
     def on_joints(self, msg):

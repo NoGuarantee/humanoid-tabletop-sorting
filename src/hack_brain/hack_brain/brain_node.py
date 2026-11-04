@@ -32,7 +32,7 @@ class Brain(Node):
         super().__init__("hack_brain")
         self.declare_parameter("min_confidence", 0.6)
         self.declare_parameter("cycle_estimate", 40.0)  # sim seconds for one pick-and-place, used by the budget
-        self.declare_parameter("time_margin", 5.0)  # sim seconds kept in reserve before the limit
+        self.declare_parameter("time_margin", 10.0)  # sim seconds in reserve: our start-up and the end of the task
         self.declare_parameter("grasp_db", os.path.join(
             get_package_share_directory("hack_brain"), "config", "grasp_db.yaml"))
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
@@ -59,12 +59,10 @@ class Brain(Node):
             while rclpy.ok() and (self.task_msg is None or self.now() == 0.0):
                 time.sleep(0.1)  # wait for /sim/task and /clock
             spec = parse_task(self.task_msg)
-            # The limit runs in sim time from the publication of /sim/task, and our start-up counts (organisers'
-            # answer). The sim publishes the task right after the scene starts, so on a fresh sim that is ~0. If the
-            # sim has been running for longer than the limit (dev reruns), count from now.
-            t = self.now()
-            start = 0.0 if t < spec.time_limit else t
-            self.deadline = start + spec.time_limit - self.get_parameter("time_margin").value
+            # The limit runs in sim time from the moment the layout is ready and run.sh starts, model loading included
+            # (organisers' answer). The sim is not restarted between layouts, so its clock says nothing about that
+            # moment: count from here, the launch start-up before this line is covered by time_margin.
+            self.deadline = self.now() + spec.time_limit - self.get_parameter("time_margin").value
             log.info(f"task {spec.task} {spec.variant} | {spec.n_items} items | limit {spec.time_limit:.0f} s, "
                      f"{self.time_left():.0f} s left")
             if not self.api.wait_ready(timeout=60.0):

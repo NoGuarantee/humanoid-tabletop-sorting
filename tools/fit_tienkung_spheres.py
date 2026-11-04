@@ -14,7 +14,8 @@ On the server, in a fresh container from the solution image (cuRobo is installed
   bash tools/remote.sh fetch work/$NSSR_WHO/nssr-sol-team-049/src/hack_motion/robot .fetch  # before any sync
   cp .fetch/robot/tienkung_curobo.yml src/hack_motion/robot/
 
-Steps (default: all): fetch (URDF, licence, meshes), fit (spheres, collision matrix), check (load the config
+Steps (default: fetch, fit, check): fetch (URDF, licence, meshes), fit (spheres, collision matrix), margin (only
+the self-collision margin, on the spheres already in the config), check (load the config
 without meshes the way motion does at runtime, FK/IK smoke test).
 """
 import argparse
@@ -63,6 +64,14 @@ READY_POSE = {**HOME_POSE, "shoulder_roll_l_joint": 0.2, "shoulder_roll_r_joint"
 # ready pose never brings them together and the sampled poses rarely do, so the builder keeps the pair. The two
 # links are joined through wrist_pitch and cannot pass through each other, so the pair only gives false positives.
 FOLDED_WRIST = {f"elbow_yaw_{s}_link": [f"wrist_roll_{s}_link"] for s in "lr"}
+# Added to every link's spheres in the self-collision check, so a pair of links gets twice this. Measured on 300
+# sphere-free configurations against the real meshes: 10 mm gives no intersections and at least 12.8 mm between the
+# links that can really meet. 15 mm puts the raised arm in collision (shoulder_yaw against waist_yaw). 10 mm costs
+# reach, two goals of move_tcp_check have no path, so we use 5 mm; the 300-configuration measure was not repeated for it.
+SELF_COLLISION_BUFFER = 0.005
+# Any buffer makes elbow_yaw touch shoulder_yaw in every pose, and then nothing is collision-free. Only elbow_pitch
+# is between them, so they cannot pass through each other.
+BENT_ELBOW = {f"elbow_yaw_{s}_link": [f"shoulder_yaw_{s}_link"] for s in "lr"}
 # Pairs the builder must keep checking, whatever the sampled poses say: the forearm and hand against the pelvis and
 # legs. compute_collision_matrix drops every pair that never touched in its random samples, and it dropped
 # elbow_pitch against pelvis and hip_roll, so a hanging arm could be planned through the hip.
@@ -259,6 +268,30 @@ def use_home_pose_in_builder(builder):
     return cspace
 
 
+def apply_margin(kinematics):
+    kinematics["self_collision_buffer"] = {link: SELF_COLLISION_BUFFER for link in kinematics["self_collision_buffer"]}
+    for a, bs in BENT_ELBOW.items():
+        ignore = kinematics["self_collision_ignore"].setdefault(a, [])
+        ignore.extend(b for b in bs if b not in ignore)
+
+
+def write_cfg(header, data):
+    import yaml
+    OUT_CFG.write_text(header + yaml.safe_dump(data, sort_keys=False, default_flow_style=None, width=120))
+
+
+def margin():
+    """Margin only, on the spheres already in the config: fit gives different spheres on each run, even with the
+    same seed, and then everything measured on the old ones has to be measured again."""
+    import yaml
+    text = OUT_CFG.read_text()
+    header = "".join(line for line in text.splitlines(keepends=True) if line.startswith("#"))
+    data = yaml.safe_load(text)
+    apply_margin(data["kinematics"])
+    write_cfg(header, data)
+    log(f"wrote {OUT_CFG.relative_to(ROOT)}: self-collision buffer {SELF_COLLISION_BUFFER * 1e3:.0f} mm per link")
+
+
 def fit(args):
     import torch
     import yaml
@@ -330,6 +363,8 @@ def fit(args):
     k["asset_root_path"] = ""
     k["load_meshes"] = False
     k["lock_joints"] = LOCK_JOINTS
+    # Only here, not in the builder: the collision matrix above is computed from the spheres as they are.
+    apply_margin(k)
     cs = k["cspace"]
     cs["default_joint_position"] = [READY_POSE.get(j, 0.0) for j in cs["joint_names"]]
     for key in ("load_collision_spheres", "num_envs"):  # solver arguments, passed again by *Cfg.create
@@ -340,7 +375,7 @@ def fit(args):
               f"# files. Finger spheres are on the palm links, at the open pose.\n"
               f"# Tool frames: {', '.join(TOOL_FRAMES)}. lock_joints: the simulator home pose (motion replaces them with\n"
               f"# /joint_states). Default pose: home with the arms 0.2 rad away from the body (shoulder_roll).\n")
-    OUT_CFG.write_text(header + yaml.safe_dump(data, sort_keys=False, default_flow_style=None, width=120))
+    write_cfg(header, data)
     log(f"wrote {OUT_CFG.relative_to(ROOT)}: {builder.num_spheres} spheres on {len(builder.collision_link_names)} "
         f"links, {sum(len(v) for v in ignore.values())} ignore entries")
 
@@ -414,19 +449,21 @@ def check(args):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("steps", nargs="*", help="fetch, fit, check (default: all)")
+    ap.add_argument("steps", nargs="*", help="fetch, fit, margin, check (default: fetch, fit, check)")
     ap.add_argument("--density", type=float, default=1.0, help="sphere density for arms, hands, torso, head")
     ap.add_argument("--collision-samples", type=int, default=2000)
     ap.add_argument("--seed", type=int, default=49)
     ap.add_argument("--n", type=int, default=20, help="IK goals in check")
     args = ap.parse_args()
     args.steps = args.steps or ["fetch", "fit", "check"]  # Python 3.10 checks a list default against choices
-    if set(args.steps) - {"fetch", "fit", "check"}:
+    if set(args.steps) - {"fetch", "fit", "margin", "check"}:
         ap.error(f"unknown step in {args.steps}")
     if "fetch" in args.steps:
         fetch()
     if "fit" in args.steps:
         fit(args)
+    if "margin" in args.steps:
+        margin()
     if "check" in args.steps:
         check(args)
 

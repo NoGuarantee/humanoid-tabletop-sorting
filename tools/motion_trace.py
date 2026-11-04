@@ -15,6 +15,11 @@ the lowest mesh point and its gap to the table, trays, arm joints near a limit. 
 
   python3 tools/motion_trace.py explain OUT [--threshold 20]
   python3 tools/motion_trace.py gaps OUT [--step 1] [--from T] [--to T]
+
+What holds a joint: per arm joint the reading, the command and its speed, the wrench in pelvis, the links nearest the
+table and the trays:
+
+  python3 tools/motion_trace.py series OUT right --from T --to T [--step 1]
 """
 import argparse
 import json
@@ -267,6 +272,60 @@ def gaps(out, step, start, end):
                   f"{np.linalg.norm(row['f']):5.1f} {np.linalg.norm(row['m']):5.2f}", flush=True)
 
 
+def series(out, side, step, start, end):
+    import numpy as np
+    from trajectory_self_check import load
+
+    robot = Robot(URDF, MESHES)
+    verts = vertices(robot)
+    samples = load(f"{out}.joints.jsonl")
+    wrenches, cmds = load_force(out)
+    t0 = samples[0][0]
+    rows = sorted(wrenches[side], key=lambda r: r["t"])
+    s = side[0]
+    arm = ["shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow_pitch", "elbow_yaw", "wrist_pitch", "wrist_roll"]
+    base = 21 if side == "right" else 11
+    next_t = start
+    for t, q in samples:
+        if t - t0 < next_t:
+            continue
+        if t - t0 > end:
+            break
+        next_t = t - t0 + step
+        poses = robot.fk(q)
+        inv = np.linalg.inv(poses["pelvis"])
+        wrench = at(rows, t)
+        rot = (inv @ poses[HAND_ROOT[side]])[:3, :3]
+        tcp = (inv @ poses[f"{side}_tcp_link"])[:3, 3]
+        print(f"t {t - t0:6.2f} tcp {tcp.round(3).tolist()} F pelvis {(rot @ np.array(wrench['f'])).round(1).tolist()} "
+              f"M pelvis {(rot @ np.array(wrench['m'])).round(2).tolist()}")
+        latest = {}
+        for c in cmds:
+            if c["t"] > t:
+                break
+            latest.update(c["cmd"])
+        print("   " + "  ".join(f"{n} {q[f'{n}_{s}_joint']:+.3f}/{latest.get(str(base + i), [math.nan])[0]:+.3f}"
+                                f"@{latest.get(str(base + i), [0, math.nan])[1]:.2f}" for i, n in enumerate(arm)))
+        near = []
+        for link in side_links(robot, side):
+            if link not in verts:
+                continue
+            pose = inv @ poses[link]
+            world = verts[link] @ pose[:3, :3].T + pose[:3, 3]
+            over = world[:, 0] > TABLE_X[0]
+            table = (world[over, 2] - (TILTED[0] + TILTED[1] * world[over, 0])).min() if over.any() else math.inf
+            tray = math.inf
+            for cx, cy in TRAYS.values():
+                d = np.maximum(np.abs(world[:, :2] - (cx, cy)) - np.array(TRAY_SIZE[:2]) / 2, 0.0)
+                d = np.linalg.norm(d, axis=1)
+                low = world[:, 2] < TILTED[0] + TILTED[1] * world[:, 0] + TRAY_SIZE[2]
+                if low.any():
+                    tray = min(tray, float(d[low].min()))
+            near.append((min(table, tray), link, table, tray))
+        print("   " + "  ".join(f"{link} table {table:+.3f} tray {tray:.3f}" for _, link, table, tray in sorted(near)[:5]),
+              flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -281,11 +340,19 @@ def main():
     gap.add_argument("--step", type=float, default=1.0)
     gap.add_argument("--from", dest="start", type=float, default=0.0)
     gap.add_argument("--to", dest="end", type=float, default=math.inf)
+    ser = sub.add_parser("series")
+    ser.add_argument("out")
+    ser.add_argument("side", choices=("left", "right"))
+    ser.add_argument("--step", type=float, default=1.0)
+    ser.add_argument("--from", dest="start", type=float, default=0.0)
+    ser.add_argument("--to", dest="end", type=float, default=math.inf)
     args = parser.parse_args()
     if args.cmd == "record":
         record(args.out)
     elif args.cmd == "park":
         park()
+    elif args.cmd == "series":
+        series(args.out, args.side, args.step, args.start, args.end)
     elif args.cmd == "gaps":
         gaps(args.out, args.step, args.start, args.end)
     else:

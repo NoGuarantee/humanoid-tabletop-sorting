@@ -7,13 +7,21 @@ The solver is built on first use. Kernel compilation is cached on disk by tools/
 so a fresh container does not pay the cold Warp compile inside the task.
 """
 import copy
+import math
 import time
 
 from .curobo_robot import load_robot_cfg
-from .robot import TCP_LINK
+from .robot import JOINTS, TCP_LINK, plan_limits
 
 
 LOCK_TOL = 0.02  # rad
+START_MARGIN = 0.02  # rad inside the limits for the start state: a joint held at its stop reads slightly past it
+LIMIT_MARGIN = 0.1  # rad from a limit: IK solutions closer than this are the last choice
+MAX_PATHS = 4  # IK solutions to try a joint path to; a failed try costs about 1 s
+SAME_SOLUTION = 0.3  # rad, joint-space distance: closer solutions fail the same way, so one try covers them
+START_CLEARANCE = 0.002  # m past the self-collision buffer that a start state must have, or it is moved
+START_CLEAR_STEPS = (0.01, 0.03, 0.1)  # rad, spreads of the samples around a start state in collision
+START_CLEAR_SAMPLES = 512
 
 
 class Unreachable(Exception):
@@ -53,6 +61,7 @@ class CuroboPlanner:
         self.mp = None
         self.joint_names = []
         self.locks = {}  # lock_joints the current planner was built with
+        self.start_moved = 0.0  # rad, how far the last plan moved its start state off the self-collision buffer
 
     def load(self, lock_positions, graphs="reset"):
         """Create the motion planner. Returns a one-line description.
@@ -86,6 +95,7 @@ class CuroboPlanner:
         runtime.cuda_graph_reset = graphs == "reset"
         cfg = load_robot_cfg(self.urdf_path, self.cfg_path, lock_positions)
         self.locks = {name: float(v) for name, v in (cfg["kinematics"].get("lock_joints") or {}).items()}
+        self._build_self_check(cfg["kinematics"])
         t0 = time.perf_counter()
         self.mp = MotionPlanner(MotionPlannerCfg.create(
             robot=copy.deepcopy(cfg), use_cuda_graph=graphs != "off"))
@@ -135,7 +145,7 @@ class CuroboPlanner:
         """Return (joint names, waypoints [N x dof], dt or None).
 
         `direct` is one IK solution, then a collision-free joint-space path to it. A straight line in joint
-        space from the arms-out pose to a palm-down hand passes through the body, so the motors stall.
+        space can pass through the body, and the motors stall against it.
         `linear` is a Cartesian trajectory. The caller retimes either path to the 0.8 rad/s motor limit.
         dt is None only when the TCP is already at the goal and the waypoint is the current joints.
         """
@@ -148,23 +158,25 @@ class CuroboPlanner:
             if self._already(goal, state, arm, pos_tol, rot_tol):
                 q = state.position.detach().reshape(-1).tolist()
                 return list(self.joint_names), [q], None
-            result = self.mp.ik_solver.solve_pose(goal, current_state=state, return_seeds=4)
+            result = self.mp.ik_solver.solve_pose(
+                goal, current_state=state, return_seeds=self.mp.ik_solver.config.num_seeds)
             # position_error is the worse of the two hands, and cuRobo stops at 5 mm. MoveTcp asks for one
             # hand, and the other hand is only held so it does not swing through the body.
-            picked = self._pick(result, goal, arm, state, pos_tol, rot_tol)
-            if picked is None:
+            solutions = self._ranked(result, goal, arm, state, pos_tol, rot_tol)
+            if not solutions:
                 raise Unreachable(self._fail(result, goal, arm))
             from curobo.types import JointState
-            goal_js = JointState.from_position(
-                picked.detach().clone().reshape(1, -1), joint_names=self.joint_names)
-            traj = self.mp.plan_cspace(goal_js, state)
-            if traj is None or not _flag(traj.success, any_ok=True):
-                raise Unreachable("no collision-free joint path")
-            names, waypoints, dt = self._trajectory(traj)
-            # A straight fold turns the forearm through the thigh. The spheres call that path free and the
-            # real arm stops. Reach forward first, then turn the wrist while the hand is up in front.
-            lifted = self._lift_first(names, waypoints, dt, state, goal_js, arm)
-            return lifted if lifted is not None else (names, waypoints, dt)
+            for solution in solutions[:MAX_PATHS]:
+                goal_js = JointState.from_position(
+                    solution.detach().clone().reshape(1, -1), joint_names=self.joint_names)
+                traj = self.mp.plan_cspace(goal_js, state)
+                if traj is not None and _flag(traj.success, any_ok=True):
+                    return self._trajectory(traj)
+            traj = self.mp.plan_pose(goal, state)  # free to end at any solution, not one fixed in advance
+            if traj is not None and _flag(traj.success, any_ok=True):
+                return self._trajectory(traj)
+            start = [round(v, 3) for v in state.position.detach().reshape(-1).tolist()]
+            raise Unreachable(f"no collision-free joint path to {min(len(solutions), MAX_PATHS)} IK solutions from {start}")
         return self._plan_linear(arm, goal, state)
 
     def _plan_linear(self, arm, goal, state):
@@ -212,59 +224,6 @@ class CuroboPlanner:
         dt = float(getattr(cfg, "interpolation_dt", 0.05) or 0.05)
         return names, waypoints, dt
 
-    def _lift_first(self, names, waypoints, dt, state, goal_js, arm):
-        """Two-step joint path when a direct fold would sweep the forearm through the hip, or None."""
-        import torch
-        from curobo.types import JointState
-
-        side = "l" if arm == "left" else "r"
-        yaw_name = f"elbow_yaw_{side}_joint"
-        if yaw_name not in names:
-            return None
-        yaw_i = names.index(yaw_name)
-        if abs(waypoints[-1][yaw_i] - waypoints[0][yaw_i]) < 1.0:
-            return None
-        if self._path_min_z(names, waypoints, arm) >= 0.05:
-            return None
-        q = state.position.detach().clone().reshape(1, -1)
-        for name, value in (
-            (f"shoulder_pitch_{side}_joint", -1.2),  # forward
-            (f"elbow_pitch_{side}_joint", -0.6),
-        ):
-            i = self.joint_names.index(name)
-            q[0, i] = min(float(q[0, i]), value)
-        via = JointState.from_position(q, joint_names=self.joint_names)
-        # plan_cspace writes into the tensors it is given. Keep a private copy of the IK solution.
-        goal_hold = JointState.from_position(
-            goal_js.position.detach().clone(), joint_names=self.joint_names)
-        leg1 = self.mp.plan_cspace(via, state)
-        via_hold = JointState.from_position(q.clone(), joint_names=self.joint_names)
-        leg2 = self.mp.plan_cspace(goal_hold, via_hold)
-        if leg1 is None or leg2 is None or not _flag(leg1.success, any_ok=True) or not _flag(leg2.success, any_ok=True):
-            return None
-        n1, w1, dt1 = self._trajectory(leg1)
-        n2, w2, dt2 = self._trajectory(leg2)
-        if n1 != n2:
-            return None
-        return n1, w1 + w2, min(dt1, dt2)
-
-    def _path_min_z(self, names, waypoints, arm):
-        import torch
-        from curobo.types import JointState
-
-        order = self.joint_names
-        idx = [names.index(n) for n in order]
-        link = TCP_LINK[arm]
-        zs = []
-        step = max(1, len(waypoints) // 8)
-        rows = list(waypoints[::step]) + [waypoints[-1]]
-        for row in rows:
-            q = torch.tensor([[row[i] for i in idx]], device="cuda", dtype=torch.float32)
-            pose = self.mp.compute_kinematics(JointState.from_position(q, joint_names=order)).tool_poses
-            i = pose.tool_frames.index(link)
-            zs.append(float(pose.position[0, 0, i, 2]))
-        return min(zs)
-
     def _already(self, goal, state, arm, pos_tol, rot_tol):
         """True when the commanded TCP is already inside the MoveTcp tolerance, so the joints must not move."""
         import torch
@@ -277,11 +236,12 @@ class CuroboPlanner:
         ang = 2.0 * torch.acos(torch.tensor(dot)).item()
         return err <= pos_tol and ang <= rot_tol
 
-    def _pick(self, result, goal, arm, state, pos_tol, rot_tol):
-        """Joint vector of a collision-free seed whose commanded TCP is inside tolerance, or None.
+    def _ranked(self, result, goal, arm, state, pos_tol, rot_tol):
+        """Joint vectors of the collision-free seeds whose commanded TCP is inside tolerance, best first.
 
-        Among those seeds, the one closest to the current joints. A far seed matches the TCP and still
-        swings the other arm through the body.
+        Closest to the current joints first: a far seed matches the TCP and still swings the other arm through the
+        body. Seeds clear of the joint limits go ahead of the rest: the wrist range makes many top-down solutions
+        sit on a stop, and a start state past a limit cannot be planned from. Near-duplicates are dropped.
         """
         import torch
         from curobo.types import JointState
@@ -293,7 +253,7 @@ class CuroboPlanner:
         current = state.position.detach().reshape(-1)
         sols = result.solution.detach().reshape(-1, result.solution.shape[-1])
         feas = result.feasible
-        best, best_dist = None, 1e9
+        found = []
         for s in range(sols.shape[0]):
             if not isinstance(feas, bool) and not bool(feas.detach().reshape(-1)[s].item()):
                 continue
@@ -307,9 +267,76 @@ class CuroboPlanner:
             dot = torch.abs(torch.dot(got_q, want_q)).clamp(max=1.0).item()
             ang = 2.0 * torch.acos(torch.tensor(dot)).item()
             dist = torch.linalg.norm(sols[s] - current).item()
-            if err <= pos_tol and ang <= rot_tol and dist < best_dist:
-                best, best_dist = sols[s], dist
-        return best
+            if err <= pos_tol and ang <= rot_tol:
+                found.append((self._near_limit(sols[s].tolist()), dist, s))
+        ranked = []
+        for _, _, s in sorted(found):
+            if all(torch.linalg.norm(sols[s] - other).item() > SAME_SOLUTION for other in ranked):
+                ranked.append(sols[s])
+        return ranked
+
+    def _near_limit(self, q):
+        for name, value in zip(self.joint_names, q):
+            if name in JOINTS:
+                lo, hi = plan_limits(name)
+                if value < lo + LIMIT_MARGIN or value > hi - LIMIT_MARGIN:
+                    return True
+        return False
+
+    def _inside_limits(self, name, value):
+        if name not in JOINTS:
+            return value
+        lo, hi = plan_limits(name)
+        return min(max(value, lo + START_MARGIN), hi - START_MARGIN)
+
+    def _build_self_check(self, kinematics):
+        from curobo._src.cost.cost_self_collision import SelfCollisionCost
+        from curobo._src.cost.cost_self_collision_cfg import SelfCollisionCostCfg
+        from curobo._src.robot.kinematics.kinematics import Kinematics
+        from curobo._src.robot.kinematics.kinematics_cfg import KinematicsCfg
+
+        kin_cfg = KinematicsCfg.from_data_dict(copy.deepcopy(kinematics))
+        self._self_kin = Kinematics(kin_cfg)
+        self._self_cost = SelfCollisionCost(SelfCollisionCostCfg(
+            weight=1.0, store_pair_distance=True, self_collision_kin_config=kin_cfg.self_collision_config))
+
+    def _clear_of_self(self, q):
+        """One bool per row of q [N x dof]: every sphere pair is START_CLEARANCE past the self-collision buffer."""
+        from curobo.types import JointState
+
+        n = q.shape[0]
+        state = JointState.from_position(q, joint_names=self.joint_names)
+        spheres = self._self_kin.compute_kinematics(state).robot_spheres.clone()
+        spheres[..., 3] += START_CLEARANCE / 2.0
+        self._self_cost.setup_batch_tensors(n, 1)
+        self._self_cost.forward(spheres)
+        return ~(self._self_cost._pair_distance.view(n, -1) > 0.0).any(dim=1)
+
+    def _clear_start(self, q):
+        """The nearest state to q [1 x dof] that can be planned from.
+
+        cuRobo fails every plan from a start inside the self-collision buffer. IK ends on the edge of the buffer, and
+        the drives stop short of the command, so the arm does end up inside, and then every goal fails until it moves.
+        Returns q itself when it is clear, or when no sample is: the plan then reports the failure.
+        """
+        import torch
+
+        self.start_moved = 0.0
+        if self._clear_of_self(q)[0]:
+            return q
+        lo = torch.tensor([self._inside_limits(name, -math.inf) for name in self.joint_names]).to(q)
+        hi = torch.tensor([self._inside_limits(name, math.inf) for name in self.joint_names]).to(q)
+        rng = torch.Generator(device=q.device).manual_seed(0)  # the global generator seeds cuRobo
+        for spread in START_CLEAR_STEPS:
+            noise = torch.randn((START_CLEAR_SAMPLES, q.shape[1]), device=q.device, generator=rng)
+            samples = torch.clamp(q + spread * noise.to(q), min=lo, max=hi)
+            clear = samples[self._clear_of_self(samples)]
+            if clear.shape[0]:
+                distance = torch.linalg.norm(clear - q, dim=1)
+                best = int(distance.argmin().item())
+                self.start_moved = float(distance[best].item())
+                return clear[best].reshape(1, -1)
+        return q
 
     def _fail(self, result, goal, arm):
         """One line: best position and rotation error, and where the TCP actually ended up."""
@@ -341,7 +368,9 @@ class CuroboPlanner:
         missing = [name for name in self.joint_names if q_by_name.get(name) is None]
         if missing:
             raise RuntimeError(f"no /joint_states for {missing}")
-        q = torch.tensor([[q_by_name[name] for name in self.joint_names]], device="cuda", dtype=torch.float32)
+        q = torch.tensor([[self._inside_limits(name, q_by_name[name]) for name in self.joint_names]],
+                         device="cuda", dtype=torch.float32)
+        q = self._clear_start(q)
         state = JointState.from_position(q, joint_names=self.joint_names)
         goal = self.mp.compute_kinematics(state).tool_poses.clone().as_goal()
         link = TCP_LINK[arm]

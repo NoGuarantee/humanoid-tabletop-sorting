@@ -54,6 +54,8 @@
 - По частям: `sim start sort3 --pool 4`, `solution`, `solution wait 600`, `check`, `sim stop`.
 - ROS к работающему симулятору: `bash tools/remote.sh ros ros2 topic list`.
 - Сборка и запуск отдельных узлов: `bash tools/remote.sh dev -- 'colcon build --symlink-install && ros2 run ...'`.
+  torch и cuRobo берутся из образа: `bash tools/remote.sh dev-image` один раз и после смены установки. `bash setup.sh`
+  в команды `dev` не добавляй, он тратит минуты.
 - Логи: `logs sim|solution [N]`, память против бюджета 16 ГБ VRAM и 32 ГБ RAM: `gpu`. Кадры и rosbag: `fetch`.
 - Логику без ROS (task.py, grasp_planner.py) проверяем локально обычным python3 с заглушками geometry_msgs.
 

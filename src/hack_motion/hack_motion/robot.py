@@ -39,10 +39,24 @@ TCP_LINK = {"left": "left_tcp_link", "right": "right_tcp_link"}
 # pelvis (tools/reach_pose_probe.py); it ends with the TCP near (0.37, +-0.30, 0.09). Right arm values; roll flips
 # sign on the left. Each step lists the joints that differ from home.
 RAISE_STEPS = (
-    {"shoulder_roll": -0.9},
-    {"shoulder_roll": -0.9, "elbow_pitch": -1.6},
-    {"shoulder_roll": -0.2, "elbow_pitch": -1.6},
+    {"shoulder_roll": -1.2},
+    {"shoulder_roll": -1.2, "elbow_pitch": -2.0},
+    {"shoulder_roll": -0.2, "elbow_pitch": -2.0},
 )
+
+
+# At shoulder_roll = +-pi/2 the shoulder_yaw axis lies on the shoulder_pitch axis. Around that pose shoulder_pitch stops
+# short of its command by up to 60 Nm over gravity, on both sides of the singularity, with no force at the wrist:
+# 13 Nm at 1.3 rad, 30 Nm at 1.5, 47 Nm at pi/2 (tools/shoulder_roll_sweep.py). The planner stays below it.
+PLAN_ROLL_LIMIT = 1.3  # rad
+
+
+def plan_limits(name):
+    """(lower, upper) of a joint for planning: JOINTS narrowed by the shoulder singularity."""
+    _, _, lo, hi = JOINTS[name]
+    if name.startswith("shoulder_roll_"):
+        lo, hi = max(lo, -PLAN_ROLL_LIMIT), min(hi, PLAN_ROLL_LIMIT)
+    return lo, hi
 
 
 def raise_steps(arm):

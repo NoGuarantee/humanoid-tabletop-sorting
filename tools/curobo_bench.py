@@ -16,15 +16,15 @@ sys.path.insert(0, str(ROOT / "src" / "hack_motion"))
 from hack_motion.curobo_planner import CuroboPlanner, Unreachable  # noqa: E402
 
 ROBOT = ROOT / "src" / "hack_motion" / "robot"
-DOWN = NS(x=1.0, y=0.0, z=0.0, w=0.0)  # rpy (pi, 0, 0): palm down, as grasp_planner.top_down(0)
+DOWN = NS(x=0.0, y=0.0, z=0.0, w=1.0)  # fingers down, as grasp_planner.top_down(0)
 STEPS = [
-    ("right", 0.40, -0.35, 0.30, "direct"),
-    ("right", 0.40, -0.35, 0.35, "linear"),
-    ("right", 0.35, -0.40, 0.22, "direct"),
-    ("right", 0.45, -0.30, 0.38, "direct"),
-    ("right", 0.45, -0.30, 0.43, "linear"),
-    ("left", 0.40, 0.35, 0.30, "direct"),
-    ("right", 0.40, -0.35, 0.30, "direct"),
+    ("right", 0.40, -0.35, 0.20, "direct"),
+    ("right", 0.40, -0.35, 0.10, "linear"),
+    ("right", 0.30, -0.15, 0.10, "direct"),
+    ("right", 0.45, -0.30, 0.15, "direct"),
+    ("right", 0.45, -0.30, 0.05, "linear"),
+    ("left", 0.40, 0.35, 0.20, "direct"),
+    ("right", 0.40, -0.35, 0.20, "direct"),
 ]
 
 

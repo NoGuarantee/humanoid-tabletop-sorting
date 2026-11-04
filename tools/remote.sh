@@ -37,7 +37,7 @@ case "$cmd" in
     # the solution always runs from what you have now
     [ "$cmd" = solution ] && [ "${2:-start}" != start ] || sync
     bench "$@" ;;
-  dev) sync; bench "$@" ;;
+  dev|dev-image) sync; bench "$@" ;;
   fetch)
     [ $# -ge 2 ] || { echo "usage: remote.sh fetch PATH_UNDER_~/nssr [LOCAL_DIR]"; exit 1; }
     out=${3:-$ROOT/.fetch}; mkdir -p "$out"

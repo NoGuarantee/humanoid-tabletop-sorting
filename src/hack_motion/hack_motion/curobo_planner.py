@@ -11,7 +11,7 @@ import math
 import time
 
 from .curobo_robot import load_robot_cfg
-from .robot import JOINTS, TCP_LINK, plan_limits
+from .robot import JOINTS, TABLE_SCENE, TCP_LINK, plan_limits
 
 
 LOCK_TOL = 0.02  # rad
@@ -98,7 +98,7 @@ class CuroboPlanner:
         self._build_self_check(cfg["kinematics"])
         t0 = time.perf_counter()
         self.mp = MotionPlanner(MotionPlannerCfg.create(
-            robot=copy.deepcopy(cfg), use_cuda_graph=graphs != "off"))
+            robot=copy.deepcopy(cfg), scene_model=copy.deepcopy(TABLE_SCENE), use_cuda_graph=graphs != "off"))
         self.joint_names = list(self.mp.joint_names)
         torch.cuda.synchronize()
         return (f"{reason}curobo ready in {time.perf_counter() - t0:.1f} s, "

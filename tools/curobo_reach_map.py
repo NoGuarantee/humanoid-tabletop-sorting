@@ -5,7 +5,10 @@
 area of the simulator (objects.yaml), used only to judge the result here.
 
   bash tools/remote.sh dev -- 'bash tools/curobo_install.sh && python3 tools/curobo_reach_map.py'
+
+--tray maps the tray area instead (place heights over the trays, scene.yaml), --roll-limit R replaces robot.PLAN_ROLL_LIMIT.
 """
+import argparse
 import math
 import sys
 from pathlib import Path
@@ -15,6 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src" / "hack_motion"))
 from curobo._src.cost.tool_pose_criteria import ToolPoseCriteria  # noqa: E402
 from hack_motion.curobo_planner import CuroboPlanner  # noqa: E402
+from hack_motion import robot  # noqa: E402
 from hack_motion.robot import ARM_JOINTS, raise_steps  # noqa: E402
 
 ROBOT = ROOT / "src" / "hack_motion" / "robot"
@@ -22,6 +26,17 @@ XS = (0.26, 0.32, 0.38, 0.44, 0.50)
 YS = (0.0, -0.10, -0.20, -0.30, -0.40, -0.52)
 ZS = (0.20, 0.10, 0.05)
 YAWS = (0.0, math.pi / 4, math.pi / 2, -math.pi / 4, -math.pi / 2, math.pi)
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--tray", action="store_true")
+parser.add_argument("--roll-limit", type=float, default=robot.PLAN_ROLL_LIMIT)
+args = parser.parse_args()
+robot.PLAN_ROLL_LIMIT = args.roll_limit
+if args.tray:
+    XS = (0.26, 0.34, 0.42, 0.53)
+    YS = (0.0, -0.45, -0.55, -0.60, -0.69, -0.78)
+    ZS = (0.30, 0.20, 0.15)
+    YAWS = (0.0, math.pi / 2, -math.pi / 2)
 
 
 def down(yaw):  # rpy (0, 0, yaw), xyzw

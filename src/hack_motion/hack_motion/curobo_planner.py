@@ -11,7 +11,7 @@ import math
 import time
 
 from .curobo_robot import load_robot_cfg
-from .robot import JOINTS, TABLE_SCENE, TCP_LINK, plan_limits
+from .robot import JOINTS, TCP_LINK, plan_limits, table_scene
 
 
 LOCK_TOL = 0.02  # rad
@@ -61,6 +61,8 @@ class CuroboPlanner:
         self.mp = None
         self.joint_names = []
         self.locks = {}  # lock_joints the current planner was built with
+        self.trays = ()  # trays of this task for the next build (motion_node, from /sim/task)
+        self.world_trays = ()  # trays the current planner was built with
         self.start_moved = 0.0  # rad, how far the last plan moved its start state off the self-collision buffer
 
     def load(self, lock_positions, graphs="reset"):
@@ -78,14 +80,14 @@ class CuroboPlanner:
             moved = [name for name, value in self.locks.items()
                      if lock_positions and lock_positions.get(name) is not None
                      and abs(lock_positions[name] - value) > LOCK_TOL]
-            if not moved:
+            if not moved and self.world_trays == self.trays:
                 return "curobo already loaded"
             self.mp = None
             import gc
             import torch
             gc.collect()  # the old solvers hold CUDA graphs and buffers
             torch.cuda.empty_cache()
-            reason = f"locked joints moved: {moved}; "
+            reason = f"locked joints moved: {moved}; trays {list(self.trays)}; "
         else:
             reason = ""
         import curobo.runtime as runtime  # torch_util reads this copy, not curobo._src.runtime
@@ -97,8 +99,9 @@ class CuroboPlanner:
         self.locks = {name: float(v) for name, v in (cfg["kinematics"].get("lock_joints") or {}).items()}
         self._build_self_check(cfg["kinematics"])
         t0 = time.perf_counter()
+        self.world_trays = self.trays
         self.mp = MotionPlanner(MotionPlannerCfg.create(
-            robot=copy.deepcopy(cfg), scene_model=copy.deepcopy(TABLE_SCENE), use_cuda_graph=graphs != "off"))
+            robot=copy.deepcopy(cfg), scene_model=table_scene(self.trays), use_cuda_graph=graphs != "off"))
         self.joint_names = list(self.mp.joint_names)
         torch.cuda.synchronize()
         return (f"{reason}curobo ready in {time.perf_counter() - t0:.1f} s, "

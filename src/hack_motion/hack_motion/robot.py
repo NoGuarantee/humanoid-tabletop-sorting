@@ -1,4 +1,5 @@
 """Robot constants: motor ids, joint limits, groups. Source: hackathon/docs/INTERFACES.md of the simulator repo."""
+import math
 
 MAX_SPEED = 0.8  # rad/s, hard limit of every arm/head/waist motor in the sim and on the real robot
 
@@ -38,6 +39,47 @@ TCP_LINK = {"left": "left_tcp_link", "right": "right_tcp_link"}
 # floor: the locked knees stand under the table at x 0.20, so a solid block puts every pose in collision (0/32 IK seeds).
 # At this thickness the leg spheres clear it by about 3 cm.
 TABLE_SCENE = {"cuboid": {"table": {"dims": [0.76, 2.44, 0.08], "pose": [0.60, 0.0, -0.22, 1.0, 0.0, 0.0, 0.0]}}}
+
+# The table top in pelvis is z = a + b x (fit on depth frames, pose from /tf, rms 0.3 mm): 4 deg, cause not established.
+TABLE_PLANE = (-0.1792, 0.0700)
+_TILT = math.atan(TABLE_PLANE[1])
+_ABOVE_PELVIS = -TABLE_PLANE[0] * math.cos(_TILT)  # m, pelvis origin over the table top along the table normal
+
+# The trays on the table (hackathon/config/scene.yaml: x, y from the pelvis along the table, 0.22 x 0.32 x 0.07, 1 mm over
+# the top). The place does not depend on the layout seed, the set depends on the task (/sim/task): sort2 has no tray_center,
+# and objects may lie where it would stand. Depth frames of layout 1 agree within 3 mm: rims x 0.237..0.456, y 0.530..0.850
+# on the left, x 0.238..0.457, y -0.848..-0.529 on the right, x 0.426..0.643, y -0.158..0.160 in the centre, 71 mm above
+# the plane. Solid blocks: hands stay above the rim, and an 8 mm wall is thinner than a step of a coarse path.
+TRAYS = {"tray_left": (0.34, 0.69), "tray_right": (0.34, -0.69), "tray_center": (0.53, 0.0)}
+TRAY_SIZE = (0.22, 0.32, 0.071)  # to the rim, from the table top
+
+
+def table_z(x):
+    """z of the table top in pelvis at this x."""
+    return TABLE_PLANE[0] + TABLE_PLANE[1] * x
+
+
+def on_table(along, y, height):
+    """Pelvis (x, y, z) of a point `along` m out on the table axis from the pelvis, `height` m above the top."""
+    c, s = math.cos(_TILT), math.sin(_TILT)
+    z_level = height - _ABOVE_PELVIS
+    return along * c - z_level * s, y, along * s + z_level * c
+
+
+def tray_rim(name):
+    """Pelvis (x, y, z) of the middle of the opening of a tray."""
+    return on_table(*TRAYS[name], TRAY_SIZE[2])
+
+
+def table_scene(trays=()):
+    """TABLE_SCENE with these trays on the table, tilted with it."""
+    scene = {"cuboid": dict(TABLE_SCENE["cuboid"])}
+    for name in trays:
+        x, y, z = on_table(*TRAYS[name], TRAY_SIZE[2] / 2)
+        scene["cuboid"][name] = {"dims": list(TRAY_SIZE),
+                                 "pose": [x, y, z, math.cos(_TILT / 2), 0.0, -math.sin(_TILT / 2), 0.0]}
+    return scene
+
 
 # Joint moves that bring a hanging arm up in front of the chest, the start of every cuRobo plan. cuRobo cannot plan
 # from the hang, where the forearm is inside the thigh, and the hanging hand is below table height: any elbow fold from

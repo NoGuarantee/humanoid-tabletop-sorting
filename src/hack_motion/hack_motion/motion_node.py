@@ -281,9 +281,8 @@ class MotionNode(Node):
         """Bring an arm that hangs at home up in front of the chest by joints (robot.RAISE_STEPS).
 
         At home the forearm spheres are inside the thigh, and cuRobo will not plan from a state in collision.
-        A cuRobo path from the hang would also swing the hand under the table edge: the table is not in the
-        cuRobo world yet. Only when every joint of the arm is near home: these joint moves are not
-        collision-checked, and from a working pose they could sweep the arm through the table.
+        Only when every joint of the arm is near home: these joint moves are not collision-checked, and from
+        a working pose they could sweep the arm through the table.
         """
         for arm, names in ARM_JOINTS.items():
             q = self.joints(names)

@@ -272,7 +272,7 @@ def gaps(out, step, start, end):
                   f"{np.linalg.norm(row['f']):5.1f} {np.linalg.norm(row['m']):5.2f}", flush=True)
 
 
-def series(out, side, step, start, end):
+def series(out, side, step, start, end, links=()):
     import numpy as np
     from trajectory_self_check import load
 
@@ -324,6 +324,13 @@ def series(out, side, step, start, end):
             near.append((min(table, tray), link, table, tray))
         print("   " + "  ".join(f"{link} table {table:+.3f} tray {tray:.3f}" for _, link, table, tray in sorted(near)[:5]),
               flush=True)
+        fingers = sorted(n for n in q if side in n and any(f in n for f in ("thumb", "index")))
+        print("   " + " ".join(f"{n.replace(side + '_', '').replace('_joint', '')} {q[n]:+.3f}" for n in fingers))
+        for link in links:
+            pose = inv @ poses[link]
+            world = verts[link] @ pose[:3, :3].T + pose[:3, 3]
+            print(f"   {link} box x {world[:, 0].min():+.3f}..{world[:, 0].max():+.3f} "
+                  f"y {world[:, 1].min():+.3f}..{world[:, 1].max():+.3f} z {world[:, 2].min():+.3f}..{world[:, 2].max():+.3f}")
 
 
 def main():
@@ -346,13 +353,14 @@ def main():
     ser.add_argument("--step", type=float, default=1.0)
     ser.add_argument("--from", dest="start", type=float, default=0.0)
     ser.add_argument("--to", dest="end", type=float, default=math.inf)
+    ser.add_argument("--links", default="", help="comma separated: print the bounding box of these links too")
     args = parser.parse_args()
     if args.cmd == "record":
         record(args.out)
     elif args.cmd == "park":
         park()
     elif args.cmd == "series":
-        series(args.out, args.side, args.step, args.start, args.end)
+        series(args.out, args.side, args.step, args.start, args.end, [x for x in args.links.split(",") if x])
     elif args.cmd == "gaps":
         gaps(args.out, args.step, args.start, args.end)
     else:

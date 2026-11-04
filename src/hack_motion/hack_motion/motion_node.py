@@ -346,7 +346,8 @@ class MotionNode(Node):
             known = [(n, i) for i, n in enumerate(names) if n in JOINTS]
             names = [n for n, _ in known]
             waypoints = [[q[i] for _, i in known] for q in waypoints]
-            self.get_logger().info(f"move_tcp {g.arm} {mode}: {len(waypoints)} waypoints, {len(names)} joints")
+            self.get_logger().info(f"move_tcp {g.arm} {mode}: {len(waypoints)} waypoints, {len(names)} joints, "
+                                   f"start moved {planner.start_moved:.3f} rad")
             other = next(joints for arm, joints in ARM_JOINTS.items() if arm != g.arm)
             ok, _, msg = self.follow(names, waypoints, dt, tol=0.01, max_time=g.max_time, held=other)
         pos_err, rot_err = self.tcp_error(g.arm, g.target)

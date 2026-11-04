@@ -7,6 +7,7 @@ The solver is built on first use. Kernel compilation is cached on disk by tools/
 so a fresh container does not pay the cold Warp compile inside the task.
 """
 import copy
+import math
 import time
 
 from .curobo_robot import load_robot_cfg
@@ -18,6 +19,9 @@ START_MARGIN = 0.02  # rad inside the limits for the start state: a joint held a
 LIMIT_MARGIN = 0.1  # rad from a limit: IK solutions closer than this are the last choice
 MAX_PATHS = 4  # IK solutions to try a joint path to; a failed try costs about 1 s
 SAME_SOLUTION = 0.3  # rad, joint-space distance: closer solutions fail the same way, so one try covers them
+START_CLEARANCE = 0.002  # m past the self-collision buffer that a start state must have, or it is moved
+START_CLEAR_STEPS = (0.01, 0.03, 0.1)  # rad, spreads of the samples around a start state in collision
+START_CLEAR_SAMPLES = 512
 
 
 class Unreachable(Exception):
@@ -57,6 +61,7 @@ class CuroboPlanner:
         self.mp = None
         self.joint_names = []
         self.locks = {}  # lock_joints the current planner was built with
+        self.start_moved = 0.0  # rad, how far the last plan moved its start state off the self-collision buffer
 
     def load(self, lock_positions, graphs="reset"):
         """Create the motion planner. Returns a one-line description.
@@ -90,6 +95,7 @@ class CuroboPlanner:
         runtime.cuda_graph_reset = graphs == "reset"
         cfg = load_robot_cfg(self.urdf_path, self.cfg_path, lock_positions)
         self.locks = {name: float(v) for name, v in (cfg["kinematics"].get("lock_joints") or {}).items()}
+        self._build_self_check(cfg["kinematics"])
         t0 = time.perf_counter()
         self.mp = MotionPlanner(MotionPlannerCfg.create(
             robot=copy.deepcopy(cfg), use_cuda_graph=graphs != "off"))
@@ -283,6 +289,55 @@ class CuroboPlanner:
         lo, hi = plan_limits(name)
         return min(max(value, lo + START_MARGIN), hi - START_MARGIN)
 
+    def _build_self_check(self, kinematics):
+        from curobo._src.cost.cost_self_collision import SelfCollisionCost
+        from curobo._src.cost.cost_self_collision_cfg import SelfCollisionCostCfg
+        from curobo._src.robot.kinematics.kinematics import Kinematics
+        from curobo._src.robot.kinematics.kinematics_cfg import KinematicsCfg
+
+        kin_cfg = KinematicsCfg.from_data_dict(copy.deepcopy(kinematics))
+        self._self_kin = Kinematics(kin_cfg)
+        self._self_cost = SelfCollisionCost(SelfCollisionCostCfg(
+            weight=1.0, store_pair_distance=True, self_collision_kin_config=kin_cfg.self_collision_config))
+
+    def _clear_of_self(self, q):
+        """One bool per row of q [N x dof]: every sphere pair is START_CLEARANCE past the self-collision buffer."""
+        from curobo.types import JointState
+
+        n = q.shape[0]
+        state = JointState.from_position(q, joint_names=self.joint_names)
+        spheres = self._self_kin.compute_kinematics(state).robot_spheres.clone()
+        spheres[..., 3] += START_CLEARANCE / 2.0
+        self._self_cost.setup_batch_tensors(n, 1)
+        self._self_cost.forward(spheres)
+        return ~(self._self_cost._pair_distance.view(n, -1) > 0.0).any(dim=1)
+
+    def _clear_start(self, q):
+        """The nearest state to q [1 x dof] that can be planned from.
+
+        cuRobo fails every plan from a start inside the self-collision buffer. IK ends on the edge of the buffer, and
+        the drives stop short of the command, so the arm does end up inside, and then every goal fails until it moves.
+        Returns q itself when it is clear, or when no sample is: the plan then reports the failure.
+        """
+        import torch
+
+        self.start_moved = 0.0
+        if self._clear_of_self(q)[0]:
+            return q
+        lo = torch.tensor([self._inside_limits(name, -math.inf) for name in self.joint_names]).to(q)
+        hi = torch.tensor([self._inside_limits(name, math.inf) for name in self.joint_names]).to(q)
+        rng = torch.Generator(device=q.device).manual_seed(0)  # the global generator seeds cuRobo
+        for spread in START_CLEAR_STEPS:
+            noise = torch.randn((START_CLEAR_SAMPLES, q.shape[1]), device=q.device, generator=rng)
+            samples = torch.clamp(q + spread * noise.to(q), min=lo, max=hi)
+            clear = samples[self._clear_of_self(samples)]
+            if clear.shape[0]:
+                distance = torch.linalg.norm(clear - q, dim=1)
+                best = int(distance.argmin().item())
+                self.start_moved = float(distance[best].item())
+                return clear[best].reshape(1, -1)
+        return q
+
     def _fail(self, result, goal, arm):
         """One line: best position and rotation error, and where the TCP actually ended up."""
         import torch
@@ -315,6 +370,7 @@ class CuroboPlanner:
             raise RuntimeError(f"no /joint_states for {missing}")
         q = torch.tensor([[self._inside_limits(name, q_by_name[name]) for name in self.joint_names]],
                          device="cuda", dtype=torch.float32)
+        q = self._clear_start(q)
         state = JointState.from_position(q, joint_names=self.joint_names)
         goal = self.mp.compute_kinematics(state).tool_poses.clone().as_goal()
         link = TCP_LINK[arm]

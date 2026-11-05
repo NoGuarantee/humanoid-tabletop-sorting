@@ -10,6 +10,7 @@ import torch
 from . import fit_rgbd_templates as fit
 from .full_pose_nn import AXIAL, OBJECTS, SCALE_M, features
 from .geometry import estimate_table_support
+from .scene_geometry import estimate_scene_geometry
 from .rgbd_free_space import depth_view, rerank
 from .rgbd_identity import IdentityHead, POOL_IDENTITIES
 from .multiview_association import association, descriptors
@@ -94,6 +95,12 @@ class PoseBackend:
                 objects.append(dict(instance_id=ident, class_id=int(classes[i]) + 1,
                                     confidence=float(confidence[i])))
         return raster, objects, self.hooks.crops(raster)
+
+    def scene_geometry(self, sensors, *, segmentation=None, tray_of_color=None):
+        """Table plane and tray openings, reusing segmentation when provided."""
+        if segmentation is None:
+            segmentation = [self.segment(sensor) if sensor is not None else None for sensor in sensors]
+        return estimate_scene_geometry(sensors, segmentation, tray_of_color)
 
     def estimate(self, sensors, pool, region, *, segmentation=None):
         """sensors are ordered head/torso; a missing slot is None."""

@@ -32,6 +32,7 @@ from tf2_ros import Buffer, TransformException, TransformListener
 from . import classify
 from . import geometry as geo
 from . import table_clusters as tc
+from .rgbd.geometry import table_z_at
 
 CAMERAS = {"head": "cam_head", "torso": "cam_torso"}
 BASE = "pelvis"
@@ -167,33 +168,46 @@ class PerceptionNode(Node):
             raise NotImplementedError(f"region '{region}'")
         cloud, _ = self.cloud_in_pelvis(f)
         result = tc.detect(cloud, self.arm_segments(f["depth"].header.stamp))
-        if result is None:
+        with self.lock:
+            names, tray_of_color = dict(self.names), dict(self.tray_of_color)
+        plane, model_trays = None, []
+        if self.model_poses is not None:
+            stamp = Time.from_msg(f["depth"].header.stamp).nanoseconds
+            try:
+                plane, model_trays = self.model_poses.table_scene_at(stamp, tray_of_color)
+            except Exception as exc:
+                self.get_logger().warning(f"RGB-D scene geometry unavailable: {exc!r}")
+        if result is None and plane is None:
             raise RuntimeError("table plane not found")
-        scene.table_z = result.table_z
+        scene.table_z = table_z_at(plane, *tc.TABLE_REF_XY) if plane is not None else result.table_z
         rgb = geo.rgb_to_np(f["color"])
         depth = f["depth"]
         if rgb.shape[0] != depth.height or rgb.shape[1] != depth.width:
             self.get_logger().warning(
                 f"colour {rgb.shape[1]}x{rgb.shape[0]} differs from depth {depth.width}x{depth.height}")
             rgb = None
+        objects = result.objects if result is not None else []
         with self.lock:
-            self.tracker.update(result.objects)
-            names, tray_of_color = dict(self.names), dict(self.tray_of_color)
-        for c in result.objects:
+            self.tracker.update(objects)
+        for c in objects:
             name, category, confidence = classify.classify_object(c.size, rgb, c.pixels, names)
             scene.objects.append(DetectedObject(
                 track_id=c.track_id, name=name, category=category, confidence=float(confidence),
                 yaw=float(c.yaw), top_z=float(c.top_z), partially_visible=c.partially_visible,
                 center=Point(x=float(c.center[0]), y=float(c.center[1]), z=float(c.center[2])),
                 size=Vector3(x=float(c.size[0]), y=float(c.size[1]), z=float(c.size[2]))))
-        for tray in classify.find_trays(result.rejected, rgb, tray_of_color):
-            x, y, z = tray["center"]
-            yaw = tray["yaw"]
+        if plane is not None:
+            trays = [(t.id, t.color, t.center, t.yaw, t.size) for t in model_trays]
+        else:
+            trays = [(t["id"], t["color"], t["center"], t["yaw"], t["size"])
+                     for t in classify.find_trays(result.rejected, rgb, tray_of_color)]
+        for tray_id, color, center, yaw, size in trays:
+            x, y, z = map(float, center)
             scene.containers.append(Container(
-                id=tray["id"], kind="tray", color=tray["color"],
+                id=tray_id, kind="tray", color=color,
                 pose=Pose(position=Point(x=x, y=y, z=z),
                           orientation=Quaternion(z=math.sin(yaw / 2.0), w=math.cos(yaw / 2.0))),
-                size=Vector3(x=tray["size"][0], y=tray["size"][1], z=tray["size"][2])))
+                size=Vector3(x=size[0], y=size[1], z=size[2])))
         named = sum(o.category != "" for o in scene.objects)
         trays = ", ".join(f"{c.id}:{c.color}" for c in scene.containers) or "none"
         if not names:

@@ -13,7 +13,7 @@ from tf2_ros import TransformException
 
 from .geometry import transform_matrix
 from .rgbd.pose_backend import PoseBackend
-from .rgbd_frames import CAMERAS, STREAMS, PairBuffer, decode_pair
+from .rgbd_frames import CAMERAS, STREAMS, PairBuffer, decode_pair, decode_view
 from .rgbd_response import infer_response, response
 
 MAX_AGE_NS = 1_000_000_000
@@ -32,6 +32,7 @@ class ModelPoseService:
         self.generation = 0
         self.buffer = PairBuffer()
         self.lock = Lock()
+        self.inference_lock = Lock()
         self.inputs = ReentrantCallbackGroup()
         self.calls = MutuallyExclusiveCallbackGroup()
         threshold = JumpThreshold(min_forward=None, min_backward=Duration(nanoseconds=-1), on_clock_change=True)
@@ -73,6 +74,7 @@ class ModelPoseService:
         with self.lock:
             generation = self.generation
             pool = self.pool_override or self.task_pool
+            task = self.task
             pair = self.buffer.latest(now_ns, MAX_AGE_NS)
         if pool is None:
             return response("unsupported_or_missing_pool")
@@ -87,11 +89,43 @@ class ModelPoseService:
         except ValueError as exc:
             self.node.get_logger().warning(f"invalid model pose camera frame: {exc}")
             return response("invalid_rgbd", stamp=stamp, pool=pool)
-        payload = infer_response(self.backend, sensors, stamp, pool)
+        trays = task.get("trays") if isinstance(task, dict) else None
+        tray_of_color = None
+        if isinstance(trays, dict):
+            tray_of_color = {color: tray_id for tray_id, color in trays.items() if isinstance(color, str) and color}
+        with self.inference_lock:
+            payload = infer_response(self.backend, sensors, stamp, pool, tray_of_color)
         with self.lock:
             if self.generation != generation:
                 return response("exposure_invalidated", stamp=stamp, pool=pool)
         return payload
+
+    def table_scene_at(self, stamp, tray_of_color):
+        """Measure scene geometry at the exact exposure used by Perceive."""
+        age = self.node.get_clock().now().nanoseconds - stamp
+        if not 0 <= age <= MAX_AGE_NS:
+            return None, []
+        with self.lock:
+            generation = self.generation
+            frames = self.buffer.at(stamp)
+        sensors = [None] * len(CAMERAS)
+        for index, view in enumerate(frames):
+            if view is None:
+                continue
+            try:
+                sensor = decode_view(view)
+                sensor["T"] = self.transform_at(view["depth"].header)
+                sensors[index] = sensor
+            except (TransformException, ValueError):
+                continue
+        if not any(sensor is not None for sensor in sensors):
+            return None, []
+        with self.inference_lock:
+            plane, trays = self.backend.scene_geometry(sensors, tray_of_color=tray_of_color)
+        with self.lock:
+            if self.generation != generation:
+                return None, []
+        return plane, trays
 
     def on_estimate(self, _request, result):
         try:

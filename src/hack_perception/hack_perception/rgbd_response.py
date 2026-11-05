@@ -2,15 +2,16 @@
 
 import numpy as np
 
+from .rgbd.geometry import table_z_at
 from .rgbd_frames import CAMERAS
 
 SCHEMA = "hack_perception.model_poses/v1"
 CATEGORY = {1: "figure", 2: "dish", 3: "box", 4: "electronics", 5: "falcon50", 6: "falcon15"}
 
 
-def response(status, *, stamp=None, pool=None, objects=(), table_z=None):
+def response(status, *, stamp=None, pool=None, objects=(), table_z=None, containers=()):
     return dict(schema=SCHEMA, status=status, stamp_ns=stamp, frame_id="pelvis",
-                pool=pool, table_z_m=table_z, objects=list(objects))
+                pool=pool, table_z_m=table_z, objects=list(objects), containers=list(containers))
 
 
 def object_response(detection):
@@ -33,9 +34,10 @@ def object_response(detection):
                 depth_supported_views=detection.views, instances=instance_ids)
 
 
-def infer_response(backend, sensors, stamp, pool):
+def infer_response(backend, sensors, stamp, pool, tray_of_color=None):
     segmentation = [backend.segment(sensor) for sensor in sensors]
-    detections, table_z = backend.estimate(sensors, pool, "table", segmentation=segmentation)
+    detections, _ = backend.estimate(sensors, pool, "table", segmentation=segmentation)
+    plane, trays = backend.scene_geometry(sensors, segmentation=segmentation, tray_of_color=tray_of_color)
     objects = [object_response(d) for d in detections]
     for slot, (_, proposals, _) in enumerate(segmentation):
         seen = {d.instances[slot] for d in detections}
@@ -48,4 +50,7 @@ def infer_response(backend, sensors, stamp, pool):
                                     center_pelvis_m=None, size_model_m=None, orientation_mode=None,
                                     detector_score=proposal["confidence"], depth_points=None,
                                     fit_rmse_m=None, depth_supported_views=0, instances={CAMERAS[slot]: ident}))
-    return response("ok", stamp=stamp, pool=pool, objects=objects, table_z=table_z)
+    containers = [dict(id=tray.id, kind="tray", color=tray.color, center_pelvis_m=tray.center.tolist(),
+                       yaw_rad=tray.yaw, size_m=tray.size) for tray in trays]
+    return response("ok", stamp=stamp, pool=pool, objects=objects,
+                    table_z=table_z_at(plane) if plane is not None else 0., containers=containers)

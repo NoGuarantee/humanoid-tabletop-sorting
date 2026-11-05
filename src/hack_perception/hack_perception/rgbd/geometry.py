@@ -58,7 +58,7 @@ def rigid_fit(source, target):
     return r, bc - r @ ac
 
 
-def estimate_table_support(depth, k, transform):
+def estimate_table_support(depth, k, transform, *, exclude=None):
     """Fit support from depth points in the pelvis workspace."""
     y, x = np.indices(depth.shape)
     y, x = y[::4, ::4], x[::4, ::4]
@@ -67,7 +67,14 @@ def estimate_table_support(depth, k, transform):
     points = (rays * (d / rays[..., 2])[..., None]) @ transform[:3, :3].T + transform[:3, 3]
     valid = (d >= .15) & (d <= 6)
     valid &= ((points >= (.05, -1.2, -.6)) & (points <= (1.4, 1.2, .6))).all(-1)
+    if exclude is not None:
+        valid &= ~exclude[::4, ::4]
     return fit_support(points[valid])
+
+
+def table_z_at(plane, x=0., y=0.):
+    normal, offset = plane
+    return float(-(offset + normal[0] * x + normal[1] * y) / normal[2])
 
 
 def fit_support(points):

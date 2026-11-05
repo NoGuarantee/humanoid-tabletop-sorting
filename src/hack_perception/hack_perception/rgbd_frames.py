@@ -40,9 +40,14 @@ class PairBuffer:
         ns = max((ns for ns in common if ns > 0 and 0 <= now_ns - ns <= max_age_ns), default=None)
         if ns is None:
             return None
-        return ns, [
-            {kind: self.frames[camera, kind][ns] for kind in STREAMS} for camera in CAMERAS
-        ]
+        return ns, self.at(ns)
+
+    def at(self, ns):
+        views = []
+        for camera in CAMERAS:
+            view = {kind: self.frames[camera, kind].get(ns) for kind in STREAMS}
+            views.append(None if any(msg is None for msg in view.values()) else view)
+        return views
 
 
 def decode_image(msg, encoding, dtype, channels):

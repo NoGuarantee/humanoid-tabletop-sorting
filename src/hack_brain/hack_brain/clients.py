@@ -59,8 +59,9 @@ class Clients:
             return None
         return r.scene
 
-    def move_tcp(self, arm, target, mode="direct", max_time=0.0):
-        r = self._action(self.move_tcp_cli, MoveTcp.Goal(arm=arm, target=target, mode=mode, max_time=max_time))
+    def move_tcp(self, arm, target, mode="direct", max_time=0.0, pos_tol=0.0):
+        r = self._action(self.move_tcp_cli, MoveTcp.Goal(
+            arm=arm, target=target, mode=mode, max_time=max_time, pos_tol=float(pos_tol)))
         if r is not None and not r.success:
             self.log.warn(f"move_tcp {arm} {mode}: {r.message}")
         return r is not None and r.success

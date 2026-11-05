@@ -35,6 +35,9 @@ COMPENSATION_RATE = 2.0
 MAX_COMPENSATION = 0.3  # rad added on top of the target at most
 HOME_TOL = 0.1  # rad, every arm joint within this of 0 -> the arm hangs at home
 HELD_TOL = 0.05  # rad, the arm MoveTcp did not ask for: it only holds its pose
+# Joint step of one follow segment. 0.3 rad left the 10 cm grasp descent (21 planned waypoints, no joint
+# past 0.3) as a single joint-space chord, so the hand did not travel the straight line cuRobo had planned.
+PATH_STEP = 0.1
 TASK_WAIT = 5.0  # s, real time the preload waits for /sim/task, so that it does not build the planner twice
 
 
@@ -196,7 +199,7 @@ class MotionNode(Node):
         anchors = []
         prev = None
         for q in waypoints:
-            if prev is None or max(abs(a - b) for a, b in zip(prev, q)) >= 0.3:
+            if prev is None or max(abs(a - b) for a, b in zip(prev, q)) >= PATH_STEP:
                 anchors.append(q)
                 prev = q
         if anchors[-1] != waypoints[-1]:

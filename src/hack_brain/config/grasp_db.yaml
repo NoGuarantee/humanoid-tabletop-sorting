@@ -1,5 +1,6 @@
 # Grasp parameters: by_name overrides by_category overrides default. Owner: grasping.
-# Heights in metres: z_offset is added to the object's top_z (negative = below the top).
+# Heights in metres at the fingertips. The TCP is FINGERTIP (0.21 m) above them: grasp_planner.tcp_at.
+# z_offset is added to the object's top_z (negative = below the top).
 # align: short_axis = fingers close across the short side, long_axis = across the long side.
 # Values are starting points, tune them per object in the simulator (milestone M2-M3).
 

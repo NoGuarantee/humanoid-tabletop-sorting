@@ -18,6 +18,10 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 HOST=${NSSR_HOST:-nssr}
 WHO=${NSSR_WHO:-$(git -C "$ROOT" config user.name 2>/dev/null | tr -cs 'A-Za-z0-9_-' '_' | sed 's/_*$//')}
 WHO=${WHO:-$USER}
+# one path segment: a slash or ".." would make sync delete outside this name's copy
+case "$WHO" in
+  ""|*[!A-Za-z0-9_-]*) echo "[remote] NSSR_WHO must be one name of letters, digits, _ and -" >&2; exit 1 ;;
+esac
 DEST=nssr/work/$WHO/nssr-sol-team-049
 
 bench() {  # run tools/bench.sh on the server with these arguments
@@ -26,7 +30,18 @@ bench() {  # run tools/bench.sh on the server with these arguments
 
 sync() {
   ssh "$HOST" "mkdir -p $DEST"
-  rsync -az --delete --exclude .git --exclude .fetch --filter=':- .gitignore' "$ROOT/" "$HOST:$DEST/"
+  # Destination is only ~/nssr/work/$WHO/...: other names' copies are not in this transfer.
+  # .gitignore hides build/, install/, log/, data/ and weights/ from the send, but rsync 3.2 still
+  # deletes those receiver-only directories under --delete. protect keeps this copy's build and data.
+  rsync -az --delete \
+    --exclude .git --exclude .fetch \
+    --filter='protect /build/' --filter='protect /build/***' \
+    --filter='protect /install/' --filter='protect /install/***' \
+    --filter='protect /log/' --filter='protect /log/***' \
+    --filter='protect /data/' --filter='protect /data/***' \
+    --filter='protect /weights/' --filter='protect /weights/***' \
+    --filter=':- .gitignore' \
+    "$ROOT/" "$HOST:$DEST/"
   echo "[remote] synced to $HOST:~/$DEST"
 }
 
@@ -37,7 +52,7 @@ case "$cmd" in
     # the solution always runs from what you have now
     [ "$cmd" = solution ] && [ "${2:-start}" != start ] || sync
     bench "$@" ;;
-  dev) sync; bench "$@" ;;
+  dev|dev-image) sync; bench "$@" ;;
   fetch)
     [ $# -ge 2 ] || { echo "usage: remote.sh fetch PATH_UNDER_~/nssr [LOCAL_DIR]"; exit 1; }
     out=${3:-$ROOT/.fetch}; mkdir -p "$out"

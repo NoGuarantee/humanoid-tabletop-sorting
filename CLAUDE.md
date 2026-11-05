@@ -54,9 +54,13 @@
 - По частям: `sim start sort3 --pool 4`, `solution`, `solution wait 600`, `check`, `sim stop`.
 - ROS к работающему симулятору: `bash tools/remote.sh ros ros2 topic list`.
 - Сборка и запуск отдельных узлов: `bash tools/remote.sh dev -- 'colcon build --symlink-install && ros2 run ...'`.
+  Контейнер `nssr-dev-<имя>` остаётся запущенным, `build/` и `install/` лежат в его копии и переживают `sync`.
+  torch и cuRobo берутся из образа: `bash tools/remote.sh dev-image` один раз и после смены установки. `bash setup.sh`
+  и `bash tools/curobo_install.sh` в команды `dev` не добавляй: они тратят минуты.
 - Логи: `logs sim|solution [N]`, память против бюджета 16 ГБ VRAM и 32 ГБ RAM: `gpu`. Кадры и rosbag: `fetch`.
 - Логику без ROS (task.py, grasp_planner.py) проверяем локально обычным python3 с заглушками geometry_msgs.
 
 Стенд один на команду: `sim start` занимает его за тобой, `sim stop` освобождает. Чужой стенд (`status`) не
-перехватывай через `--force`, скажи человеку. Если `remote.sh` не может подключиться, не делай выводов о работе
+перехватывай через `--force`, скажи человеку. Если сессий несколько, у каждой своё имя: `NSSR_WHO=jobs-a bash
+tools/remote.sh ...`, иначе замок их не различает. `dev` замок не проверяет и подключается к чужому симулятору: перед ним смотри `status`. Повторный `dev` с тем же именем останавливает только предыдущую команду в своём контейнере. Если `remote.sh` не может подключиться, не делай выводов о работе
 кода: попроси человека проверить сервер.

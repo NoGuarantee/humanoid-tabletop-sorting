@@ -285,6 +285,25 @@ def check_limits(robot, samples):
     return problems
 
 
+def ignored_pairs():
+    """Link pairs left out of the cuRobo self-collision matrix: the planner does not keep these apart."""
+    import yaml
+
+    with open(ROOT / "src/hack_motion/robot/tienkung_curobo.yml") as f:
+        cfg = yaml.safe_load(f)
+    found = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            if "self_collision_ignore" in node:
+                found.append(node["self_collision_ignore"])
+            for value in node.values():
+                walk(value)
+
+    walk(cfg)
+    return {frozenset((a, b)) for a, others in found[0].items() for b in others or []}
+
+
 def check(args):
     samples = load(args.motion)
     if not samples:
@@ -295,6 +314,14 @@ def check(args):
     t0 = samples[0][0]
     print(f"{len(samples)} samples, {len(used)} checked, {samples[-1][0] - t0:.1f} s, {n_pairs} link pairs")
 
+    ignored = ignored_pairs()
+    closest = min(report.items(), key=lambda kv: kv[1]["gap"], default=None)
+    if closest:
+        print(f"Smallest gap: {closest[0][0]} - {closest[0][1]}: {closest[1]['gap'] * 1000:.1f} mm")
+    outside = [(k, r) for k, r in report.items() if frozenset(k) in ignored]
+    print(f"Pairs outside the cuRobo matrix: {len(outside)}")
+    for (a, b), r in sorted(outside, key=lambda kv: kv[1]["gap"]):
+        print(f"  {a} - {b}: gap {r['gap'] * 1000:.1f} mm at t={r['gap_t'] - t0:.2f}, {r['hits']} samples touching")
     start_hits, new_hits, near = [], [], []
     for (a, b), r in sorted(report.items(), key=lambda kv: kv[1]["gap"]):
         if r["hits"] and r["first"] == t0:

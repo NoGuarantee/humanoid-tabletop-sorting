@@ -993,13 +993,13 @@ kinematics:
   lock_joints: {hip_roll_l_joint: 0.0, hip_roll_r_joint: 0.0, hip_pitch_l_joint: -0.5, hip_pitch_r_joint: -0.5, hip_yaw_l_joint: 0.0,
     hip_yaw_r_joint: 0.0, knee_pitch_l_joint: 1.0, knee_pitch_r_joint: 1.0, head_yaw_joint: 0.0, head_pitch_joint: 0.0, head_roll_joint: 0.0}
   mesh_link_names: *id001
-  self_collision_buffer: {L_base_link: 0.0, R_base_link: 0.0, camera_body_back_link: 0.0, camera_body_front_link: 0.0, camera_head_link: 0.0,
-    elbow_pitch_l_link: 0.0, elbow_pitch_r_link: 0.0, elbow_yaw_l_link: 0.0, elbow_yaw_r_link: 0.0, head_pitch_link: 0.0,
-    head_roll_link: 0.0, head_yaw_link: 0.0, hip_pitch_l_link: 0.0, hip_pitch_r_link: 0.0, hip_roll_l_link: 0.0, hip_roll_r_link: 0.0,
-    hip_yaw_l_link: 0.0, hip_yaw_r_link: 0.0, knee_pitch_l_link: 0.0, knee_pitch_r_link: 0.0, left_tcp_link: 0.0, pelvis: 0.0,
-    right_tcp_link: 0.0, shoulder_pitch_l_link: 0.0, shoulder_pitch_r_link: 0.0, shoulder_roll_l_link: 0.0, shoulder_roll_r_link: 0.0,
-    shoulder_yaw_l_link: 0.0, shoulder_yaw_r_link: 0.0, waist_yaw_link: 0.0, wrist_pitch_l_link: 0.0, wrist_pitch_r_link: 0.0,
-    wrist_roll_l_link: 0.0, wrist_roll_r_link: 0.0}
+  self_collision_buffer: {L_base_link: 0.005, R_base_link: 0.005, camera_body_back_link: 0.005, camera_body_front_link: 0.005,
+    camera_head_link: 0.005, elbow_pitch_l_link: 0.005, elbow_pitch_r_link: 0.005, elbow_yaw_l_link: 0.005, elbow_yaw_r_link: 0.005,
+    head_pitch_link: 0.005, head_roll_link: 0.005, head_yaw_link: 0.005, hip_pitch_l_link: 0.005, hip_pitch_r_link: 0.005, hip_roll_l_link: 0.005,
+    hip_roll_r_link: 0.005, hip_yaw_l_link: 0.005, hip_yaw_r_link: 0.005, knee_pitch_l_link: 0.005, knee_pitch_r_link: 0.005, left_tcp_link: 0.005,
+    pelvis: 0.005, right_tcp_link: 0.005, shoulder_pitch_l_link: 0.005, shoulder_pitch_r_link: 0.005, shoulder_roll_l_link: 0.005,
+    shoulder_roll_r_link: 0.005, shoulder_yaw_l_link: 0.005, shoulder_yaw_r_link: 0.005, waist_yaw_link: 0.005, wrist_pitch_l_link: 0.005,
+    wrist_pitch_r_link: 0.005, wrist_roll_l_link: 0.005, wrist_roll_r_link: 0.005}
   self_collision_ignore:
     L_base_link: [left_tcp_link, left_thumb_1, left_index_1, left_middle_1, left_ring_1, left_little_1]
     R_base_link: [right_tcp_link, right_thumb_1, right_index_1, right_middle_1, right_ring_1, right_little_1]
@@ -1016,8 +1016,8 @@ kinematics:
     elbow_pitch_r_link: [shoulder_yaw_r_link, elbow_yaw_r_link, wrist_pitch_r_link, wrist_roll_r_link, right_tcp_link, camera_body_back_link,
       R_base_link]
     elbow_yaw_l_link: [elbow_pitch_l_link, wrist_pitch_l_link, wrist_roll_l_link, shoulder_pitch_r_link, shoulder_roll_r_link,
-      L_base_link]
-    elbow_yaw_r_link: [elbow_pitch_r_link, wrist_pitch_r_link, wrist_roll_r_link, R_base_link]
+      L_base_link, shoulder_yaw_l_link]
+    elbow_yaw_r_link: [elbow_pitch_r_link, wrist_pitch_r_link, wrist_roll_r_link, R_base_link, shoulder_yaw_r_link]
     head_pitch_link: [head_yaw_link, head_roll_link, camera_head_link, camera_body_front_link, camera_body_back_link, shoulder_pitch_l_link,
       shoulder_roll_l_link, shoulder_pitch_r_link, shoulder_roll_r_link]
     head_roll_link: [head_pitch_link, camera_head_link, camera_body_front_link, camera_body_back_link, shoulder_pitch_l_link,

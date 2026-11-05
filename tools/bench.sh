@@ -13,6 +13,10 @@ BASE=${NSSR_BASE:-$HOME/nssr}
 [ -f "$BASE/bench.env" ] && . "$BASE/bench.env"
 SIMREPO=${NSSR_SIM:-$BASE/nssr-uwt-polygon}
 WHO=${NSSR_WHO:-$USER}
+# one path segment: a slash or ".." would point this dev container at another name's copy
+case "$WHO" in
+  ""|*[!A-Za-z0-9_-]*) echo "[bench] NSSR_WHO must be one name of letters, digits, _ and -" >&2; exit 1 ;;
+esac
 WORK=$BASE/work/$WHO/nssr-sol-team-049
 LOGS=$BASE/logs
 LOCK=$BASE/bench.lock
@@ -20,6 +24,7 @@ SIM=${SIM_CONTAINER:-nssr-sim}
 SOL=${SOLUTION_CONTAINER:-nssr-solution}
 IMAGE=${SIM_IMAGE:-nssr-sim:latest}
 INSTALLED=nssr-solution-installed:$(printf '%s' "$WHO" | tr -c 'a-zA-Z0-9_.-' '_')
+DEV_REPO=${DEV_IMAGE_REPO:-nssr-dev}
 DDS=$SIMREPO/hackathon/docker/fastdds_hack.xml
 ROS_PRE="source /opt/ros/humble/setup.bash; export ROS_DOMAIN_ID=146; \
 export FASTRTPS_DEFAULT_PROFILES_FILE=/nssr_sim/hackathon/docker/fastdds_hack.xml"
@@ -133,7 +138,7 @@ solution_wait() {  # $1=timeout s: until /sim/task/done appears in the log and r
       solution_wait_exit 60; return $?
     fi
     has solution || { echo "[bench] the solution exited without /sim/task/done"; return 1; }
-    sleep 5
+    sleep 1  # "run.sh ended N s after /sim/task/done" counts from here: a longer sleep hides seconds of N
   done
   echo "[bench] timeout $1 s: no /sim/task/done"; return 1
 }
@@ -173,18 +178,34 @@ colcon build' -v "$WORK:/mnt/solution:ro" 2>&1 | clean >> "$LOGS/solution.log"
   local rc=${PIPESTATUS[0]}
   [ "$rc" = 0 ] || { docker rm -f "$SOL" >/dev/null 2>&1; echo "[bench] install failed, exit $rc:"; tail_log solution 40; return 1; }
   docker commit "$SOL" "$INSTALLED" >/dev/null && docker rm "$SOL" >/dev/null
+  cp "$LOGS/solution.log" "$LOGS/solution.install.log"  # the layouts start solution.log anew
+  clean < "$LOGS/solution.log" | grep -E "^\[(curobo_install|curobo_warmup|setup)\]|^Summary:" | cut -c1-200
+}
+
+mem_peak() {  # what the budget of the final check is about, simulator and solution together, while run.sh runs
+  local v r vmax=0 rmax=0 i=0
+  while has solution; do
+    v=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
+    r=$(free -m | awk '/^Mem:/{print $3}')
+    [ "$v" -gt "$vmax" ] && vmax=$v
+    [ "$r" -gt "$rmax" ] && rmax=$r
+    i=$((i + 1))
+    [ "$i" = 15 ] && gpu | grep -E "MiB|Mem:|nssr-"  # a breakdown while cuRobo is up, if run.sh lasts that long
+    sleep 1
+  done
+  echo "[bench] peak while run.sh ran: VRAM $vmax MiB, RAM $rmax MiB (budget 16 GB, 32 GB; sampled once a second)"
 }
 
 layout_start() {  # run.sh in a clean container from the installed image; a new log for each layout
-  : > "$LOGS/solution.log"
-  local script='cd /solution && source install/setup.bash && bash run.sh'
+  echo "[bench] layout start $(date +%s.%N)" > "$LOGS/solution.log"  # t=0 for tools/startup_report.py
+  local script="export LAYOUT=$1; cd /solution && source install/setup.bash && ${RUN_CMD:-bash run.sh}"
   tmux new-session -d -s solution "docker run --rm --name '$SOL' --gpus all --network host --ipc host \
 -v '$DDS:/etc/nssr/fastdds.xml:ro' -e ROS_DOMAIN_ID=146 -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/nssr/fastdds.xml \
 --entrypoint bash '$INSTALLED' -c '$script' 2>&1 | tee -a '$LOGS/solution.log'"
 }
 
 eval_layouts() {  # $1=layouts, $2=timeout s for each. As at the final check: one simulator, run.sh anew on each layout
-  local n=$1 timeout=$2 i seed rc=0
+  local n=$1 timeout=$2 i seed mem rc=0
   solution_install || return 1
   for i in $(seq 1 "$n"); do
     if [ "$i" -gt 1 ]; then  # moves the objects only, the robot stays where the last run left it
@@ -193,11 +214,15 @@ eval_layouts() {  # $1=layouts, $2=timeout s for each. As at the final check: on
       sleep 3
     fi
     echo "===== layout $i/$n, seed ${seed:-of the sim start}"
-    layout_start
-    solution_wait "$timeout" || rc=1
+    layout_start "$i"
+    sleep 1; { mem_peak | tee -a "$LOGS/solution.log"; } & mem=$!
+    # into the log too: stdout dies with the ssh connection, the log stays on the server
+    solution_wait "$timeout" | tee -a "$LOGS/solution.log"; [ "${PIPESTATUS[0]}" = 0 ] || rc=1
     has solution && solution_stop
+    wait "$mem"
     echo "----- solution log (start-up and end)"
-    clean < "$LOGS/solution.log" | grep -E "limit [0-9]+ s|curobo|published /sim/task/done|mission failed" | tail -n 12
+    clean < "$LOGS/solution.log" | grep -E "limit [0-9]+ s|curobo|startup:|escalating|published /sim/task/done|mission failed" | tail -n 12
+    python3 "$WORK/tools/startup_report.py" "$LOGS/solution.log" 2>&1 | tail -n 25
     cp "$LOGS/solution.log" "$LOGS/solution.layout$i.log"
     echo "----- self-check"; ( cd "$SIMREPO" && bash hackathon/tools/task.sh check )
   done
@@ -205,12 +230,120 @@ eval_layouts() {  # $1=layouts, $2=timeout s for each. As at the final check: on
   return $rc
 }
 
+dev_tag() {  # hash of what the install reads in your synced copy: changing any of these needs a new image
+  ( cd "$WORK" && cat setup.sh tools/curobo_install.sh tools/curobo_warmup.py requirements.txt apt.txt 2>/dev/null ) \
+    | sha256sum | cut -c1-12
+}
+
+dev_image() {  # $1=--force rebuilds: the install of solution.sh, frozen into an image for `dev`. `eval` never uses it.
+  [ -f "$WORK/setup.sh" ] || die "no $WORK/setup.sh: remote.sh sync"
+  local img name rc
+  img="$DEV_REPO:$(dev_tag)"; name="nssr-dev-build-$WHO"
+  # Agents keep this tag. A new hash gets its own tag; this one is never moved.
+  if [ "$img" = "nssr-dev:6057b5989a06" ] && docker image inspect "$img" >/dev/null 2>&1; then
+    echo "[bench] $img is kept as-is"; return 0
+  fi
+  if [ "${1:-}" != --force ] && docker image inspect "$img" >/dev/null 2>&1; then
+    echo "[bench] $img is already built"; return 0
+  fi
+  if docker image inspect "$img" >/dev/null 2>&1; then
+    local users
+    users=$(docker ps -a --filter "ancestor=$img" --format '{{.Names}}' | grep -v "^${name}$" || true)
+    [ -z "$users" ] || die "refusing to overwrite $img; containers still use it: $users"
+  fi
+  docker rm -f "$name" >/dev/null 2>&1
+  echo "[bench] building $img (log: remote.sh logs dev-image)"
+  # setup.sh never fails on purpose (see its header), so the install is checked here before anything is frozen
+  docker run --name "$name" --gpus all --network host -v "$WORK:/mnt/solution:ro" --entrypoint bash "$IMAGE" -c '
+set -e
+mkdir -p /tmp/dev-image && cp -a /mnt/solution/. /tmp/dev-image/ && cd /tmp/dev-image && rm -rf build install log
+if [ -s apt.txt ]; then apt-get update -qq && xargs -a apt.txt apt-get install -y --no-install-recommends; fi
+if [ -s requirements.txt ]; then /usr/bin/python3 -m pip install -r requirements.txt; fi
+bash setup.sh
+/usr/bin/python3 -c "import curobo, torch, warp; assert torch.cuda.is_available(), \"no CUDA in torch\""
+test -n "$(ls -A /root/.cache/warp)"
+cd / && rm -rf /tmp/dev-image /root/.cache/pip' 2>&1 | tee "$LOGS/dev-image.log" | grep -E 'curobo_install\]|CUROBO_WARMUP|FAILED|Error'
+  rc=${PIPESTATUS[0]}
+  if [ "$rc" != 0 ]; then
+    docker rm -f "$name" >/dev/null 2>&1
+    die "the install failed (rc $rc), no image: remote.sh logs dev-image"
+  fi
+  docker commit --change 'ENTRYPOINT ["bash"]' --change 'CMD []' "$name" "$img" >/dev/null || die "docker commit failed"
+  docker rm -f "$name" >/dev/null 2>&1
+  echo "[bench] built $img: remote.sh dev now starts from it, drop 'bash setup.sh' from dev commands"
+}
+
+dev_name() { echo "nssr-dev-$WHO"; }
+
+dev_stop_cmd() {  # $1=container. The previous command in our container only; pid 1 is sleep and stays.
+  docker exec "$1" bash -c 'pid=$(cat /tmp/nssr-dev.pid 2>/dev/null || true)
+[ -n "${pid:-}" ] && [ "$pid" != 1 ] || exit 0
+pkill -TERM -P "$pid" 2>/dev/null || true
+kill -TERM "$pid" 2>/dev/null || true
+sleep 1
+pkill -KILL -P "$pid" 2>/dev/null || true
+kill -KILL "$pid" 2>/dev/null || true
+rm -f /tmp/nssr-dev.pid' >/dev/null 2>&1 || true
+}
+
+dev_up() {  # $1=image to create from. Reuse only our keepalive container, and only when /solution is $WORK.
+  local img=$1 name running mount cimg label
+  name=$(dev_name)
+  running=$(docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null || echo no)
+  mount=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/solution"}}{{.Source}}{{end}}{{end}}' "$name" 2>/dev/null || true)
+  cimg=$(docker inspect -f '{{.Config.Image}}' "$name" 2>/dev/null || true)
+  label=$(docker inspect -f '{{index .Config.Labels "nssr.dev"}}' "$name" 2>/dev/null || true)
+  if [ "$running" = true ] && [ "$mount" = "$WORK" ] && [ "$label" = 1 ]; then
+    if [ "$cimg" = "$img" ]; then
+      echo "[bench] reusing $name" >&2
+      dev_stop_cmd "$name"
+      return 0
+    fi
+    # This tree's tag is not built. Do not throw away a container that already has torch and cuRobo.
+    if [ "$img" = "$IMAGE" ] && [[ "$cimg" == "$DEV_REPO:"* ]]; then
+      echo "[bench] reusing $name on $cimg; the tag for this tree is not built" >&2
+      dev_stop_cmd "$name"
+      return 0
+    fi
+  fi
+  if [ "$running" != no ]; then
+    docker rm -f "$name" >/dev/null 2>&1 || true
+  fi
+  echo "[bench] starting $name from $img" >&2
+  docker run -d --name "$name" --label nssr.dev=1 --gpus all --network host --ipc host \
+    -v "$WORK:/solution" -v "$DDS:/etc/nssr/fastdds.xml:ro" \
+    -e ROS_DOMAIN_ID=146 -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/nssr/fastdds.xml \
+    -w /solution --entrypoint bash "$img" -c 'sleep infinity' >/dev/null \
+    || die "cannot start $name"
+}
+
+dev_exec() {  # $1=timeout, rest = command. install/ is sourced only when it is not older than the synced sources.
+  local t=$1; shift
+  docker exec -e CMD="$*" -e T="$t" "$(dev_name)" bash -c 'source /opt/ros/humble/setup.bash
+if [ -f install/setup.bash ] && [ -z "$(find src -type f -newer install/setup.bash \
+  ! -path "*/__pycache__/*" ! -path "*.egg-info/*" -print -quit 2>/dev/null)" ]; then
+  source install/setup.bash
+elif [ -f install/setup.bash ]; then
+  echo "[bench] install/ is older than the synced sources, not sourcing it" >&2
+fi
+echo $$ > /tmp/nssr-dev.pid
+timeout "$T" bash -c "$CMD"
+rc=$?
+rm -f /tmp/nssr-dev.pid
+exit $rc'
+}
+
 status() {
-  echo "bench:    $( [ -f "$LOCK" ] && cat "$LOCK" || echo free)"
+  echo "bench:$( [ -f "$LOCK" ] && cat "$LOCK" || echo free)"
   echo "you:      $WHO ($WORK $( [ -d "$WORK" ] && echo present || echo 'missing: remote.sh sync'))"
   echo "sessions: $(tmux ls -F '#S' 2>/dev/null | tr '\n' ' ')"
   echo "sim:      container $(sim_up && echo running || echo stopped), simulator $(has sim && echo running || echo stopped)"
   echo "solution: $(has solution && echo running || echo stopped)"
+  if docker inspect "$(dev_name)" >/dev/null 2>&1; then
+    echo "dev:      $(docker inspect -f '{{.State.Status}} {{.Config.Image}} mount {{range .Mounts}}{{if eq .Destination "/solution"}}{{.Source}}{{end}}{{end}}' "$(dev_name)")"
+  else
+    echo "dev:      stopped"
+  fi
   nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu --format=csv,noheader | sed 's/^/gpu:      /'
 }
 
@@ -229,11 +362,17 @@ bench.sh (usually through tools/remote.sh):
   sim start TASK [task.sh args]   e.g. sim start sort3 --pool 4 --seed 7; waits for /sim/task. --self-collision turns on physics self-collisions (debug). --force takes the bench
   sim stop | sim restart ...      stop the simulator and release the bench
   solution [start|stop|wait S]    solution.sh as at the final check, from your synced copy
-  eval TASK [args] [--keep] [--timeout S] [--layouts N]  sim start, solution, wait for done and exit, self-check, stop. --layouts: install once, then run.sh in a clean container on each of N layouts of one simulator; --timeout is per layout
+  eval TASK [args] [--keep] [--timeout S] [--layouts N] [--run CMD]  sim start, solution, wait for done and exit, self-check, stop. --layouts: install once, then run.sh in a clean container on each of N layouts of one simulator; --timeout is per layout, --run replaces run.sh there (tools/startup_probe.py)
   check                           self-check (/sim/task/check, debug only: tools/, never src/)
   ros CMD...                      a ROS 2 command in the sim container, 20 s timeout (NSSR_ROS_TIMEOUT)
-  dev [--timeout S] -- CMD        CMD in a fresh container from the image, your copy at /solution (colcon, ros2 run)
-  logs sim|solution|setup [N]     the last N lines (default 60)
+  dev [--timeout S] -- CMD        CMD in nssr-dev-<you>, your copy mounted at /solution. The container stays up.
+                                  colcon build/ and install/ stay in that copy. A second dev with the same name
+                                  stops the previous command in that container only. Uses the dev image for your
+                                  setup.sh if it is built, otherwise an existing nssr-dev container for this name,
+                                  otherwise the bare image
+  dev-image [--force]             build that image: torch, cuRobo and the kernel cache, ~6 min once. Does not
+                                  overwrite a tag a container is using, and does not replace nssr-dev:6057b5989a06
+  logs sim|solution|setup|dev-image [N]  the last N lines (default 60)
   gpu                             VRAM, RAM, containers
 TXT
 }
@@ -264,6 +403,7 @@ case "$cmd" in
         --keep) keep=1; shift ;;
         --timeout) timeout=$2; shift 2 ;;
         --layouts) layouts=$2; shift 2 ;;
+        --run) RUN_CMD=$2; shift 2 ;;  # debug: instead of bash run.sh on each layout, no single quotes in it
         *) args+=("$1"); shift ;;
       esac
     done
@@ -290,13 +430,14 @@ case "$cmd" in
     shift || true
     [ $# -gt 0 ] || die "usage: dev [--timeout S] -- CMD"
     [ -d "$WORK" ] || die "no $WORK: remote.sh sync"
-    name="nssr-dev-$WHO"
-    docker rm -f "$name" >/dev/null 2>&1
-    docker run --rm --name "$name" --gpus all --network host --ipc host \
-      -v "$WORK:/solution" -v "$DDS:/etc/nssr/fastdds.xml:ro" \
-      -e ROS_DOMAIN_ID=146 -e FASTRTPS_DEFAULT_PROFILES_FILE=/etc/nssr/fastdds.xml -e CMD="$*" -e T="$t" \
-      -w /solution --entrypoint bash "$IMAGE" -c 'source /opt/ros/humble/setup.bash; \
-        [ -f install/setup.bash ] && source install/setup.bash; timeout "$T" bash -c "$CMD"' ;;
+    img="$DEV_REPO:$(dev_tag)"
+    if ! docker image inspect "$img" >/dev/null 2>&1; then
+      echo "[bench] no $img; reusing this name's nssr-dev container if it is already up, else $IMAGE: remote.sh dev-image" >&2
+      img=$IMAGE
+    fi
+    dev_up "$img"
+    dev_exec "$t" "$@" ;;
+  dev-image) dev_image "$@" ;;
   logs) tail_log "${1:-sim}" "${2:-60}" ;;
   gpu) gpu ;;
   help|-h|--help) usage ;;

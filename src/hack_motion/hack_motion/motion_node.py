@@ -7,6 +7,7 @@ MoveTcp:    cuRobo (parameter `planner`, default curobo). `direct` is one IK sol
             the TCP, not the joint error.
 """
 import math
+import json
 import os
 import threading
 import time
@@ -20,16 +21,21 @@ from rclpy.action import ActionServer
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
+from std_msgs.msg import String
 from tf2_ros import Buffer, TransformListener
 
 from .curobo_planner import Unreachable
-from .robot import ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, TCP_LINK, clip, raise_steps
+from .robot import ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, TCP_LINK, TRAYS, clip, raise_steps
 
 PERIOD = 0.05  # s, real time between control checks
-STALL_TIME = 0.5  # s of sim time without progress -> compensate the PD undershoot
+# 1/s, integrates the PD undershoot. The arm actuators settle with tau = kd/kp = 0.25 s, so this is damping 0.7.
+COMPENSATION_RATE = 2.0
 MAX_COMPENSATION = 0.3  # rad added on top of the target at most
 HOME_TOL = 0.1  # rad, every arm joint within this of 0 -> the arm hangs at home
+HELD_TOL = 0.05  # rad, the arm MoveTcp did not ask for: it only holds its pose
+TASK_WAIT = 5.0  # s, real time the preload waits for /sim/task, so that it does not build the planner twice
 
 
 class MotionNode(Node):
@@ -37,9 +43,14 @@ class MotionNode(Node):
         super().__init__("hack_motion")
         self.lock = threading.Lock()
         self.q = {}
+        self.compensation = {}  # joint -> rad on top of the target, kept between moves (see move_joints)
         self.hand_state = {"left": None, "right": None}
+        self.task_trays = None  # trays of the task from /sim/task, None until it arrives
         cb = ReentrantCallbackGroup()
         self.create_subscription(JointState, "/joint_states", self.on_joints, 10, callback_group=cb)
+        latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                             reliability=ReliabilityPolicy.RELIABLE)
+        self.create_subscription(String, "/sim/task", self.on_task, latched, callback_group=cb)
         for side in ("left", "right"):
             self.create_subscription(JointState, f"/inspire_hand/state/{side}_hand",
                                      lambda m, s=side: self.on_hand(s, m), 10, callback_group=cb)
@@ -62,17 +73,37 @@ class MotionNode(Node):
     def _preload(self):
         """Build the planner while brain is still scanning the scene, so the first MoveTcp does not wait
         for it. On failure move_tcp tries again and reports the error."""
+        self._startup("preload starts")
         if not self._wait_joints(timeout=60.0):
             return
+        self._startup("first /joint_states")
+        t0 = time.perf_counter()
+        while self.task_trays is None and time.perf_counter() - t0 < TASK_WAIT:
+            time.sleep(PERIOD)
         with self._tcp_lock:
             try:
                 with self.lock:
                     snapshot = dict(self.q)
                 self.get_logger().info(self._planner_obj().load(snapshot))
+                self._startup("planner loaded")
             except Exception:
                 self.get_logger().error(traceback.format_exc())
 
+    def _startup(self, what):
+        """Start-up timeline for tools/startup_report.py: the log prefix has the wall clock, this adds the sim clock."""
+        self.get_logger().info(f"startup: {what}, sim {self.now():.2f}")
+
     # ---------------------------------------------------------------- state
+    def on_task(self, msg):
+        """The trays of this task go into the cuRobo world (sort2 has no tray_center, objects may lie there)."""
+        try:
+            trays = json.loads(msg.data).get("trays", {})
+        except (ValueError, AttributeError) as e:
+            self.get_logger().error(f"cannot read /sim/task: {e!r}")
+            trays = {}
+        self.task_trays = tuple(sorted(name for name in trays if name in TRAYS))
+        self.get_logger().info(f"trays in the world: {list(self.task_trays)}")
+
     def on_joints(self, msg):
         with self.lock:
             self.q.update(zip(msg.name, msg.position))
@@ -101,8 +132,8 @@ class MotionNode(Node):
             self.cmd[group].publish(msg)
 
     # ---------------------------------------------------------------- MoveJoints
-    def move_joints(self, names, positions, speed=0.0, tol=0.0, max_time=0.0, feedback=None):
-        """Blocking joint move. Returns (success, max_error, message)."""
+    def move_joints(self, names, positions, speed=0.0, tol=0.0, max_time=0.0, feedback=None, held=()):
+        """Blocking joint move. Returns (success, max_error, message). Joints in `held` only need HELD_TOL."""
         unknown = [n for n in names if n not in JOINTS]
         if unknown:
             return False, 0.0, f"unknown joints {unknown}"
@@ -110,6 +141,7 @@ class MotionNode(Node):
             return False, 0.0, "joints and positions differ in length"
         speed = min(speed or MAX_SPEED, MAX_SPEED)
         tol = tol or 0.02
+        tols = {n: max(tol, HELD_TOL) if n in held else tol for n in names}
         goal = {n: clip(n, p) for n, p in zip(names, positions)}
         start = self.joints(names)
         if any(v is None for v in start):
@@ -119,10 +151,11 @@ class MotionNode(Node):
         speeds = {n: dist[n] / duration for n in names}  # every joint arrives at the same time
         max_time = max_time or (2.0 * duration + 3.0)
 
-        cmd = dict(goal)
+        # The droop changes slowly with the pose, so a move starts from what the last one needed. Without this, every
+        # segment of a path lets the arm sag again before anything pushes it back.
+        cmd = {n: clip(n, goal[n] + self.compensation.get(n, 0.0)) for n in names}
         self.send(cmd, speeds)
-        t0 = self.now()
-        best, best_t = float("inf"), t0
+        t0 = t_prev = self.now()
         while rclpy.ok():
             time.sleep(PERIOD)
             q = dict(zip(names, self.joints(names)))
@@ -130,23 +163,27 @@ class MotionNode(Node):
             max_err = max(abs(e) for e in err.values())
             if feedback:
                 feedback(max_err)
-            if max_err < tol:
+            if all(abs(err[n]) < tols[n] for n in names):
                 return True, max_err, "ok"
             t = self.now()
             if t - t0 > max_time:
+                for n in names:  # blocked by something, maybe: the next move must not start by pushing harder
+                    if abs(err[n]) > tols[n]:
+                        self.compensation.pop(n, None)
                 return False, max_err, "timeout"
-            if max_err < best - 1e-3:
-                best, best_t = max_err, t
-            elif t - best_t > STALL_TIME:  # stopped short of the target: push the command past it
-                for n in names:
-                    if abs(err[n]) > tol:
-                        extra = max(-MAX_COMPENSATION, min(MAX_COMPENSATION, cmd[n] - goal[n] + err[n]))
-                        cmd[n] = clip(n, goal[n] + extra)
-                self.send(cmd, {n: max(abs(err[n]) / STALL_TIME, 0.05) for n in names})
-                best, best_t = max_err, t
+            if t - t0 > duration:  # the profile has arrived: what is left is droop
+                short = [n for n in names if abs(err[n]) > tols[n]]
+                for n in short:
+                    extra = cmd[n] - goal[n] + COMPENSATION_RATE * err[n] * (t - t_prev)
+                    extra = max(-MAX_COMPENSATION, min(MAX_COMPENSATION, extra))
+                    cmd[n] = clip(n, goal[n] + extra)
+                    self.compensation[n] = extra
+                if short:
+                    self.send(cmd, {n: MAX_SPEED for n in names})
+            t_prev = t
         return False, 0.0, "shutdown"
 
-    def follow(self, names, waypoints, dt, tol, max_time):
+    def follow(self, names, waypoints, dt, tol, max_time, held=()):
         """Joint-space target, or closed-loop segments along a path.
 
         Streaming waypoints open-loop lets the arm cut the corner into the body. Each segment is short
@@ -155,7 +192,7 @@ class MotionNode(Node):
         """
         deadline = self.now() + max_time if max_time else None
         if dt is None or len(waypoints) <= 1:
-            return self.move_joints(names, waypoints[-1], tol=tol, max_time=max_time or 0.0)
+            return self.move_joints(names, waypoints[-1], tol=tol, max_time=max_time or 0.0, held=held)
         anchors = []
         prev = None
         for q in waypoints:
@@ -172,17 +209,12 @@ class MotionNode(Node):
                 if left <= 0.0:
                     self.get_logger().info(f"segment {i + 1}/{len(anchors)}: out of max_time {max_time:.1f} s")
                     return False, 0.0, "timeout"
-            ok, err, msg = self.move_joints(names, q, tol=tol if i == len(anchors) - 1 else 0.08, max_time=left)
+            ok, err, msg = self.move_joints(names, q, tol=tol if i == len(anchors) - 1 else 0.08, max_time=left, held=held)
             if not ok:
                 here = self.joints(names)
-                worst = 0.0
-                who = ""
-                if not any(v is None for v in here):
-                    for n, target, cur in zip(names, q, here):
-                        if abs(target - cur) > worst:
-                            worst, who = abs(target - cur), n
-                self.get_logger().info(
-                    f"segment {i + 1}/{len(anchors)} {msg} err {err:.3f} worst {who} {worst:.3f}")
+                short = [f"{n} {t - c:+.3f}" for n, t, c in zip(names, q, here)
+                         if c is not None and abs(t - c) > tol]
+                self.get_logger().info(f"segment {i + 1}/{len(anchors)} {msg} err {err:.3f}: {', '.join(short)}")
                 return False, err, msg
         return True, 0.0, "ok"
 
@@ -262,6 +294,7 @@ class MotionNode(Node):
             self._planner = CuroboPlanner(
                 os.path.join(share, "tiangong2pro_with_hands.urdf"),
                 os.path.join(share, "tienkung_curobo.yml"))
+        self._planner.trays = self.task_trays or ()  # load() rebuilds the planner if the set changed
         return self._planner
 
     def _wait_joints(self, timeout=5.0):
@@ -277,9 +310,8 @@ class MotionNode(Node):
         """Bring an arm that hangs at home up in front of the chest by joints (robot.RAISE_STEPS).
 
         At home the forearm spheres are inside the thigh, and cuRobo will not plan from a state in collision.
-        A cuRobo path from the hang would also swing the hand under the table edge: the table is not in the
-        cuRobo world yet. Only when every joint of the arm is near home: these joint moves are not
-        collision-checked, and from a working pose they could sweep the arm through the table.
+        Only when every joint of the arm is near home: these joint moves are not collision-checked, and from
+        a working pose they could sweep the arm through the table.
         """
         for arm, names in ARM_JOINTS.items():
             q = self.joints(names)
@@ -287,7 +319,7 @@ class MotionNode(Node):
                 continue
             self.get_logger().info(f"{arm} arm at home, raising it in front of the chest")
             for i, step in enumerate(raise_steps(arm)):
-                ok, err, msg = self.move_joints(names, step, tol=0.05)
+                ok, err, msg = self.move_joints(names, step, tol=0.1)
                 if not ok:
                     raise RuntimeError(f"{arm} arm stopped on raise step {i + 1}: {msg} (err {err:.3f})")
 
@@ -342,12 +374,15 @@ class MotionNode(Node):
             known = [(n, i) for i, n in enumerate(names) if n in JOINTS]
             names = [n for n, _ in known]
             waypoints = [[q[i] for _, i in known] for q in waypoints]
-            self.get_logger().info(f"move_tcp {g.arm} {mode}: {len(waypoints)} waypoints, {len(names)} joints")
-            ok, _, msg = self.follow(names, waypoints, dt, tol=0.01, max_time=g.max_time)
+            self.get_logger().info(f"move_tcp {g.arm} {mode}: {len(waypoints)} waypoints, {len(names)} joints, "
+                                   f"start moved {planner.start_moved:.3f} rad")
+            other = next(joints for arm, joints in ARM_JOINTS.items() if arm != g.arm)
+            ok, _, msg = self.follow(names, waypoints, dt, tol=0.01, max_time=g.max_time, held=other)
         pos_err, rot_err = self.tcp_error(g.arm, g.target)
         if pos_err is None:
             return MoveTcp.Result(success=False, pos_error=0.0, rot_error=0.0, message=f"{msg}; no tf")
-        reached = ok and pos_err <= pos_tol and rot_err <= rot_tol
+        # The goal is the TCP pose: a joint stalled a few mrad short must not fail a TCP that is in tolerance.
+        reached = (ok or msg == "timeout") and pos_err <= pos_tol and rot_err <= rot_tol
         if reached:
             message = "ok"
         elif ok:

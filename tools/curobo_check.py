@@ -2,9 +2,10 @@
 """cuRobo first checks (docs/ANALYSIS.md, 7.3): import, JIT warm-up, IK and plan time, GPU and host memory.
 
 Runs on a stock cuRobo robot (franka.yml by default), before the TienKung config exists. Start the simulator first
-so the GPU budget is measured next to it. In a fresh container from the simulator image:
+so the GPU budget is measured next to it. torch, cuRobo and the kernel cache come from the dev image
+(remote.sh dev-image); this command does not install them again:
 
-  bash tools/remote.sh dev --timeout 1800 -- 'bash tools/curobo_install.sh && python3 tools/curobo_check.py'
+  bash tools/remote.sh dev --timeout 600 -- 'python3 tools/curobo_check.py'
 
 Prints a human-readable report and a final JSON line (prefix CUROBO_CHECK).
 """

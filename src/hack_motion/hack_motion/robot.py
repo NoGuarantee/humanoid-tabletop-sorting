@@ -126,6 +126,10 @@ HAND_PRESETS = {
     "open": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
     "power": [0.2, 0.2, 0.2, 0.2, 0.5, 0.2],  # example from INTERFACES.md
     "pinch": [1.0, 1.0, 1.0, 0.3, 0.4, 0.1],  # TODO tune: index + thumb
+    # Flat pinch: thumb already across (actuator 6) and left open as the anvil. Bending it on a 3 cm
+    # dish drove the pad into the table (the reading went to 1.34, past open). Only the index closes.
+    "pinch_ready": [1.0, 1.0, 1.0, 1.0, 1.0, 0.1],
+    "pinch_flat": [1.0, 1.0, 1.0, 0.55, 1.0, 0.1],
     "tube50": [0.35, 0.35, 0.35, 0.35, 0.5, 0.1],  # TODO tune on a 29 mm tube
     "tube15": [1.0, 1.0, 0.25, 0.25, 0.4, 0.1],  # TODO tune on a 17 mm tube
 }

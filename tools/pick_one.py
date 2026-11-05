@@ -28,7 +28,7 @@ import time
 import rclpy
 from geometry_msgs.msg import Point, Pose, Quaternion
 from hack_brain.clients import Clients
-from hack_brain.grasp_planner import FINGERTIP, load_db, plan_grasps, plan_place, pose, top_down
+from hack_brain.grasp_planner import FINGERTIP, axis_z, load_db, plan_grasps, plan_place, pose, top_down
 from hack_brain.skills import Skills
 from hack_interfaces.msg import Container
 from hack_motion.robot import tray_rim
@@ -83,6 +83,10 @@ def show_plan(obj, cand, place):
           f"lift {cand.lift.position.z:+.3f}", flush=True)
     print(f"  table contact at x {obj.center.x:.2f} is tcp {touch_z(obj.center.x):+.3f}, "
           f"margin {margin * 100:.1f} cm", flush=True)
+    if axis_z(cand.grasp.orientation)[2] < 0.85:
+        # The touch line is for open fingers straight down. A leaned pinch clears the table beside the object.
+        print("  hand is leaned; the vertical touch line does not apply", flush=True)
+        margin = TOUCH_MARGIN
     r = place.release.position
     print(f"place {place.arm} tcp release ({r.x:.3f},{r.y:.3f},{r.z:+.3f})  "
           f"approach {place.approach.position.z:+.3f}", flush=True)

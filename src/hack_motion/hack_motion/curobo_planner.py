@@ -190,11 +190,10 @@ class CuroboPlanner:
         """plan_pose with the moving TCP held on the line through the goal along one axis of the goal frame.
 
         cuRobo's linear criterion frees one goal-frame axis on the way and pulls the other two and the orientation
-        to the goal. The axis is the one the move is mostly along: approach, lift and retreat are moves along the
-        TCP z axis. A sideways start offset is pulled onto the line, not kept.
+        to the goal. A move that lies along one TCP axis uses that axis. A world-vertical move of a leaned hand
+        does not: it is two axis moves, the one that gains height first, so the path is not pulled down into the table.
         """
         import torch
-        from curobo._src.cost.tool_pose_criteria import ToolPoseCriteria
 
         link = TCP_LINK[arm]
         i = goal.tool_frames.index(link)
@@ -207,7 +206,34 @@ class CuroboPlanner:
             [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)],
         ], device=end.device, dtype=end.dtype)
         local = rot.T @ (end - start.to(end.dtype))
-        axis = "xyz"[int(local.abs().argmax().item())]
+        length = float(torch.linalg.norm(local))
+        dominant = int(local.abs().argmax().item())
+        # A leaned hand's world-vertical move is split across two TCP axes. Freeing only the larger one
+        # pulls the path onto a line that, for the 45° pinch, points down into the table.
+        if length < 1e-4 or float(local[dominant].abs()) > 0.85 * length:
+            return self._linear_axis(link, goal, state, "xyz"[dominant])
+        from curobo.types import JointState
+
+        order = sorted(range(3), key=lambda k: -float(rot[2, k] * local[k]))  # gain height before sliding
+        names, waypoints, dt = None, [], None
+        here = start.to(end.dtype).clone()
+        js = state
+        for k in order:
+            if abs(float(local[k])) < 1e-4:
+                continue
+            step = goal.clone()
+            here = here + rot[:, k] * local[k]
+            step.position[0, 0, i, 0] = here
+            names, part, dt = self._linear_axis(link, step, js, "xyz"[k])
+            waypoints.extend(part)
+            js = JointState.from_position(
+                torch.tensor([waypoints[-1]], device=here.device, dtype=here.dtype), joint_names=names)
+        return names, waypoints, dt
+
+    def _linear_axis(self, link, goal, state, axis):
+        """One Cartesian plan that may travel only along `axis` of the goal frame."""
+        from curobo._src.cost.tool_pose_criteria import ToolPoseCriteria
+
         self.mp.update_tool_pose_criteria({link: ToolPoseCriteria.linear_motion(axis=axis)})
         try:
             result = self.mp.plan_pose(goal, state)

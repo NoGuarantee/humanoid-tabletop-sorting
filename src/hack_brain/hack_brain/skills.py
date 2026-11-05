@@ -5,7 +5,7 @@ tipped over on the table, so a failed grasp before the lift costs nothing. Once 
 right tray (+10); lifted and left on the table, still in the hand or in a wrong tray is -10, on the floor -10 always.
 So a skill must know whether it holds the object, and putting it back on the table after a lift does not help.
 """
-from .grasp_planner import plan_grasps, plan_place, pose
+from .grasp_planner import FINGERTIP, flat_hold_point, plan_grasps, plan_place, pose, tcp_from_local
 
 # The joint loop accepts 0.01 rad. On a 0.7 m arm that is already about 1 cm at the TCP, and the default
 # MoveTcp limit is 1 cm, so a descent that had arrived was rejected at 1.02 cm and the hand never closed.
@@ -31,7 +31,10 @@ class Skills:
             self.c.hand(arm, "open")
             if not self.c.move_tcp(arm, cand.pre_grasp, "direct"):
                 continue  # unreachable from this side: nothing touched yet
+            if cand.approach_preset != "open" and self.c.hand(arm, cand.approach_preset) is None:
+                continue
             if not self._descend(arm, cand.grasp):
+                self.c.hand(arm, "open")
                 self.c.move_tcp(arm, cand.pre_grasp, "linear")
                 continue
             hr = self.c.hand(arm, cand.hand_preset, cand.force)
@@ -92,9 +95,18 @@ class Skills:
     def place(self, cand, container, put_back_pose=None):
         plan = plan_place(cand.arm, container, self.db)
         # Keep the grasp orientation. Turning the wrist to yaw 0 on the way tips a pinched object out.
-        plan.approach.orientation = cand.grasp.orientation
-        plan.release.orientation = cand.grasp.orientation
-        plan.retreat.orientation = cand.grasp.orientation
+        q = cand.grasp.orientation
+        if cand.hand_preset == "pinch_flat":
+            # plan_place aimed a vertical hand. The object sits between the pads, not on the TCP axis.
+            local = flat_hold_point(cand.arm)
+            for name in ("approach", "release", "retreat"):
+                p = getattr(plan, name)
+                target = (p.position.x, p.position.y, p.position.z - FINGERTIP)
+                setattr(plan, name, tcp_from_local(target, local, q))
+        else:
+            plan.approach.orientation = q
+            plan.release.orientation = q
+            plan.retreat.orientation = q
         if not self._carry(cand.arm, cand.lift, plan.approach) and not self._to_approach(cand.arm, plan.approach):
             # TODO(grasping): another approach or the other arm. Putting the object back gives the same -10
             # as dropping it, but frees the arm for a retry later.

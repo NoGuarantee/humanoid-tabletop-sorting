@@ -7,12 +7,6 @@ from .full_pose_nn import OBJECTS
 from .yolo_pose_head import YoloPoseHead
 
 
-POOL_IDENTITIES = {
-    4: {1: (0, 1, 2), 2: (3, 4, 5), 3: (6, 7, 8), 5: (15,), 6: (16,)},
-    6: {3: (12, 13, 14), 4: (9, 10, 11)},
-}
-
-
 class IdentityHead(nn.Module):
     def __init__(self, channels):
         super().__init__()

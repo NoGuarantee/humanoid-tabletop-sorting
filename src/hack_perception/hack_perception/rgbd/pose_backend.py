@@ -9,10 +9,10 @@ import torch
 
 from . import fit_rgbd_templates as fit
 from .full_pose_nn import AXIAL, OBJECTS, SCALE_M, features
-from .geometry import estimate_table_support
+from ..rgbd_labels import POOL_IDENTITIES, validate_detector_labels
 from .scene_geometry import estimate_scene_geometry
 from .rgbd_free_space import depth_view, rerank
-from .rgbd_identity import IdentityHead, POOL_IDENTITIES
+from .rgbd_identity import IdentityHead
 from .multiview_association import association, descriptors
 from .rgbd_template_refinement import radial_profile, stable_tube
 from .tube_end_ranker import TubeEndRanker
@@ -30,22 +30,31 @@ class PoseBackend:
     def pool_categories(pool):
         return POOL_IDENTITIES[pool]
 
-    def __init__(self, root):
+    def __init__(self, root, *, model_poses=True):
         root = Path(root)
         bundle = json.loads((root / "bundle.json").read_text())
         expected_files = {"shape/catalog.json", "identity.pt", "pose.pt", "tube.pt", "yolo.pt"}
         if bundle["sha256"].keys() not in (expected_files, expected_files | {"box.pt"}):
             raise ValueError("invalid bundle manifest")
-        for filename, expected in bundle["sha256"].items():
+        required = bundle["sha256"] if model_poses else {"yolo.pt": bundle["sha256"]["yolo.pt"]}
+        for filename, expected in required.items():
             if checksum(root / filename) != expected:
                 raise ValueError(f"checksum mismatch for {filename}")
+        from ultralytics import YOLO
+
+        self.detector = YOLO(str(root / "yolo.pt"))
+        validate_detector_labels(self.detector.names)
+        self.hooks = SegmentationFeatures(self.detector) if model_poses else None
+        if model_poses:
+            self._load_pose_models(root, bundle)
+
+    def _load_pose_models(self, root, bundle):
         self.index = json.loads((root / "shape" / "catalog.json").read_text())
         if self.index["objects"].keys() != set(OBJECTS):
             raise ValueError("unexpected model catalog names")
         self.catalog = {}
         fit.setup(root / "shape", self.catalog)
         self.calibrated = self.index["calibrated"]
-        torch.set_num_threads(3)
         identity = torch.load(root / "identity.pt", map_location="cpu", weights_only=True)
         pose = torch.load(root / "pose.pt", map_location="cpu", weights_only=True)
         if any(tuple(saved["objects"]) != OBJECTS
@@ -74,13 +83,10 @@ class PoseBackend:
             self.box = PairedBoxIdentity(self.channels).eval()
             self.box.load_state_dict(box["state"])
             self.box_names = NAMES
-        from ultralytics import YOLO
-
-        self.detector = YOLO(str(root / "yolo.pt"))
-        self.hooks = SegmentationFeatures(self.detector)
 
     def segment(self, sensor):
-        self.hooks.shape = self.hooks.map = None
+        if self.hooks is not None:
+            self.hooks.shape = self.hooks.map = None
         pred = self.detector.predict(np.ascontiguousarray(sensor["rgb"][..., ::-1]), device="cpu",
                                      imgsz=640, conf=.25, iou=.7, retina_masks=True, verbose=False)[0]
         raster = np.zeros(sensor["depth"].shape, dtype=np.uint16)
@@ -94,7 +100,8 @@ class PoseBackend:
                 raster[masks[i] & (raster == 0)] = ident
                 objects.append(dict(instance_id=ident, class_id=int(classes[i]) + 1,
                                     confidence=float(confidence[i])))
-        return raster, objects, self.hooks.crops(raster)
+        crops = self.hooks.crops(raster) if self.hooks is not None else {}
+        return raster, objects, crops
 
     def scene_geometry(self, sensors, *, segmentation=None, tray_of_color=None):
         """Table plane and tray openings, reusing segmentation when provided."""
@@ -102,10 +109,9 @@ class PoseBackend:
             segmentation = [self.segment(sensor) if sensor is not None else None for sensor in sensors]
         return estimate_scene_geometry(sensors, segmentation, tray_of_color)
 
-    def estimate(self, sensors, pool, region, *, segmentation=None):
+    def estimate(self, sensors, pool, segmentation, plane):
         """sensors are ordered head/torso; a missing slot is None."""
         masks, objects, crops, desc = [[], [], [], []]
-        plane = None
         for index, sensor in enumerate(sensors):
             if sensor is None:
                 masks.append(None)
@@ -113,17 +119,12 @@ class PoseBackend:
                 crops.append({})
                 desc.append([])
                 continue
-            raster, proposals, neck = self.segment(sensor) if segmentation is None else segmentation[index]
+            raster, proposals, neck = segmentation[index]
             proposals = [p for p in proposals if p["class_id"] in POOL_IDENTITIES[pool]]
             masks.append(raster)
             objects.append({p["instance_id"]: p for p in proposals})
             crops.append(neck)
             desc.append(descriptors(sensor["rgb"], sensor["depth"], sensor["K"], sensor["T"], raster, proposals))
-            if plane is None and region == "table":
-                try:
-                    plane, _ = estimate_table_support(sensor["depth"], sensor["K"], sensor["T"])
-                except (RuntimeError, ValueError):
-                    pass
         groups = association(*desc)
         for slot in range(2):
             used = {group[slot] for group in groups}
@@ -146,13 +147,12 @@ class PoseBackend:
                 continue
             clipped = [o is not None and self.clipped(o["mask"]) for o in obs]
             tasks.append((ids, refs, category, choices, image, extra, neck, anchor, measured, cloud, clipped))
-        table_z = float(-plane[1] / plane[0][2]) if plane is not None else None
         if not tasks:
-            return [], table_z
+            return []
         guesses = self.guesses(tasks)
         depth_views = [depth_view(sensor) for sensor in sensors if sensor is not None]
         detections = [self.fit_pose(task, hypotheses, plane, depth_views) for task, hypotheses in zip(tasks, guesses)]
-        return detections, table_z
+        return detections
 
     @staticmethod
     def clipped(mask):

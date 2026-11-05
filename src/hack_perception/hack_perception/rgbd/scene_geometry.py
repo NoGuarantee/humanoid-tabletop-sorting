@@ -6,10 +6,10 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from ..classify import DEFAULT_TRAY
+from ..rgbd_labels import TRAY_CLASS
 from .geometry import depth_mask_to_pelvis, estimate_table_support
 
 
-TRAY_CLASS = 7
 # NSSR tray geometry and task colour labels. The centre and yaw are fitted per exposure.
 TRAY_SIZE_M = (.22, .32, .07)
 TRAY_COLORS = ("red", "green", "blue")

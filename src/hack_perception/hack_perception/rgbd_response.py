@@ -4,9 +4,9 @@ import numpy as np
 
 from .rgbd.geometry import table_z_at
 from .rgbd_frames import CAMERAS
+from .rgbd_labels import CLASS_BY_ID
 
 SCHEMA = "hack_perception.model_poses/v1"
-CATEGORY = {1: "figure", 2: "dish", 3: "box", 4: "electronics", 5: "falcon50", 6: "falcon15"}
 
 
 def response(status, *, stamp=None, pool=None, objects=(), table_z=None, containers=()):
@@ -25,7 +25,7 @@ def object_response(detection):
     elif not detection.valid:
         status = "reacquire_uncertain_fit"
     instance_ids = {camera: int(ident) for camera, ident in zip(CAMERAS, detection.instances) if ident is not None}
-    return dict(name=detection.name, category=CATEGORY[detection.category], pose_status=status,
+    return dict(name=detection.name, category=CLASS_BY_ID[detection.category], pose_status=status,
                 T_pelvis_object=detection.pose.tolist() if status == "ok" else None,
                 center_pelvis_m=detection.center.tolist() if status == "ok" else None,
                 size_model_m=detection.size.tolist(), orientation_mode=detection.orientation,
@@ -34,10 +34,15 @@ def object_response(detection):
                 depth_supported_views=detection.views, instances=instance_ids)
 
 
-def infer_response(backend, sensors, stamp, pool, tray_of_color=None):
-    segmentation = [backend.segment(sensor) for sensor in sensors]
-    detections, _ = backend.estimate(sensors, pool, "table", segmentation=segmentation)
+def prepare_scene(backend, sensors, tray_of_color):
+    segmentation = [backend.segment(sensor) if sensor is not None else None for sensor in sensors]
     plane, trays = backend.scene_geometry(sensors, segmentation=segmentation, tray_of_color=tray_of_color)
+    return segmentation, plane, trays
+
+
+def infer_response(backend, sensors, stamp, pool, tray_of_color=None, *, prepared=None):
+    segmentation, plane, trays = prepared if prepared is not None else prepare_scene(backend, sensors, tray_of_color)
+    detections = backend.estimate(sensors, pool, segmentation, plane)
     objects = [object_response(d) for d in detections]
     for slot, (_, proposals, _) in enumerate(segmentation):
         seen = {d.instances[slot] for d in detections}
@@ -45,7 +50,7 @@ def infer_response(backend, sensors, stamp, pool, tray_of_color=None):
             ident = proposal["instance_id"]
             category = proposal["class_id"]
             if category in backend.pool_categories(pool) and ident not in seen:
-                objects.append(dict(name=None, category=CATEGORY[category],
+                objects.append(dict(name=None, category=CLASS_BY_ID[category],
                                     pose_status="insufficient_depth", T_pelvis_object=None,
                                     center_pelvis_m=None, size_model_m=None, orientation_mode=None,
                                     detector_score=proposal["confidence"], depth_points=None,
@@ -53,4 +58,4 @@ def infer_response(backend, sensors, stamp, pool, tray_of_color=None):
     containers = [dict(id=tray.id, kind="tray", color=tray.color, center_pelvis_m=tray.center.tolist(),
                        yaw_rad=tray.yaw, size_m=tray.size) for tray in trays]
     return response("ok", stamp=stamp, pool=pool, objects=objects,
-                    table_z=table_z_at(plane) if plane is not None else 0., containers=containers)
+                    table_z=table_z_at(plane) if plane is not None else None, containers=containers)

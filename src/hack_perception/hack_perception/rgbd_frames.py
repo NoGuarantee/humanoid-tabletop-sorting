@@ -35,9 +35,11 @@ class PairBuffer:
         for frames in self.frames.values():
             frames.clear()
 
-    def latest(self, now_ns, max_age_ns):
-        common = set.intersection(*(set(frames) for frames in self.frames.values()))
-        ns = max((ns for ns in common if ns > 0 and 0 <= now_ns - ns <= max_age_ns), default=None)
+    def latest(self, now_ns, max_age_ns, *, paired=True):
+        exposures = [set.intersection(*(set(self.frames[camera, kind]) for kind in STREAMS))
+                     for camera in CAMERAS]
+        candidates = exposures[0] & exposures[1] if paired else exposures[0] | exposures[1]
+        ns = max((ns for ns in candidates if ns > 0 and 0 <= now_ns - ns <= max_age_ns), default=None)
         if ns is None:
             return None
         return ns, self.at(ns)

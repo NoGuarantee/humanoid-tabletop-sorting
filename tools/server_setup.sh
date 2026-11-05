@@ -61,8 +61,10 @@ fi
 docker run --rm --gpus all ubuntu nvidia-smi -L
 
 step "hold the NVIDIA driver and Container Toolkit packages"
-# shellcheck disable=SC2046
-$SUDO apt-mark hold $(dpkg -l | awk '/^ii +(nvidia-|libnvidia-)/ {print $2}') >/dev/null
+# status "hi" means already held; a second setup must not call apt-mark with an empty list
+pkgs=$(dpkg -l | awk '/^[hi]i +(nvidia-|libnvidia-)/ {print $2}')
+# shellcheck disable=SC2086
+[ -n "$pkgs" ] && $SUDO apt-mark hold $pkgs >/dev/null
 apt-mark showhold | grep -c -E '^(nvidia-|libnvidia-)' | sed 's/^/held packages: /'
 
 step "GitHub CLI"
@@ -74,14 +76,24 @@ if ! command -v gh >/dev/null; then
 https://cli.github.com/packages stable main" | $SUDO tee /etc/apt/sources.list.d/github-cli.list >/dev/null
   apt_install gh
 fi
-if ! gh auth status >/dev/null 2>&1; then
-  echo "not logged in to GitHub. On the server, with a read-only token (docs/SERVER.md):"
-  echo "  gh auth login --with-token <<< 'github_pat_...' && gh auth setup-git"
-  echo "then run setup again"; exit 1
+gh_ok=0
+gh auth status >/dev/null 2>&1 && gh_ok=1
+usd_size=$(stat -c %s "$SIMREPO/assets/robots/tiangong_pro/tiangong_pro_v2.usd" 2>/dev/null || echo 0)
+if [ "$gh_ok" -ne 1 ]; then
+  if [ -d "$SIMREPO/.git" ] && [ "$usd_size" -ge 1000000 ]; then
+    echo "[setup] no GitHub login; using the simulator copy already at $SIMREPO"
+  else
+    echo "not logged in to GitHub. On the server, with a read-only token (docs/SERVER.md):"
+    echo "  gh auth login --with-token <<< 'github_pat_...' && gh auth setup-git"
+    echo "or copy your clone to $SIMREPO (assets included) and run setup again"
+    exit 1
+  fi
 fi
 
 step "simulator repo: $SIMREPO"
-if [ -d "$SIMREPO/.git" ]; then git -C "$SIMREPO" pull --ff-only
+if [ -d "$SIMREPO/.git" ]; then
+  if [ "$gh_ok" -eq 1 ]; then git -C "$SIMREPO" pull --ff-only
+  else echo "[setup] skip git pull: not logged in to GitHub"; fi
 else gh repo clone nssr-hackathon/nssr-uwt-polygon "$SIMREPO"; fi
 cd "$SIMREPO"
 

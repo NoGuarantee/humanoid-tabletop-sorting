@@ -14,9 +14,9 @@ def scene(*, visible_walls=4, color=(218, 238, 249)):
     k = np.array([[300., 0., width / 2], [0., 300., height / 2], [0., 0., 1.]])
     camera = np.eye(4)
     camera[:3, :3] = np.diag([1., -1., -1.])
-    camera[:3, 3] = [.5, .06, .8]
+    camera[:3, 3] = [.5, .06, .8005]
     v, u = np.indices((height, width))
-    rays = np.stack((u, v, np.ones_like(u)), axis=-1) @ np.linalg.inv(k).T @ camera[:3, :3].T
+    rays = np.stack((u + .5, v + .5, np.ones_like(u)), axis=-1) @ np.linalg.inv(k).T @ camera[:3, :3].T
     table_z = -.19
     yaw = np.deg2rad(23)
     center = np.array([.56, -.01, table_z + TRAY_SIZE_M[2]])
@@ -28,7 +28,7 @@ def scene(*, visible_walls=4, color=(218, 238, 249)):
     z = np.full((height, width), table_z)
     z[footprint] += .008
     z[rim] = center[2]
-    depth = np.rint(1000 * (camera[2, 3] - z)).astype(np.uint16)
+    depth = (1000 * (camera[2, 3] - z)).astype(np.uint16)
     rgb = np.full((height, width, 3), 145, np.uint8)
     rgb[footprint] = color
     if visible_walls < 4:
@@ -45,7 +45,7 @@ class SceneGeometryTest(unittest.TestCase):
     def test_measure_table_and_blue_tray_in_pelvis(self):
         sensor, segment, z, center, yaw = scene()
         plane, trays = estimate_scene_geometry([None, sensor], [None, segment])
-        self.assertAlmostEqual(table_z_at(plane), z, places=3)
+        self.assertAlmostEqual(table_z_at(plane), z, places=6)
         self.assertEqual(len(trays), 1)
         tray = trays[0]
         self.assertEqual((tray.id, tray.color), ("tray_right", "blue"))
@@ -77,6 +77,20 @@ class SceneGeometryTest(unittest.TestCase):
     def test_table_height_uses_the_requested_pelvis_xy(self):
         normal = np.array([-.07, .01, 1.])
         self.assertAlmostEqual(table_z_at((normal, .18), .38, 0.), -.1534)
+
+    def test_table_fit_uses_nssr_pixel_and_depth_bin_centers(self):
+        sensor, _, _, _, _ = scene()
+        v, u = np.indices(sensor["depth"].shape)
+        camera = sensor["T"]
+        rays = np.stack((u + .5, v + .5, np.ones_like(u)), axis=-1)
+        rays = rays @ np.linalg.inv(sensor["K"]).T @ camera[:3, :3].T
+        reference = np.array([-.18, .08, 1.]), .27
+        normal, offset = reference
+        depth = -(camera[:3, 3] @ normal + offset) / (rays @ normal)
+        sensor["depth"] = (1000 * depth).astype(np.uint16)
+        empty_mask = np.zeros_like(sensor["depth"])
+        plane, _ = estimate_scene_geometry([sensor], [(empty_mask, [], {})])
+        self.assertAlmostEqual(table_z_at(plane, .38), table_z_at(reference, .38), delta=.00008)
 
 
 if __name__ == "__main__":

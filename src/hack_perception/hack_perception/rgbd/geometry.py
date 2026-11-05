@@ -58,14 +58,17 @@ def rigid_fit(source, target):
     return r, bc - r @ ac
 
 
-def estimate_table_support(depth, k, transform, *, exclude=None):
+def estimate_table_support(depth, k, transform, *, exclude=None, nssr_sample_centers=False):
     """Fit support from depth points in the pelvis workspace."""
-    y, x = np.indices(depth.shape)
-    y, x = y[::4, ::4], x[::4, ::4]
-    d = depth[::4, ::4].astype(float) / 1000
-    rays = np.stack((x, y, np.ones_like(x)), axis=-1) @ np.linalg.inv(k).T
-    points = (rays * (d / rays[..., 2])[..., None]) @ transform[:3, :3].T + transform[:3, 3]
-    valid = (d >= .15) & (d <= 6)
+    y, x = np.mgrid[:depth.shape[0]:4, :depth.shape[1]:4]
+    depth_mm = depth[::4, ::4]
+    # NSSR projects at pixel centers and truncates optical Z to whole mm.
+    # The midpoint of each depth bin removes the systematic truncation bias.
+    half = .5 if nssr_sample_centers else 0.
+    z = (depth_mm.astype(float) + half) / 1000
+    rays = np.stack((x + half, y + half, np.ones_like(x)), axis=-1) @ np.linalg.inv(k).T
+    points = (rays * (z / rays[..., 2])[..., None]) @ transform[:3, :3].T + transform[:3, 3]
+    valid = (depth_mm >= 150) & (depth_mm <= 6000)
     valid &= ((points >= (.05, -1.2, -.6)) & (points <= (1.4, 1.2, .6))).all(-1)
     if exclude is not None:
         valid &= ~exclude[::4, ::4]

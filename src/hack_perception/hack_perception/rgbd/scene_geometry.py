@@ -158,7 +158,7 @@ def estimate_scene_geometry(sensors, segmentation, tray_of_color=None):
             continue
         raster, _, _ = segment
         plane, _ = estimate_table_support(
-            sensor["depth"], sensor["K"], sensor["T"], exclude=raster != 0)
+            sensor["depth"], sensor["K"], sensor["T"], exclude=raster != 0, nssr_sample_centers=True)
         if plane is not None:
             mapping = DEFAULT_TRAY if tray_of_color is None else tray_of_color
             return plane, detect_trays(sensors, segmentation, plane, mapping)

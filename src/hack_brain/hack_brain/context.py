@@ -7,6 +7,7 @@ from typing import Optional
 class State(str, Enum):
     WAIT = 'WAIT'
     VERIFY_EMPTY = 'VERIFY_EMPTY'
+    LOOK_TABLE = 'LOOK_TABLE'
     OBSERVE = 'OBSERVE'
     OPEN = 'OPEN'
     APPROACH = 'APPROACH'
@@ -109,7 +110,7 @@ class Config:
     watchdog: float = 15.0
     cancel_timeout: float = 5.0
     cycle_estimate: float = 40.0
-    reserve: float = 5.0
+    reserve: float = 10.0
     max_attempts: int = 2
     max_recoveries: int = 6
     min_confidence: float = 0.6
@@ -126,6 +127,8 @@ class Context:
     last_progress_wall: float = 0.0
     started_wall: Optional[float] = None
     deadline: float = 0.0
+    start_sim: Optional[float] = None
+    scene_invalidated_at: Optional[float] = None
     hand: Hand = Hand.UNKNOWN
     scene: Optional[Scene] = None
     target: Optional[Object] = None

@@ -11,11 +11,10 @@ from .transport import ActionTransport
 
 
 class Clients:
-    # No implementation currently provides verified hold/place evidence, detection,
-    # IK/linear paths, insertion or reorientation. Enable capabilities only when the
-    # corresponding adapter and its evidence contract have been implemented/tested.
-    capabilities = frozenset()
-    unavailable = ('detect and IK are stubs; linear, verified hold/place, tube skills unavailable')
+    # Motion/perception are implemented on main. Physical evidence and tube
+    # skills are still missing; do not claim those capabilities from action success.
+    capabilities = frozenset({'perception', 'pick', 'transfer', 'release', 'retreat', 'place'})
+    unavailable = 'physical verification and tube skills unavailable'
 
     def __init__(self, node, emit, db):
         self.node, self.emit = node, emit
@@ -57,7 +56,7 @@ class Clients:
         try:
             # Only owner thread updates this cache from result payloads via accept_scene.
             scene = self.scenes.get('destination' if effect.phase == State.TRANSFER else 'table')
-            name, goal = self.skills.command(effect, scene, context.history[effect.target.id].attempts)
+            name, goal = self.skills.command(effect, scene, context.history[effect.target.id].attempts if effect.target else 0)
             if not self.actions[name].server_is_ready():
                 self.emit(Event('REJECTED', effect.op_id, 'motion_unavailable', ok=False, stopped=True))
             else:

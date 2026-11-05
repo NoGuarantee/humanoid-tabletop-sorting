@@ -83,6 +83,18 @@ class TransportTests(unittest.TestCase):
         self.t.cancel(1)
         self.assertEqual(h.cancel_calls, 1)
 
+    def test_failed_result_retains_handle_for_cancel(self):
+        self.t.send(1, self.client, object())
+        h = Handle()
+        self.client.future.set_result(h)
+        h.result.set_result(NS(status=4, result=NS(success=False)))
+        self.assertFalse(self.events[-1].stopped)
+        self.assertIsNotNone(self.t.pending)
+        self.t.send(2, Client(), object())
+        self.assertEqual(self.events[-1].data, 'resource_busy')
+        self.t.cancel(1)
+        self.assertEqual(h.cancel_calls, 1)
+
     def test_cancel_refused(self):
         self.t.send(1, self.client, object())
         h = Handle()

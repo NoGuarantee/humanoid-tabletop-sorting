@@ -11,6 +11,8 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
+        # URDF and cuRobo config of TienKung 2.0 Pro, see robot/README.md
+        ("share/" + package_name + "/robot", glob("robot/*")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

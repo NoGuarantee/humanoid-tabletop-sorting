@@ -46,14 +46,21 @@
 
 ## Сборка и запуск
 
-ROS 2 на хосте нет, всё работает в Docker из образа `nssr-sim:latest`.
+Локально ROS и docker нет. Симулятор и решение работают на общем GPU-сервере, туда ходим только через
+`bash tools/remote.sh ...` (подробно: `docs/SERVER.md`). Код правим здесь, на сервер он копируется командой `sync`,
+коммит для этого не нужен.
 
-- Симулятор (запускает человек): `cd ../nssr-uwt-polygon && bash hackathon/tools/task.sh sort3 --pool 4`
-- ROS-команды к работающему симулятору: `bash ../nssr-uwt-polygon/hackathon/tools/ros.sh ros2 topic list`
-- Разработка: `bash tools/dev_shell.sh`, внутри
-  `colcon build --symlink-install --build-base /tmp/b --install-base /tmp/i && source /tmp/i/setup.bash`
-- Как на проверке: `bash ../nssr-uwt-polygon/hackathon/tools/solution.sh "$PWD"`
-- Логику без ROS (task.py, grasp_planner.py) проверяем обычным python3 с заглушками geometry_msgs.
+- Прогон как на проверке: `bash tools/remote.sh eval sort3 --pool 4 [--seed S]`. Долгий, запускай в фоне.
+- По частям: `sim start sort3 --pool 4`, `solution`, `solution wait 600`, `check`, `sim stop`.
+- ROS к работающему симулятору: `bash tools/remote.sh ros ros2 topic list`.
+- Сборка и запуск отдельных узлов: `bash tools/remote.sh dev -- 'colcon build --symlink-install && ros2 run ...'`.
+  Контейнер `nssr-dev-<имя>` остаётся запущенным, `build/` и `install/` лежат в его копии и переживают `sync`.
+  torch и cuRobo берутся из образа: `bash tools/remote.sh dev-image` один раз и после смены установки. `bash setup.sh`
+  и `bash tools/curobo_install.sh` в команды `dev` не добавляй: они тратят минуты.
+- Логи: `logs sim|solution [N]`, память против бюджета 16 ГБ VRAM и 32 ГБ RAM: `gpu`. Кадры и rosbag: `fetch`.
+- Логику без ROS (task.py, grasp_planner.py) проверяем локально обычным python3 с заглушками geometry_msgs.
 
-Если docker недоступен (`permission denied`) или симулятор не запущен, не делай выводов о работе кода.
-Попроси человека запустить команду и прислать вывод.
+Стенд один на команду: `sim start` занимает его за тобой, `sim stop` освобождает. Чужой стенд (`status`) не
+перехватывай через `--force`, скажи человеку. Если сессий несколько, у каждой своё имя: `NSSR_WHO=jobs-a bash
+tools/remote.sh ...`, иначе замок их не различает. `dev` замок не проверяет и подключается к чужому симулятору: перед ним смотри `status`. Повторный `dev` с тем же именем останавливает только предыдущую команду в своём контейнере. Если `remote.sh` не может подключиться, не делай выводов о работе
+кода: попроси человека проверить сервер.

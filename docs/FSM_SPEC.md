@@ -49,8 +49,9 @@ SceneObjects не передаёт доказательство удержани
 
 Тик содержит simulation time (None до первого clock) и monotonic wall time. Бюджет и таймауты
 операций считают только simulation time; wall используется для watchdog. Точной метки публикации
-задачи нет: принимаем нижнюю границу старта 0, deadline = time_limit. Это консервативное предположение,
-не измеренная метка. Поздний запуск не получает новый бюджет. Нет clock/clock стоит → watchdog,
+задачи нет. По записанному ответу организаторов симулятор между раскладками не перезапускается:
+deadline = первый simulation timestamp мозга + time_limit, reserve=10 s покрывает запуск и завершение.
+Ожидание TaskSpec не обновляет начало бюджета. Нет clock/clock стоит → watchdog,
 скачок назад → завершение; новый epoch не продолжает старую миссию.
 
 Приоритет обработки: DONE поглощает события; clock/reset/deadline и CANCEL/ERROR прекращают работу;
@@ -68,7 +69,7 @@ CANCELLING ждёт ACK и терминальный RESULT; stop_confirmed тр�
 brain сохраняет блокировку и завершает миссию, не обещая физической остановки.
 
 Завершение не возвращает руки/корпус домой. Оно запрещает команды, ограниченно отменяет активную,
-сохраняет reason/hand/history/blocked и выдаёт эффект DONE. Публикация повторяется адаптером три раза,
+сохраняет reason/hand/history/blocked и выдаёт эффект DONE. Публикация повторяется адаптером 10 раз с интервалом 0.5 wall s,
 ошибки одной попытки не мешают остальным. DONE означает конец управления, не успех задания.
 
 ## Состояния
@@ -81,7 +82,8 @@ brain сохраняет блокировку и завершает миссию
 |---|---|---|---|---|
 | WAIT | задача и clock; рука UNKNOWN | нет команды | START сохраняет задачу; tick → CHECK | startup watchdog → DONE |
 | CHECK | известная задача, лимит, capabilities | локальная проверка | необходимые навыки есть → VERIFY_EMPTY | unsupported/unavailable → DONE |
-| VERIFY_EMPTY | перед новой попыткой | запрос доказательства | свежий EMPTY → OBSERVE | UNKNOWN/HOLDING → DONE |
+| VERIFY_EMPTY | перед новой попыткой | запрос доказательства | свежий EMPTY → LOOK_TABLE | UNKNOWN/HOLDING → DONE |
+| LOOK_TABLE | рука EMPTY | MoveJoints головы/корпуса к столу | успех → OBSERVE | ошибка → bounded recovery / stop |
 | OBSERVE | рука EMPTY | perception table | свежая сцена pelvis → выбор | ошибки/устаревание: ограниченный повтор, затем DONE |
 | SELECT (локально) | назначение, уверенность, свободное гнездо, бюджет | выбор + счётчик попыток | цель → OPEN | нет кандидатов/времени → DONE |
 | OPEN | EMPTY, выбран предмет | открыть кисть | success → APPROACH | ограниченный recovery |
@@ -109,7 +111,7 @@ brain сохраняет блокировку и завершает миссию
 ## Таблица переходов
 
 Обозначения: ACTIVE — любое состояние с operation; id=current; fresh — timestamp в текущем epoch,
-не раньше входа и не старше freshness; retry — общий и пообъектный лимит не исчерпаны.
+не раньше входа в проверку и не старше freshness (для Scene — не раньше последнего LOOK_TABLE/контакта, а не запроса сервиса); retry — общий и пообъектный лимит не исчерпаны.
 Общие строки имеют приоритет над строками отдельных навыков.
 
 | Текущее состояние | Событие | Guard | Изменение контекста | Побочный эффект | Следующее состояние |
@@ -131,15 +133,16 @@ brain сохраняет блокировку и завершает миссию
 | CANCELLING | CANCEL_ACK | id=current, отказ | blocked=True | done | DONE |
 | CANCELLING | RESULT / REJECTED | id=current | terminal=True, stop_confirmed | нет / done при ack | CANCELLING / DONE |
 | CANCELLING | TICK | cancel wall timeout | blocked=True | done | DONE |
-| VERIFY_EMPTY | RESULT | fresh EMPTY | hand=EMPTY | perceive | OBSERVE |
+| VERIFY_EMPTY | RESULT | fresh EMPTY | hand=EMPTY | look | LOOK_TABLE |
+| LOOK_TABLE | RESULT | success | нижняя граница времени кадра | perceive | OBSERVE |
 | OBSERVE | RESULT | fresh scene, кандидат, время | target, attempts++, destination | open | OPEN |
 | OBSERVE | RESULT | пусто/лимит попыток/мало времени | reason | done | DONE |
-| OBSERVE | RESULT | failure/stale, retry | retries++ | perceive | OBSERVE |
+| OBSERVE | RESULT | failure/stale, retry | retries++ | look | LOOK_TABLE |
 | OPEN | RESULT | success | нет | approach | APPROACH |
-| APPROACH | RESULT | success, scene fresh | invalidate scene, hand UNKNOWN | descend | DESCEND |
-| DESCEND | RESULT | success | нет | close | CLOSE |
+| APPROACH | RESULT | success, scene fresh | нет | descend | DESCEND |
+| DESCEND | ACCEPTED / SEND_ERROR / RESULT | команда могла исполниться | invalidate scene, hand UNKNOWN, contacted | обработка исхода | DESCEND / CANCELLING / CLOSE |
 | CLOSE | RESULT | success | нет | verify | VERIFY_GRASP |
-| VERIFY_GRASP | RESULT | fresh HOLDING | hand=HOLDING | lift; history UNKNOWN | LIFT |
+| VERIFY_GRASP | RESULT | fresh HOLDING | hand=HOLDING | lift; history UNKNOWN после принятия/неопределённой отправки | LIFT |
 | LIFT | RESULT | success | нет | verify | VERIFY_LIFT |
 | VERIFY_LIFT | RESULT | fresh HOLDING + lifted | history LIFTED | reorient / observe destination | REORIENT / DESTINATION |
 | REORIENT | RESULT | success | нет | verify | VERIFY_REORIENT |
@@ -154,7 +157,7 @@ brain сохраняет блокировку и завершает миссию
 | VERIFY_PLACE | RESULT | fresh EMPTY + placed + matching target | placed=True, hand=EMPTY | retreat | RETREAT |
 | RETREAT | RESULT | success | target cleared | verify | VERIFY_EMPTY |
 | навыки | RESULT / REJECTED | failure, retry | retries++, scene invalid | verify | RECOVER |
-| RECOVER | RESULT | fresh EMPTY, identity usable | hand=EMPTY | observe | OBSERVE |
+| RECOVER | RESULT | fresh EMPTY, identity usable | hand=EMPTY | look | LOOK_TABLE |
 | RECOVER | RESULT | fresh HOLDING, history LIFTED, lying без подтверждения upright | hand=HOLDING | reorient | REORIENT |
 | RECOVER | RESULT | fresh HOLDING, history LIFTED, остальные | hand=HOLDING | perceive destination | DESTINATION |
 | проверки | RESULT | unknown/stale/invalid evidence | hand=UNKNOWN, reason | done | DONE |
@@ -173,7 +176,8 @@ Lying добавляет REORIENT и VERIFY_REORIENT. Навыки вставк�
 stateDiagram-v2
     [*] --> WAIT
     WAIT --> VERIFY_EMPTY: задача, clock, capabilities
-    VERIFY_EMPTY --> OBSERVE
+    VERIFY_EMPTY --> LOOK_TABLE
+    LOOK_TABLE --> OBSERVE
     OBSERVE --> OPEN: цель и бюджет
     OPEN --> APPROACH
     APPROACH --> DESCEND
@@ -195,7 +199,7 @@ stateDiagram-v2
     RELEASE --> VERIFY_PLACE
     VERIFY_PLACE --> RETREAT
     RETREAT --> VERIFY_EMPTY
-    RECOVER --> OBSERVE: EMPTY
+    RECOVER --> LOOK_TABLE: EMPTY
     RECOVER --> DESTINATION: HOLDING и LIFTED, upright если lying
     RECOVER --> REORIENT: lying без upright
     CANCELLING --> DONE: bounded
@@ -220,6 +224,23 @@ VERIFY_TRANSFER добавлен, чтобы осмотр назначения �
 
 Проверки перечислены в tests/test_fsm.py, tests/test_transport.py, tests/test_brain_boundary.py.
 На fake доступны все четыре tube-маршрута, сортировка и сценарии ошибок. Реальный адаптер выставляет
-пустые capabilities и пропускает задачу до первой команды. Существующие ROS интерфейсы не менялись.
-Подтверждённая физическая остановка, датчики удержания/укладки, IK/linear и tube-навыки требуют работы
+capabilities без verification и пропускает задачу до первой команды. Существующие ROS интерфейсы не менялись.
+Подтверждённая физическая остановка, датчики удержания/укладки и tube-навыки требуют работы
 команды. Реальные ROS integration, colcon и физическое выполнение в симуляторе не проверены.
+
+## Изменения после review #6
+
+Main 035e48a интегрирован; cuRobo, perception, ориентация пальцев и launch shutdown сохранены.
+LOOK_TABLE — отдельная операция MoveJoints до наблюдения стола. Кадр может предшествовать
+запросу perceive, если снят после последнего изменения сцены/камеры и укладывается в freshness.
+REJECTED до принятия DESCEND не означает контакт. ACCEPTED, RESULT или неопределённая ошибка
+отправки инвалидируют сцену и физическое состояние. RECOVER может подтвердить LIFTED свежим
+Evidence.lifted; одно HOLDING этого не доказывает. Без такого доказательства остаётся lift_unconfirmed.
+Неудачный action сохраняет handle для отмены. ROS terminal result не доказывает остановку:
+реальное восстановление после движения остаётся заблокированным без отдельного подтверждения.
+После done worker вызывает shutdown, launch завершается; ошибка конструктора использует отдельный
+fallback Node. Строка published /sim/task/done появляется после серии публикаций для bench.sh.
+
+PR остаётся draft: verification ещё отсутствует, поэтому сортировка пропускается. Это регрессия
+относительно попыток сортировки на main, не готовое к слиянию физическое решение. Включать
+verification без датчикового адаптера нельзя; fake-тесты не устраняют этот блокер.

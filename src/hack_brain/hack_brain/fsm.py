@@ -20,13 +20,18 @@ def _enter(c, state, effects):
     c.state = state
     c.serial += 1
     c.active = Operation(c.serial, state, c.sim, c.wall)
+    effects.append(Effect('RUN', c.serial, state, c.target, c.destination, c.slot))
+
+
+def _may_have_moved(c, op):
+    state = op.phase
     if state in (State.DESCEND, State.RELEASE):
         c.hand = Hand.UNKNOWN
         c.scene = None
+        c.scene_invalidated_at = op.sim_start
         c.history[c.target.id].contacted = True
     if state == State.LIFT and c.history[c.target.id].lift != Lift.LIFTED:
         c.history[c.target.id].lift = Lift.UNKNOWN
-    effects.append(Effect('RUN', c.serial, state, c.target, c.destination, c.slot))
 
 
 def _done(c, effects, reason=None):
@@ -53,7 +58,7 @@ def _recover(c, effects, reason):
     if c.recoveries > c.config.max_recoveries:
         _done(c, effects, 'retries_exhausted:' + reason)
     elif c.target is None:
-        _enter(c, State.OBSERVE, effects)
+        _enter(c, State.LOOK_TABLE, effects)
     else:
         _enter(c, State.RECOVER, effects)
 
@@ -75,6 +80,8 @@ def _tick(c, e, effects):
         if c.sim is None or sim > c.sim:
             c.last_progress_wall = wall
         c.sim = sim
+        if c.start_sim is None:
+            c.start_sim = sim
     if wall - c.last_progress_wall >= c.config.watchdog:
         _stop(c, effects, 'clock_missing' if c.sim is None else 'clock_stalled')
         return
@@ -83,7 +90,7 @@ def _tick(c, e, effects):
             if wall - c.started_wall >= c.config.watchdog:
                 _stop(c, effects, 'task_missing')
             return
-        c.deadline = c.spec.time_limit
+        c.deadline = c.start_sim + c.spec.time_limit
         required = required_capabilities(c.spec)
         if required is None:
             _done(c, effects, 'unsupported_task')
@@ -125,6 +132,7 @@ def transition(context: Context, event: Event):
         op = c.active
         if e.kind == 'ACCEPTED':
             op.accepted = True
+            _may_have_moved(c, op)
         elif c.state == State.CANCELLING:
             if e.kind == 'CANCEL_ACK':
                 if not e.ok:
@@ -141,8 +149,11 @@ def transition(context: Context, event: Event):
                     c.active = None
                 _done(c, effects, c.reason + (':cancelled' if op.stopped else ':stop_unconfirmed'))
         elif e.kind == 'SEND_ERROR':
+            _may_have_moved(c, op)
             _stop(c, effects, 'send_error')
         elif e.kind in ('RESULT', 'REJECTED'):
+            if e.kind == 'RESULT':
+                _may_have_moved(c, op)
             if (e.kind == 'RESULT' and not e.ok and not e.stopped
                     and c.state not in VERIFY | {State.OBSERVE, State.DESTINATION}):
                 _stop(c, effects, 'execution_failed_stop_unconfirmed')
@@ -163,6 +174,10 @@ def _result(c, e, op, effects):
         else:
             _recover(c, effects, str(e.data or 'operation_failed'))
         return
+    if state == State.LOOK_TABLE:
+        c.scene_invalidated_at = c.sim
+        _enter(c, State.OBSERVE, effects)
+        return
     if state in VERIFY:
         ev = evidence(c, e.data, op.sim_start)
         if ev is None or ev.hand == Hand.UNKNOWN:
@@ -175,7 +190,7 @@ def _result(c, e, op, effects):
                 _done(c, effects, 'hand_not_empty')
             else:
                 c.target = None
-                _enter(c, State.OBSERVE, effects)
+                _enter(c, State.LOOK_TABLE, effects)
         elif state == State.VERIFY_PLACE:
             if not placement(c, ev):
                 _done(c, effects, 'placement_unconfirmed')
@@ -186,11 +201,13 @@ def _result(c, e, op, effects):
                 _enter(c, State.RETREAT, effects)
         elif state == State.RECOVER:
             h = c.history[c.target.id]
+            if ev.hand == Hand.HOLDING and ev.lifted:
+                h.lift = Lift.LIFTED
             if ev.hand == Hand.EMPTY:
                 if h.contacted and not c.target.name:
                     _done(c, effects, 'identity_lost_after_contact')
                 else:
-                    _enter(c, State.OBSERVE, effects)
+                    _enter(c, State.LOOK_TABLE, effects)
             elif h.lift == Lift.LIFTED:
                 _enter(c, State.REORIENT if c.spec.variant == 'lying' and not c.reoriented
                        else State.DESTINATION, effects)
@@ -223,7 +240,7 @@ def _result(c, e, op, effects):
     if state in (State.OBSERVE, State.DESTINATION):
         scene = e.data
         if (not isinstance(scene, Scene) or scene.frame != 'pelvis'
-                or not fresh(scene.stamp, c.sim, c.config.freshness, op.sim_start)):
+                or not fresh(scene.stamp, c.sim, c.config.freshness, c.scene_invalidated_at)):
             _recover(c, effects, 'stale_scene')
             return
         c.scene = scene

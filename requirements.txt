@@ -1,5 +1,5 @@
 # pip packages for the solution, with versions. Installed by the evaluator with /usr/bin/python3 -m pip.
 # numpy<2 is already in the simulator image; do not upgrade it (ROS Humble cv_bridge needs numpy 1.x).
+# torch, warp-lang, cuda-core and nvidia-curobo are installed by setup.sh: the image's pip cannot build cuRobo.
 # Examples for later milestones:
-# pin==2.7.0            # pinocchio, IK (motion)
 # ultralytics==8.3.40   # YOLO-seg (perception)

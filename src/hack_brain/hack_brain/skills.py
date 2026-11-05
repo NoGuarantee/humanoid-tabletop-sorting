@@ -12,9 +12,13 @@ class Skills:
         self.place = None
 
     def command(self, effect, scene, attempt=1):
-        from hack_interfaces.action import Hand, MoveTcp
+        from hack_interfaces.action import Hand, MoveJoints, MoveTcp
         from .grasp_planner import plan_grasps, plan_place
         phase = effect.phase
+        if phase == State.LOOK_TABLE:
+            return 'joints', MoveJoints.Goal(
+                joints=['head_pitch_joint', 'head_yaw_joint', 'body_yaw_joint'],
+                positions=[0.4, 0.0, 0.0])
         if phase == State.OPEN:
             obj = next(o for o in scene.objects if (o.name or o.track_id) == effect.target.id)
             candidates = plan_grasps(obj, scene, self.db)

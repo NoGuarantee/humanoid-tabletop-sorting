@@ -27,7 +27,7 @@ ros2 launch hack_bringup solution.launch.py             # всё решение
 ros2 run hack_motion motion_node --ros-args -p use_sim_time:=true   # или один узел
 ```
 
-Сборка идёт в `/tmp` контейнера, поэтому в репозитории не появляются `build/` и `install/` с владельцем root.
+Сборка в локальном `dev_shell.sh` идёт в `/tmp` контейнера, поэтому в репозитории не появляются `build/` и `install/` с владельцем root. На сервере `remote.sh dev` собирает прямо в смонтированную копию (`colcon build --symlink-install` без `--build-base`): `build/` и `install/` остаются между запусками. У каждого `NSSR_WHO` своя копия и свой контейнер.
 
 Отладка на стороне симулятора, из его репозитория:
 

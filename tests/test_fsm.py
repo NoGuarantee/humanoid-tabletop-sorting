@@ -55,7 +55,7 @@ class MissionTests(unittest.TestCase):
         f.answer(Evidence(f.sim, Hand.EMPTY, source='fake'))
         self.assertEqual(f.c.history['a'].lift, Lift.LIFTED)
         f.answer(Evidence(f.sim, Hand.EMPTY, source='fake'))
-        self.assertEqual(f.c.state, State.OBSERVE)
+        self.assertEqual(f.c.state, State.LOOK_TABLE)
         f.answer()
         self.assertEqual(f.c.target.id, 'a')
 
@@ -190,12 +190,12 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(c.reason, 'clock_missing')
         self.assertEqual(effects[-1].kind, 'DONE')
 
-    def test_late_start_does_not_extend_budget(self):
+    def test_existing_simulator_gets_budget_from_brain_start(self):
         c, _ = transition(Context(), Event('START', data=(sort_spec(), frozenset({
             'perception', 'pick', 'verification', 'transfer', 'release', 'retreat', 'place'}))))
         c, _ = transition(c, Event('TICK', data=(999, 100)))
-        self.assertEqual(c.reason, 'budget_exhausted')
-        self.assertEqual(c.deadline, 270)
+        self.assertEqual(c.state, State.VERIFY_EMPTY)
+        self.assertEqual(c.deadline, 1269)
 
     def test_send_exception_is_not_a_rejection(self):
         f = Fake()
@@ -260,6 +260,7 @@ class MissionTests(unittest.TestCase):
     def test_contact_invalidates_scene_and_anonymous_identity(self):
         f = Fake(objects=[Object('track', 'figure')])
         f.until(State.DESCEND)
+        f.send(Event('ACCEPTED', f.c.active.id))
         self.assertIsNone(f.c.scene)
         f.until(State.VERIFY_GRASP)
         f.answer(Evidence(1, Hand.EMPTY, source='fake'))
@@ -270,6 +271,7 @@ class MissionTests(unittest.TestCase):
         f = Fake(config=replace(Config(), max_recoveries=1))
         f.until(State.OBSERVE)
         f.answer(Scene(-9))
+        f.until(State.OBSERVE)
         f.answer(Scene(-9))
         self.assertEqual(f.c.state, State.DONE)
 
@@ -375,6 +377,48 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(before.state, State.VERIFY_EMPTY)
         self.assertEqual(before.active.id, active)
 
+
+class ReviewRegressionTests(unittest.TestCase):
+    def test_rejected_descent_does_not_claim_contact(self):
+        f = Fake(objects=[Object('track', 'figure')])
+        f.until(State.DESCEND)
+        f.send(Event('REJECTED', f.c.active.id, ok=False, stopped=True))
+        self.assertFalse(f.c.history['track'].contacted)
+        f.answer(Evidence(f.sim, Hand.EMPTY, source='fake'))
+        self.assertEqual(f.c.state, State.LOOK_TABLE)
+
+    def test_recovery_can_confirm_lift_from_fresh_evidence(self):
+        f = Fake()
+        f.until(State.LIFT)
+        f.answer(ok=False, stopped=True)
+        f.answer(Evidence(f.sim, Hand.HOLDING, f.c.target.id,
+                          lifted=True, source='measured_test_evidence'))
+        self.assertEqual(f.c.state, State.DESTINATION)
+        self.assertEqual(f.c.history[f.c.target.id].lift, Lift.LIFTED)
+
+    def test_frame_before_request_but_after_look_is_valid(self):
+        f = Fake()
+        f.until(State.LOOK_TABLE)
+        f.answer()
+        f.tick(sim=1.2)
+        scene = f.default()
+        f.answer(replace(scene, stamp=1.1))
+        self.assertEqual(f.c.state, State.OPEN)
+
+    def test_frame_before_look_is_rejected(self):
+        f = Fake()
+        f.until(State.LOOK_TABLE)
+        f.tick(sim=2)
+        f.answer()
+        f.answer(replace(f.default(), stamp=1.9))
+        self.assertEqual(f.c.state, State.LOOK_TABLE)
+
+    def test_waiting_for_task_consumes_budget(self):
+        c, _ = transition(Context(), Event('TICK', data=(1000, 10)))
+        c, _ = transition(c, Event('START', data=(sort_spec(), frozenset(
+            {'perception', 'pick', 'verification', 'transfer', 'release', 'retreat', 'place'}))))
+        c, _ = transition(c, Event('TICK', data=(1005, 11)))
+        self.assertEqual(c.deadline, 1270)
 
 if __name__ == '__main__':
     unittest.main()

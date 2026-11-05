@@ -62,7 +62,8 @@ class ActionTransport:
                 p.terminal = True
                 # ROS terminal status is not measured physical stop. Keep cancelled
                 # resources latched even if the server reports SUCCEEDED/CANCELED.
-                if not p.cancel_requested and self.pending is p:
+                if (not p.cancel_requested and response.status == 4
+                        and bool(result.success) and self.pending is p):
                     self.pending = None
                 self.emit(Event('RESULT', p.id, result,
                                 ok=response.status == 4 and bool(result.success), stopped=False))

@@ -83,7 +83,7 @@ class Brain(Node):
 
     def publish_done(self):
         # Each attempt is independent; cleanup is never a prerequisite.
-        for _ in range(3):
+        for _ in range(10):
             self.done_attempts += 1
             try:
                 self.done_pub.publish(Empty())
@@ -92,7 +92,12 @@ class Brain(Node):
                     self.get_logger().error('done publication failed: ' + repr(exc))
                 except Exception:
                     pass
-            time.sleep(0.05)
+            time.sleep(0.5)
+
+        try:
+            self.get_logger().info('published /sim/task/done')
+        except Exception:
+            pass
 
     def mission(self):
         while self.context.state != State.DONE and rclpy.ok():
@@ -121,25 +126,53 @@ class Brain(Node):
             self.publish_done()
 
 
+def publish_done_fallback(err):
+    node = Node('hack_brain_fallback')
+    try:
+        node.done_attempts = 0
+        node.done_pub = node.create_publisher(Empty, '/sim/task/done', 10)
+        node.get_logger().error(f'brain failed to start: {err!r}')
+        Brain.publish_done(node)
+    finally:
+        node.destroy_node()
+
+
+def mission_then_exit(node):
+    try:
+        node.mission()
+    finally:
+        try:
+            if not node.done_attempts:
+                node.publish_done()
+        finally:
+            rclpy.try_shutdown()
+
+
 def main():
     rclpy.init()
-    node = Brain()
+    try:
+        node = Brain()
+    except Exception as exc:
+        try:
+            publish_done_fallback(exc)
+        finally:
+            rclpy.try_shutdown()
+        raise
     executor = MultiThreadedExecutor()
     executor.add_node(node)
-    worker = threading.Thread(target=node.mission, daemon=True)
+    worker = threading.Thread(target=mission_then_exit, args=(node,), daemon=True)
     worker.start()
     try:
         executor.spin()
     except KeyboardInterrupt:
         node.emit(Event('CANCEL', data='shutdown'))
-        # Keep callbacks alive for bounded cancellation when the ROS context permits.
-        until = time.monotonic() + node.context.config.cancel_timeout + 0.5
+        until = time.monotonic() + node.context.config.cancel_timeout + 6.0
         while worker.is_alive() and rclpy.ok() and time.monotonic() < until:
             executor.spin_once(timeout_sec=0.05)
     finally:
-        if not node.done_attempts:
-            node.publish_done()
-        node.destroy_node()
+        worker.join(timeout=node.context.config.cancel_timeout + 6.0)
+        if not worker.is_alive():
+            node.destroy_node()
         rclpy.try_shutdown()
 
 

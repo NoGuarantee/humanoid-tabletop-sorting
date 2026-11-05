@@ -8,7 +8,8 @@ area of the simulator (objects.yaml), used only to judge the result here.
 
 torch and cuRobo come from the dev image (remote.sh dev-image), not from curobo_install.sh.
 
---tray maps the tray area instead (place heights over the trays, scene.yaml), --roll-limit R replaces robot.PLAN_ROLL_LIMIT.
+--tray maps the tray area instead (place heights over the trays, scene.yaml), with the three trays in the world.
+--arm left mirrors y. --roll-limit R replaces robot.PLAN_ROLL_LIMIT.
 """
 import argparse
 import math
@@ -31,14 +32,16 @@ YAWS = (0.0, math.pi / 4, math.pi / 2, -math.pi / 4, -math.pi / 2, math.pi)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--tray", action="store_true")
+parser.add_argument("--arm", default="right", choices=("left", "right"))
 parser.add_argument("--roll-limit", type=float, default=robot.PLAN_ROLL_LIMIT)
 args = parser.parse_args()
 robot.PLAN_ROLL_LIMIT = args.roll_limit
+SIGN = -1 if args.arm == "left" else 1  # YS are for the right arm
 if args.tray:
-    XS = (0.26, 0.34, 0.42, 0.53)
-    YS = (0.0, -0.45, -0.55, -0.60, -0.69, -0.78)
-    ZS = (0.30, 0.20, 0.15)
-    YAWS = (0.0, math.pi / 2, -math.pi / 2)
+    XS = (0.28, 0.35, 0.42, 0.535)
+    YS = (0.0, -0.58, -0.62, -0.66, -0.69, -0.74)
+    ZS = (0.32, 0.26, 0.22, 0.20, 0.18, 0.16)
+    YAWS = (0.0, math.pi / 2)
 
 
 def down(yaw):  # rpy (0, 0, yaw), xyzw
@@ -46,20 +49,23 @@ def down(yaw):  # rpy (0, 0, yaw), xyzw
 
 
 p = CuroboPlanner(ROBOT / "tiangong2pro_with_hands.urdf", ROBOT / "tienkung_curobo.yml")
+if args.tray:
+    p.trays = tuple(robot.TRAYS)
 p.load(None)
 q = {n: p.ready.get(n, 0.0) for n in p.joint_names}
 for arm in ARM_JOINTS:
     q.update(zip(ARM_JOINTS[arm], raise_steps(arm)[-1]))
 for mode in ("held", "free"):
     if mode == "free":
-        p.mp.ik_solver.update_tool_pose_criteria({"left_tcp_link": ToolPoseCriteria.disabled()})
+        other = "right_tcp_link" if args.arm == "left" else "left_tcp_link"
+        p.mp.ik_solver.update_tool_pose_criteria({other: ToolPoseCriteria.disabled()})
     for yaw in YAWS:
         print(f"{mode} yaw {yaw:+.2f}  x: " + " ".join(f"{x:.2f}" for x in XS), flush=True)
         for z in ZS:
             for y in YS:
                 row = []
                 for x in XS:
-                    goal, state = p._goal("right", NS(position=NS(x=x, y=y, z=z), orientation=down(yaw)), q)
+                    goal, state = p._goal(args.arm, NS(position=NS(x=x, y=y * SIGN, z=z), orientation=down(yaw)), q)
                     r = p.mp.ik_solver.solve_pose(goal, current_state=state, return_seeds=4)
-                    row.append(" ok " if p._ranked(r, goal, "right", state, 0.01, 0.1) else "  . ")
+                    row.append(" ok " if p._ranked(r, goal, args.arm, state, 0.01, 0.1) else "  . ")
                 print(f"  z {z:+.2f} y {y:+.2f} " + " ".join(row), flush=True)

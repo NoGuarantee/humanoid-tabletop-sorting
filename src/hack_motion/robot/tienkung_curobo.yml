@@ -1015,9 +1015,9 @@ kinematics:
       shoulder_roll_r_link, shoulder_yaw_r_link, camera_body_front_link, camera_body_back_link, L_base_link]
     elbow_pitch_r_link: [shoulder_yaw_r_link, elbow_yaw_r_link, wrist_pitch_r_link, wrist_roll_r_link, right_tcp_link, camera_body_back_link,
       R_base_link]
-    elbow_yaw_l_link: [elbow_pitch_l_link, wrist_pitch_l_link, wrist_roll_l_link, shoulder_pitch_r_link, shoulder_roll_r_link,
-      L_base_link, shoulder_yaw_l_link]
-    elbow_yaw_r_link: [elbow_pitch_r_link, wrist_pitch_r_link, wrist_roll_r_link, R_base_link, shoulder_yaw_r_link]
+    elbow_yaw_l_link: [elbow_pitch_l_link, wrist_pitch_l_link, wrist_roll_l_link, left_tcp_link, shoulder_pitch_r_link,
+      shoulder_roll_r_link, L_base_link, shoulder_yaw_l_link]
+    elbow_yaw_r_link: [elbow_pitch_r_link, wrist_pitch_r_link, wrist_roll_r_link, right_tcp_link, R_base_link, shoulder_yaw_r_link]
     head_pitch_link: [head_yaw_link, head_roll_link, camera_head_link, camera_body_front_link, camera_body_back_link, shoulder_pitch_l_link,
       shoulder_roll_l_link, shoulder_pitch_r_link, shoulder_roll_r_link]
     head_roll_link: [head_pitch_link, camera_head_link, camera_body_front_link, camera_body_back_link, shoulder_pitch_l_link,
@@ -1052,7 +1052,7 @@ kinematics:
     left_middle_2: [left_middle_1]
     left_ring_1: [L_base_link, left_ring_2]
     left_ring_2: [left_ring_1]
-    left_tcp_link: [wrist_roll_l_link, L_base_link]
+    left_tcp_link: [wrist_roll_l_link, L_base_link, elbow_yaw_l_link]
     left_thumb_1: [L_base_link, left_thumb_2]
     left_thumb_2: [left_thumb_1, left_thumb_3]
     left_thumb_3: [left_thumb_2, left_thumb_4]
@@ -1069,7 +1069,7 @@ kinematics:
     right_middle_2: [right_middle_1]
     right_ring_1: [R_base_link, right_ring_2]
     right_ring_2: [right_ring_1]
-    right_tcp_link: [wrist_roll_r_link, R_base_link]
+    right_tcp_link: [wrist_roll_r_link, R_base_link, elbow_yaw_r_link]
     right_thumb_1: [R_base_link, right_thumb_2]
     right_thumb_2: [right_thumb_1, right_thumb_3]
     right_thumb_3: [right_thumb_2, right_thumb_4]

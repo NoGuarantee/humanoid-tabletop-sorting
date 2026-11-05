@@ -335,7 +335,11 @@ class CuroboPlanner:
         return lo, hi
 
     def _project_clear(self, q, lo, hi):
-        """Walk q [1 x dof] out of the buffer along the overlap gradient. None when a short step cannot."""
+        """Walk q [1 x dof] out of the buffer along the overlap gradient.
+
+        Takes the shortest step that is already clear. A shorter step that only reduces the overlap can use up
+        START_CLEAR_MAX before the pose is clear, and then no step is left. None when nothing within the cap helps.
+        """
         import torch
 
         eps = 0.02
@@ -353,17 +357,19 @@ class CuroboPlanner:
             if float(norm) < 1e-8:
                 return None
             direction = grad / norm
-            stepped = None
-            for length in (0.02, 0.04, 0.08):
+            improving = None
+            for length in (0.01, 0.02, 0.04, 0.08):
                 trial = torch.clamp(cur - length * direction, min=lo, max=hi)
                 if float(torch.linalg.norm(trial - q).item()) > START_CLEAR_MAX:
                     continue
-                if float(self._self_overlap(trial)[0].item()) < overlap:
-                    stepped = trial
-                    break
-            if stepped is None:
+                gap = float(self._self_overlap(trial)[0].item())
+                if gap <= 0.0:
+                    return trial  # the shortest step that is already clear; a shorter one may only nibble
+                if gap < overlap and improving is None:
+                    improving = trial
+            if improving is None:
                 return None
-            cur = stepped
+            cur = improving
         return cur if float(self._self_overlap(cur)[0].item()) <= 0.0 else None
 
     def _clear_start(self, q):
@@ -372,7 +378,7 @@ class CuroboPlanner:
         cuRobo fails every plan from a start inside the self-collision buffer. IK ends on the edge of the buffer, and
         the drives stop short of the command, so the arm does end up inside, and then every goal fails until it moves.
         A random sample around that pose is often 0.2 rad away: the trajectory then starts with a jump and a held
-        object comes off. The overlap gradient is a short step. A sample is only accepted inside START_CLEAR_MAX.
+        object comes off. The overlap gradient picks a step inside START_CLEAR_MAX, the shortest one that is clear.
         Returns q itself when it is clear, or when nothing close is: the plan then reports the failure.
         """
         import torch

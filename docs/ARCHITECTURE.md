@@ -1,119 +1,128 @@
 # Архитектура решения
 
-Три процесса ROS 2 и общий пакет интерфейсов. Такое разбиение позволяет писать модули параллельно и отлаживать каждый
-без остальных. Почему выбран конвейер, а не обучаемая политика, объяснено в [ANALYSIS.md](ANALYSIS.md), раздел 6.
+Три ROS 2 процесса: perception → brain → motion. Общие ROS msg/srv/action в `hack_interfaces`
+сохранены без изменений. Все координаты — pelvis, единицы СИ, время задачи — `/clock`.
 
-```
-             /sim/task, /sim/objects/names
-                        │
-                        ▼
-┌───────────────────────────────────────────┐
-│ hack_brain  (оркестратор)                 │
-│  • state machine задачи                   │
-│  • skills: pick / place                   │
-│  • grasp_planner + grasp_db.yaml          │
-│  • бюджет времени, /sim/task/done         │
-└──────┬─────────────────────────┬──────────┘
-       │ srv perception/perceive │ actions motion/move_tcp, move_joints, hand
-       ▼                         ▼
-┌──────────────────┐    ┌─────────────────────────┐
-│ hack_perception  │    │ hack_motion             │
-│ камеры+глубина+tf│    │ IK, контур по           │
-│ → SceneObjects   │    │ /joint_states, кисти    │
-└──────────────────┘    └─────────────────────────┘
-       ▲                         │
-  /cam_*/..., /tf          /arm|head|waist/cmd_pos, /inspire_hand/ctrl/*
-```
+## Исполнение миссии
 
-| Пакет | Что внутри | Владелец |
-|---|---|---|
-| `hack_interfaces` | msg, srv, action (ament_cmake) | все; меняется только по договорённости |
-| `hack_motion` | `motion_node`, `robot.py` (моторы, пределы, пресеты кистей), `ik.py` | motion |
-| `hack_perception` | `perception_node`, `geometry.py` (глубина, проекция, tf) | perception |
-| `hack_brain` | `brain_node` (state machine), `skills.py`, `grasp_planner.py`, `task.py`, `config/grasp_db.yaml` | brain/infra и grasping |
-| `hack_bringup` | `launch/solution.launch.py` | brain/infra |
+`brain_node.py` запускает один поток-владелец контекста. ROS callbacks только ставят события в очередь.
+Перед обработкой события владелец подаёт актуальный TICK, затем вызывает чистую функцию
+`transition(context, event) -> new_context, effects`. CANCEL/ERROR/CONNECTION_LOST имеют высший приоритет в очереди; внутри приоритета сохраняется FIFO.
+Длительные запросы отправляются один раз эффектом RUN. Future callbacks не блокируются.
 
-Почему процесса три. Perception тяжёлый, возможно на GPU, и вызывается **по запросу**: это экономит CPU, а нагрузка
-учитывается при равных баллах. Motion держит свой цикл управления и не тормозит из-за нейросетей. Brain — чистая логика.
+| Файл hack_brain | Ответственность |
+|---|---|
+| `context.py` | Enum/dataclass: фаза, рука, история подъёма, операции, наблюдения, доказательства |
+| `fsm.py` | общий цикл, проверки, recovery, отмена и завершение; без ROS, sleep и I/O |
+| `policies.py` | capabilities, выбор предметов и контейнеров, правила всех вариантов |
+| `verification.py` | свежесть и соответствие доказательств текущей цели |
+| `task.py` | JSON задания, бюджет, маршрутизация штативов |
+| `skills.py` | перевод фаз сортировки в существующие Hand/MoveTcp goals; без второго mission loop |
+| `grasp_planner.py` | существующие геометрические кандидаты захвата и укладки, параметры не откалиброваны |
+| `clients.py` | ROS services/actions, преобразование SceneObjects, честный UNKNOWN для отсутствующего verifier |
+| `transport.py` | goal handle, отказ, асинхронный результат, позднее принятие, cancel и владение ресурсом |
+| `brain_node.py` | подписки, очередь, часы, журнал, исполнение эффектов, попытки done |
 
-## Соглашения
+Подробные состояния и нормативные таблицы: [FSM_SPEC.md](FSM_SPEC.md).
+CHECK и SELECT в спецификации — локальные решения, не ожидающие внешних событий.
+Составные pick/place представлены фазами общего автомата. INSERT/REORIENT — точки подключения
+составных навыков команды; внутреннее контактное управление здесь не реализуется.
 
-- **Система координат API — `pelvis`.** Ноги закреплены, так что `pelvis` неподвижен. Motion сам учитывает текущий угол корпуса.
-- Единицы СИ, углы в радианах. Время берём только из `/clock`: у всех узлов `use_sim_time: true`, это задано в launch-файле.
-- Perception берёт tf **на метку времени кадра**.
-- Отладочные топики (`/sim/task/check`, `/sim/objects/set`, `/sim/objects/randomize`) запрещены в `src/`. Отладочные
-  скрипты лежат в `tools/`.
-
-## Интерфейсы
-
-Определения лежат в [src/hack_interfaces](../src/hack_interfaces). Кратко:
-
-| Интерфейс | Тип | Назначение |
-|---|---|---|
-| `DetectedObject` | msg | `track_id`, `name`, `category`, `cap_color`, `confidence`, `center`, `yaw`, `size`, `top_z`, `lying`, `partially_visible` |
-| `Container` | msg | ящик или штатив: `id`, `kind`, `color`, `pose`, `size`, `slots[]`, `slot_occupied[]` |
-| `SceneObjects` | msg | `header`, `table_z`, `objects[]`, `containers[]` |
-| `perception/perceive` | srv `Perceive` | `camera` (head / torso), `region` (table / hood) → `scene`, `success`, `message` |
-| `motion/move_tcp` | action `MoveTcp` | `arm`, `target` (Pose в pelvis), `mode` (direct / linear) → `success`, ошибки, `message` |
-| `motion/move_joints` | action `MoveJoints` | `joints[]`, `positions[]`, `speed` → `success`, `max_error` |
-| `motion/hand` | action `Hand` | `hand`, `preset`, `force` → `object_detected`, `position[]`, `effort[]` |
-
-Внутри brain используются Python-структуры `GraspCandidate` и `PlacePlan` из
-[grasp_planner.py](../src/hack_brain/hack_brain/grasp_planner.py).
-
-Motion обещает остальным модулям:
-1. Цели обрезаются по пределам суставов. Если цель недостижима, ответ `unreachable` приходит до начала движения.
-2. Суставы приходят к цели одновременно, скорость не выше 0.8 рад/с.
-3. Недолёт ПД-регулятора компенсируется по `/joint_states`.
-
-## State machine (`brain_node.py`)
-
-```
-INIT ── ждём /sim/task и /clock, считаем дедлайн, ждём perception и motion
-  │
-LOOK ── голова на 0.4 рад вниз, корпус 0 (MoveJoints)
-  │
-PERCEIVE ── perceive(head, table)
-  │
-SELECT ── фильтр: категория из задачи, ящик найден, confidence ≥ min_confidence,
-  │         объект виден целиком, ещё не провален
-  │         порядок: ближе к своему ящику
-  │         рука: y > 0 → left, иначе right
-  │         нет кандидатов → DONE
-PICK ── pre_grasp → linear вниз → Hand(preset) → object_detected?
-  │      → lift; при неудаче раскрыть, отойти, следующий кандидат или пометить объект
-PLACE ── approach → release → Hand(open) → retreat
-  │
-BUDGET ── осталось меньше cycle_estimate? → DONE, иначе → LOOK
-  │
-DONE ── голова и корпус домой, /sim/task/done (в любом исходе, даже при исключении)
+```mermaid
+flowchart LR
+    ROS[ROS callbacks] --> Q[Очередь событий]
+    Q --> Owner[Один владелец]
+    Owner --> FSM[Чистый transition]
+    FSM --> Effects[RUN / CANCEL / DONE]
+    Effects --> Adapter[Clients + Skills + ActionTransport]
+    Adapter --> ROS
+    FSM --> Log[JSON журнал]
 ```
 
-Пробирки идут по той же схеме, только правило выбора штатива другое (`TaskSpec.hood_racks_for`) и добавляется поворот корпуса
-на +1.57 рад. Сейчас это заглушка (`run_tubes`), она сразу ведёт в `DONE`.
+## Ресурсы и физическое состояние
 
-**Ловушка rclpy.** Ожидание сервиса или action внутри callback даёт deadlock. Поэтому миссия идёт в отдельном потоке, узел крутится
-в `MultiThreadedExecutor`, а [clients.py](../src/hack_brain/hack_brain/clients.py) даёт блокирующие обёртки. Так
-и продолжаем.
+Первая версия последовательная: одна операция на весь робот, включая read-only запросы.
+ACCEPTED — только подтверждение приёма. Все результаты коррелируются по operation_id.
+Таймаут запускает cancel и не снимает active. Cancel ACK и терминальный результат требуются отдельно;
+`stopped` — дополнительное подтверждение физической остановки. При отказе или истечении ожидания
+сохраняется blocked, затем done. Продолжения после отмены в этой версии нет.
 
-## Состояние модулей в скелете
+Проверен исходный `motion_node.py`: cancel_callback не задан, запросы отмены не обрабатываются в цикле,
+позиционные цели могут продолжать действовать после возврата ошибки. Сервер не изменён:
+без проверенного способа остановки добавлять формальный успешный cancel было бы неверно.
+Реальный ActionTransport никогда не выдаёт stopped=True из одного ROS terminal status.
+Терминальная ошибка реального движения поэтому завершает миссию с блокировкой; fake умеет отдельно
+моделировать подтверждённую остановку и проверяет recovery.
 
-| Модуль | Работает | Не реализовано |
+EMPTY/HOLDING/UNKNOWN отделены от NEVER_LIFTED/LIFTED/UNKNOWN и confirmed placement.
+После контакта сцена инвалидируется. После подъёма назначение переснимается; перед переносом снова
+проверяется удержание. SENSOR может прервать активную операцию при потере/неопределённости удержания.
+Отсутствие verifier не превращается в EMPTY. Имена распознанных объектов сохраняют историю;
+track_id не считается гарантией идентичности после контакта. Анонимная цель после контакта не
+перезахватывается без нового контракта tracking. Позиционные ключи удалены.
+
+## Текущее состояние и подключение команды
+
+| Компонент | Реализовано | Что ещё нужно |
 |---|---|---|
-| motion | `MoveJoints` (синхронизация, компенсация недолёта), `Hand` (пресеты, `object_detected`) | `ik.solve`, режим `linear`, `force`, ошибка TCP по FK |
-| perception | подписки, снимок кадров, облако точек в `pelvis` (`cloud_in_pelvis`) | `detect()`: стол, кластеры, ящики, категории, штативы |
-| brain | разбор задачи, дедлайн, цикл сортировки, гарантированный `done` | пробирки, проверка веса в запястье, возврат объекта на место |
-| grasp | `plan_grasps` (сверху, 2 кандидата), `plan_place` для ящиков, `grasp_db.yaml` | подбор параметров, ориентация TCP (`top_down`) не проверена |
+| brain | цикл всех финальных задач, маршрутизация, проверки, повторы, таймер, отмена, done | ROS integration и физическая проверка |
+| perception | подписки и геометрия облака | detect, синхронизация RGB/depth, свежие позы контейнеров/гнёзд, tracking |
+| motion | исходные joint/hand actions | IK, настоящий linear, подтверждённая остановка, свежесть feedback, контроль силы |
+| verification | типизированный контракт и проверка доказательств | измеренный verifier удержания, подъёма и конечного размещения |
+| tubes skills | общие фазы/guards и fake routing | реальные hood-transfer, insert, reorient и их подтверждения |
 
-Пока IK и детекция не готовы, решение запускается, ничего не трогает и публикует `done`: 0 баллов без штрафов.
+`Clients.capabilities` сейчас пуст: все задачи корректно пропускаются с причиной unavailable и done,
+до любой команды движения. Это намеренный статус сборки, не опция для включения флагом.
+`Hand.object_detected` в текущем сервере использует непроверенные пороги и допускает отсутствие усилия;
+его нельзя напрямую переводить в HOLDING. SceneObjects не содержит подтверждения глубины вставки,
+вертикальности и стабильного удержания. ROS interfaces не расширялись молча.
 
-## Как отлаживать модули изолированно
+Для реального подключения:
 
-| Модуль | Как | Метрика |
-|---|---|---|
-| motion | скрипт шлёт в `motion/move_tcp` сетку целей над столом и сверяет с `tf2_echo pelvis right_tcp_link` | ошибка < 1 см, время выхода, доля `unreachable` |
-| perception | rosbag кадров и tf на 30 сидах; эталон получаем через `/sim/objects/set`, только в `tools/` | полнота, точность категорий, ошибка xyz |
-| grasp и skills | объекты ставим в известные точки через `/sim/objects/set`, perception подменяем заглушкой, которая возвращает эти точки | доля успешных захватов по каждому объекту |
-| brain | заглушки perception и motion с тем же интерфейсом | проходит все задачи, `done` публикуется |
+1. Реализовать и проверить соответствующие модули команды. Запускать прежний `solution.launch.py` с
+   use_sim_time=true: имена endpoints не менялись.
+2. В `Clients` подключить verifier к разрешённым hand/wrench/camera/TF данным. Он должен возвращать
+   Evidence с simulation stamp, source и object_id, а для размещения destination/slot/upright.
+   UNKNOWN — корректный результат при недостатке данных. Для мониторинга во время движения подавать SENSOR.
+3. Реализовать tube commands через Skills/адаптер с теми же фазами. Составной tube-навык должен владеть
+   всей своей последовательностью, иметь bounded cancel и не выдавать success без terminal результата.
+4. Добавить capabilities только для проверенных контрактов. Проверку физической остановки делать отдельно
+   от ROS action result; до её реализации ошибки движения остаются терминальными для миссии.
+5. Прогнать fake ROS servers (accept/reject/cancel/late results), затем один объект и все варианты
+   в симуляторе; сверить реальные датчики с Evidence. Unit-тесты этого не заменяют.
 
-Заглушки и отладочные скрипты лежат в `tools/`, в `src/` их нет. `tools/check_rules.sh` это проверяет.
+## Время и журнал
+
+Deadline = n_items × 45/60 секунд от simulation epoch 0. Точная метка публикации задачи отсутствует;
+это консервативная нижняя граница старта, не эвристика нового бюджета при перезапуске.
+Перед новым захватом нужен cycle_estimate + reserve; с предметом в руке приоритет доставка до
+жёсткой границы deadline − reserve. Monotonic время используется только для watchdog и cancel.
+Начальные значения параметров перечислены в Config и экспонированы как ROS параметры; их нужно измерить
+в симуляторе. Неизвестный clock, его остановка и скачок назад завершают миссию.
+
+JSON строки brain содержат event, operation_id, from/to, target, attempt, hand, lift, scene_stamp,
+operation_elapsed_sim, remaining_sim, reason и blocked. Старые id видны в журнале, но не продвигают
+операцию. DONE не равен успешной миссии; подтверждения хранятся по каждому объекту.
+При потере ROS-контекста CONNECTION_LOST отмечает активный ресурс blocked и делает попытки done;
+доставка сообщения без действующего middleware не гарантируется.
+
+## Проверка и расширение
+
+Из корня репозитория, без ROS и сторонних Python-пакетов:
+
+```bash
+PYTHONPATH=src/hack_brain:tests python3 -m unittest discover -s tests -v
+python3 tools/fake_mission.py
+python3 tools/fake_mission.py --variant lying
+bash tools/check_rules.sh
+```
+
+Fake находится только в tests/tools и никогда не подключается runtime launch-файлом.
+Тесты границы Brain используют ROS-shaped заглушки; это не интеграционный тест DDS/rclpy.
+
+Новый вариант, если достаточно имеющихся фаз: расширить required_capabilities/destinations,
+описать правило в TaskSpec, добавить сценарии успеха, отсутствия навыка и неверного назначения.
+Новый навык: определить capability и вход/выход, добавить фазу/проверку в FSM_SPEC и State,
+перевести effect в команду адаптера, покрыть отказ, timeout, late result, cancel и UNKNOWN.
+Сначала проверить fake, затем ROS lifecycle, затем физическое выполнение. Не добавлять второй цикл
+управления миссией внутрь Skills.

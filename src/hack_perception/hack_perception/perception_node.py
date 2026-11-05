@@ -11,6 +11,7 @@ Status:
 """
 import json
 import math
+import os
 import threading
 
 import numpy as np
@@ -61,6 +62,17 @@ class PerceptionNode(Node):
         self.tf = Buffer()
         self.tf_listener = TransformListener(self.tf, self, spin_thread=False)
         self.create_service(Perceive, "perception/perceive", self.on_perceive, callback_group=cb)
+        self.model_poses = None
+        model_dir = self.declare_parameter("rgbd_model_dir", os.environ.get("NSSR_RGBD_MODEL_DIR", "")).value
+        pool = self.declare_parameter("rgbd_pool", 0).value
+        if model_dir:
+            try:
+                from .rgbd_service import ModelPoseService
+
+                self.model_poses = ModelPoseService(self, self.tf, model_dir, pool)
+                self.get_logger().info("experimental RGB-D model pose service ready")
+            except Exception as e:
+                self.get_logger().error(f"could not enable RGB-D model pose service: {e!r}")
         self.get_logger().info("perception ready")
 
     def on_names(self, msg):
@@ -80,6 +92,8 @@ class PerceptionNode(Node):
             data = json.loads(msg.data)
         except json.JSONDecodeError:
             return
+        if self.model_poses is not None:
+            self.model_poses.set_task(data)
         trays = data.get("trays") if isinstance(data, dict) else None
         if not isinstance(trays, dict):
             return

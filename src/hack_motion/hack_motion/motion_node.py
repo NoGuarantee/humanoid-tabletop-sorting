@@ -7,6 +7,7 @@ MoveTcp:    cuRobo (parameter `planner`, default curobo). `direct` is one IK sol
             the TCP, not the joint error.
 """
 import math
+import json
 import os
 import threading
 import time
@@ -20,11 +21,13 @@ from rclpy.action import ActionServer
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
+from std_msgs.msg import String
 from tf2_ros import Buffer, TransformListener
 
 from .curobo_planner import Unreachable
-from .robot import ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, TCP_LINK, clip, raise_steps
+from .robot import ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, TCP_LINK, TRAYS, clip, raise_steps
 
 PERIOD = 0.05  # s, real time between control checks
 # 1/s, integrates the PD undershoot. The arm actuators settle with tau = kd/kp = 0.25 s, so this is damping 0.7.
@@ -32,6 +35,7 @@ COMPENSATION_RATE = 2.0
 MAX_COMPENSATION = 0.3  # rad added on top of the target at most
 HOME_TOL = 0.1  # rad, every arm joint within this of 0 -> the arm hangs at home
 HELD_TOL = 0.05  # rad, the arm MoveTcp did not ask for: it only holds its pose
+TASK_WAIT = 5.0  # s, real time the preload waits for /sim/task, so that it does not build the planner twice
 
 
 class MotionNode(Node):
@@ -41,8 +45,12 @@ class MotionNode(Node):
         self.q = {}
         self.compensation = {}  # joint -> rad on top of the target, kept between moves (see move_joints)
         self.hand_state = {"left": None, "right": None}
+        self.task_trays = None  # trays of the task from /sim/task, None until it arrives
         cb = ReentrantCallbackGroup()
         self.create_subscription(JointState, "/joint_states", self.on_joints, 10, callback_group=cb)
+        latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                             reliability=ReliabilityPolicy.RELIABLE)
+        self.create_subscription(String, "/sim/task", self.on_task, latched, callback_group=cb)
         for side in ("left", "right"):
             self.create_subscription(JointState, f"/inspire_hand/state/{side}_hand",
                                      lambda m, s=side: self.on_hand(s, m), 10, callback_group=cb)
@@ -69,6 +77,9 @@ class MotionNode(Node):
         if not self._wait_joints(timeout=60.0):
             return
         self._startup("first /joint_states")
+        t0 = time.perf_counter()
+        while self.task_trays is None and time.perf_counter() - t0 < TASK_WAIT:
+            time.sleep(PERIOD)
         with self._tcp_lock:
             try:
                 with self.lock:
@@ -83,6 +94,16 @@ class MotionNode(Node):
         self.get_logger().info(f"startup: {what}, sim {self.now():.2f}")
 
     # ---------------------------------------------------------------- state
+    def on_task(self, msg):
+        """The trays of this task go into the cuRobo world (sort2 has no tray_center, objects may lie there)."""
+        try:
+            trays = json.loads(msg.data).get("trays", {})
+        except (ValueError, AttributeError) as e:
+            self.get_logger().error(f"cannot read /sim/task: {e!r}")
+            trays = {}
+        self.task_trays = tuple(sorted(name for name in trays if name in TRAYS))
+        self.get_logger().info(f"trays in the world: {list(self.task_trays)}")
+
     def on_joints(self, msg):
         with self.lock:
             self.q.update(zip(msg.name, msg.position))
@@ -273,6 +294,7 @@ class MotionNode(Node):
             self._planner = CuroboPlanner(
                 os.path.join(share, "tiangong2pro_with_hands.urdf"),
                 os.path.join(share, "tienkung_curobo.yml"))
+        self._planner.trays = self.task_trays or ()  # load() rebuilds the planner if the set changed
         return self._planner
 
     def _wait_joints(self, timeout=5.0):

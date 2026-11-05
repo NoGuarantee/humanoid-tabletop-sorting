@@ -8,13 +8,15 @@ The TCP z axis in pelvis should be (0, 0, 1). Open fingers touch the table at TC
 Peak force: external load on each wrist during the move (/arm_6dof_*); a jump means the arm hit something.
 
 With the simulator running, the dev image built (remote.sh dev-image) and only hack_motion up (the full launch exits
-when brain publishes done):
+when brain publishes done). The dev container stays up and `kill` of `ros2 run` leaves its child alive, so stop the node by
+name: a leftover one is a second action server driving the same arm ("more than one action server" in the output).
 
   bash tools/remote.sh dev --timeout 2400 -- 'source /opt/ros/humble/setup.bash && \
     colcon build --symlink-install && source install/setup.bash && \
-    { ros2 run hack_motion motion_node --ros-args -p use_sim_time:=true & pid=$!; \
+    { pkill -f "[h]ack_motion/motion_node"; sleep 2; \
+      ros2 run hack_motion motion_node --ros-args -p use_sim_time:=true & \
       for i in $(seq 60); do ros2 action list | grep -q motion/move_tcp && break; sleep 2; done; \
-      python3 tools/move_tcp_check.py; status=$?; kill $pid; exit $status; }'
+      python3 tools/move_tcp_check.py; status=$?; pkill -f "[h]ack_motion/motion_node"; exit $status; }'
 """
 import math
 import sys

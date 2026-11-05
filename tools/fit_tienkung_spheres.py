@@ -68,6 +68,12 @@ FOLDED_WRIST = {f"elbow_yaw_{s}_link": [f"wrist_roll_{s}_link"] for s in "lr"}
 # links that can really meet. 15 mm puts the raised arm in collision (shoulder_yaw against waist_yaw). 10 mm costs
 # reach, two goals of move_tcp_check have no path, so we use 5 mm; the 300-configuration measure was not repeated for it.
 SELF_COLLISION_BUFFER = 0.005
+# left_tcp_link is the wrist cap, not the fingers (those are on L_base_link and keep the margin above). Over the
+# left tray the wrist rolls near its stop, and 5 mm here puts the closest seeds 3 mm from the goal and 1.2 mm
+# inside the margin, so IK rejects them. With no margin on this one link the goal is under 1 cm and clear
+# (tools/tray_margin_probe.py). A wrist folded to the joint limits still overlaps the forearm: elbow_yaw keeps
+# its 5 mm. The right cap stays at 5 mm, that tray is already reachable.
+TCP_BUFFER = {"left_tcp_link": 0.0}
 # Any buffer makes elbow_yaw touch shoulder_yaw in every pose, and then nothing is collision-free. Only elbow_pitch
 # is between them, so they cannot pass through each other.
 BENT_ELBOW = {f"elbow_yaw_{s}_link": [f"shoulder_yaw_{s}_link"] for s in "lr"}
@@ -269,6 +275,9 @@ def use_home_pose_in_builder(builder):
 
 def apply_margin(kinematics):
     kinematics["self_collision_buffer"] = {link: SELF_COLLISION_BUFFER for link in kinematics["self_collision_buffer"]}
+    for link, buf in TCP_BUFFER.items():
+        if link in kinematics["self_collision_buffer"]:
+            kinematics["self_collision_buffer"][link] = buf
     for a, bs in BENT_ELBOW.items():
         ignore = kinematics["self_collision_ignore"].setdefault(a, [])
         ignore.extend(b for b in bs if b not in ignore)

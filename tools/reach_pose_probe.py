@@ -6,7 +6,9 @@ the space in front of the pelvis below the top of the side trays. For each candi
 sampled; reported: the lowest arm sphere bottom in front of FRONT_X, self-collisions on the way, and the final TCP.
 FRONT_X and TRAY_TOP are the sim scene (scene.yaml), used only to judge the candidates here.
 
-  bash tools/remote.sh dev -- 'bash tools/curobo_install.sh && python3 tools/reach_pose_probe.py'
+  bash tools/remote.sh dev -- 'python3 tools/reach_pose_probe.py'
+
+torch and cuRobo come from the dev image (remote.sh dev-image), not from curobo_install.sh.
 """
 import sys
 from pathlib import Path

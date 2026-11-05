@@ -4,7 +4,9 @@
 "held": the other hand keeps its pose, as MoveTcp plans. "free": its goal is disabled. x, y span the object spawn
 area of the simulator (objects.yaml), used only to judge the result here.
 
-  bash tools/remote.sh dev -- 'bash tools/curobo_install.sh && python3 tools/curobo_reach_map.py'
+  bash tools/remote.sh dev -- 'python3 tools/curobo_reach_map.py'
+
+torch and cuRobo come from the dev image (remote.sh dev-image), not from curobo_install.sh.
 
 --tray maps the tray area instead (place heights over the trays, scene.yaml), --roll-limit R replaces robot.PLAN_ROLL_LIMIT.
 """

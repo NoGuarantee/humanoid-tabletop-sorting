@@ -7,10 +7,9 @@ tiangong2pro_urdf, under the OpenAtom Open Hardware License 1.0. This script dow
 fits spheres with cuRobo's RobotBuilder and writes the config into src/hack_motion/robot/. Only the URDF, the
 config and the licence go into git; the meshes stay in data/ (git-ignored, 120 MB) and are not needed at runtime.
 
-On the server, in a fresh container from the solution image (cuRobo is installed first):
+On the server, after remote.sh dev-image (torch and cuRobo are already in that image):
 
-  bash tools/remote.sh dev --timeout 3600 -- \\
-    'bash tools/curobo_install.sh && python3 tools/fit_tienkung_spheres.py'
+  bash tools/remote.sh dev --timeout 3600 -- 'python3 tools/fit_tienkung_spheres.py'
   bash tools/remote.sh fetch work/$NSSR_WHO/nssr-sol-team-049/src/hack_motion/robot .fetch  # before any sync
   cp .fetch/robot/tienkung_curobo.yml src/hack_motion/robot/
 

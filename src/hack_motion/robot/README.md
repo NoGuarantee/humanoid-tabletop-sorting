@@ -9,10 +9,10 @@
 Сферы в `tienkung_curobo.yml` подобраны по STL-мешам того же коммита. Это производные данные, а не исходные
 файлы (требование лицензии, п. 3.1: изменения отмечены). Самих мешей в репозитории нет, в рантайме они не нужны.
 
-Как пересобрать на сервере (меши кэшируются в `data/`, сверяются с хешами git):
+Как пересобрать на сервере (нужен уже собранный `remote.sh dev-image`; меши кэшируются в `data/` и переживают `sync`, сверяются с хешами git):
 
 ```bash
-bash tools/remote.sh dev --timeout 3600 -- 'bash tools/curobo_install.sh && python3 tools/fit_tienkung_spheres.py'
+bash tools/remote.sh dev --timeout 3600 -- 'python3 tools/fit_tienkung_spheres.py'
 bash tools/remote.sh fetch work/$NSSR_WHO/nssr-sol-team-049/src/hack_motion/robot .fetch   # до следующего sync
 cp .fetch/robot/tienkung_curobo.yml src/hack_motion/robot/
 ```

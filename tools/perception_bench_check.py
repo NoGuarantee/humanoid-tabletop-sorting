@@ -89,9 +89,15 @@ class Check(Node):
         res, ms = self.call(camera)
         s = res.scene
         print(f"{label} [{camera}]: success={res.success} '{res.message}' {ms:.0f} ms, table_z {s.table_z:+.4f}, "
-              f"objects {len(s.objects)}, stamp {s.header.stamp.sec}.{s.header.stamp.nanosec:09d} in {s.header.frame_id}")
+              f"objects {len(s.objects)}, trays {len(s.containers)}, "
+              f"stamp {s.header.stamp.sec}.{s.header.stamp.nanosec:09d} in {s.header.frame_id}")
+        for c in s.containers:
+            p = c.pose.position
+            print(f"  {c.kind} {c.id} {c.color} xyz ({p.x:+.3f} {p.y:+.3f} {p.z:+.3f}) "
+                  f"size {c.size.x:.3f} {c.size.y:.3f} {c.size.z:.3f}")
         for o in s.objects:
-            print(f"  {o.track_id} xyz ({o.center.x:+.3f} {o.center.y:+.3f} {o.center.z:+.3f}) yaw {o.yaw:+.2f} "
+            print(f"  {o.track_id} {o.category or '-'} {o.confidence:.2f} {o.name} "
+                  f"xyz ({o.center.x:+.3f} {o.center.y:+.3f} {o.center.z:+.3f}) yaw {o.yaw:+.2f} "
                   f"size {o.size.x:.3f} {o.size.y:.3f} {o.size.z:.3f} top {o.top_z:+.3f}"
                   f"{' CUT' if o.partially_visible else ''}")
         if out:
@@ -113,7 +119,8 @@ class Check(Node):
             cam = (T @ np.array(corners).T)[:3]
             uv = (K @ cam)[:2] / cam[2]
             cv2.polylines(img, [uv.T.astype(np.int32)], True, (0, 255, 0), 1)
-            cv2.putText(img, o.track_id, tuple(uv.T[0].astype(np.int32)), 0, 0.4, (0, 255, 255), 1)
+            label = o.category or o.track_id
+            cv2.putText(img, label, tuple(uv.T[0].astype(np.int32)), 0, 0.4, (0, 255, 255), 1)
         cv2.imwrite(path, img)
         print(f"saved {path}")
 

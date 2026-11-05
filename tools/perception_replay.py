@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Runs the table_clusters module over captured frames, without ROS, and prints what it found and how long it took.
 
-    python3 tools/perception_replay.py FRAMES_DIR OUT_DIR [--poses center,left,right] [--cams head,torso]
+    python3 tools/perception_replay.py FRAMES_DIR OUT_DIR [--poses center,left,right] [--cams head,torso] [--pool 4]
 
 FRAMES_DIR/layoutN/<pose>_cam_<camera>.npz hold rgb, depth (uint16, mm, 0 = none), K, T_pelvis_camera.
 Pictures with the clusters drawn over rgb go to OUT_DIR.
@@ -17,11 +17,19 @@ import cv2
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location(
-    "table_clusters", os.path.join(HERE, "..", "src", "hack_perception", "hack_perception", "table_clusters.py"))
-tc = importlib.util.module_from_spec(spec)
-sys.modules["table_clusters"] = tc
-spec.loader.exec_module(tc)
+PKG = os.path.join(HERE, "..", "src", "hack_perception", "hack_perception")
+
+
+def load(name):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(PKG, name + ".py"))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+tc = load("table_clusters")
+cl = load("classify")
 
 
 def cloud_from_frame(d):
@@ -118,6 +126,7 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--poses", default="center,left,right")
     ap.add_argument("--cams", default="head,torso")
+    ap.add_argument("--pool", default="", help="4 or 6: also print a category for each cluster")
     ap.add_argument("--quiet", action="store_true", help="only the per-frame lines")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
@@ -156,9 +165,20 @@ def main():
                       f"slope {-p.normal[0] / p.normal[2]:.4f} rms {p.rms * 1e3:.2f}mm inliers {p.n_inliers} "
                       f"x {edges[0]:.3f}..{edges[1]:.3f}{floor_txt} objects {len(result.objects)} "
                       f"rejected {[c.rejected for c in result.rejected]} {(t2 - t0) * 1e3:.0f} ms")
+                names = cl.names_for(args.pool) if args.pool else {}
+                trays = cl.find_trays(result.rejected, d["rgb"], cl.DEFAULT_TRAY)
                 if not args.quiet:
-                    for c in result.objects + result.rejected:
+                    for c in result.objects:
+                        extra = ""
+                        if names:
+                            obj_name, category, conf = cl.classify_object(c.size, d["rgb"], c.pixels, names)
+                            extra = f"  {category or '-'} {conf:.2f} {obj_name}"
+                        print("   ", fmt(c) + extra)
+                    for c in result.rejected:
                         print("   ", fmt(c))
+                    for tray in trays:
+                        x, y, z = tray["center"]
+                        print(f"    tray {tray['id']} {tray['color']} opening ({x:+.3f} {y:+.3f} {z:+.3f})")
                 cv2.imwrite(os.path.join(args.out, f"{name}_{pose}_{cam}.jpg"),
                             draw(d["rgb"], result, f"{name} {pose} {cam}: {len(result.objects)} objects"))
     for cam, by_layout in views.items():

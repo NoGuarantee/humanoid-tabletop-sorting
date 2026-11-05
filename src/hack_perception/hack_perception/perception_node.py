@@ -3,27 +3,32 @@
 Keeps the latest colour, depth and camera_info of both cameras; on request turns them into SceneObjects in `pelvis`.
 Runs on request only (not a stream): saves CPU, which counts in tie-breaks.
 
-Status: M1 is done, the geometry is in table_clusters.py. Names, categories and containers stay empty until M2:
+Status:
   M1: table plane (RANSAC) -> points above it -> clusters -> centre / yaw (PCA) / size / top_z
-  M2: trays by colour (red / blue / green), category per cluster (CLIP zero-shot as a baseline)
+  M2: trays by colour (red / blue / green), category by size and colour against /sim/objects/names
   M3: YOLO-seg trained on sim frames of all 6 pools
   M4: racks, slots, tube caps and sizes
 """
+import json
+import math
 import threading
 
 import numpy as np
 import rclpy
-from geometry_msgs.msg import Point, Vector3
-from hack_interfaces.msg import DetectedObject, SceneObjects
+from geometry_msgs.msg import Point, Pose, Quaternion, Vector3
+from hack_interfaces.msg import Container, DetectedObject, SceneObjects
 from hack_interfaces.srv import Perceive
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
 from sensor_msgs.msg import CameraInfo, Image
+from std_msgs.msg import String
 from tf2_ros import Buffer, TransformException, TransformListener
 
+from . import classify
 from . import geometry as geo
 from . import table_clusters as tc
 
@@ -31,7 +36,7 @@ CAMERAS = {"head": "cam_head", "torso": "cam_torso"}
 BASE = "pelvis"
 ARM_FRAMES = (("elbow_pitch_l_link", "wrist_pitch_l_link", "left_tcp_link"),
               ("elbow_pitch_r_link", "wrist_pitch_r_link", "right_tcp_link"))
-FINGERS = 0.21  # the finger tips are this far along -z of the TCP (see grasp_planner.top_down)
+FINGERS = 0.21  # along -z of the TCP; keep equal to grasp_planner.FINGERTIP
 
 
 class PerceptionNode(Node):
@@ -40,7 +45,13 @@ class PerceptionNode(Node):
         self.lock = threading.Lock()
         self.frames = {cam: {} for cam in CAMERAS}
         self.tracker = tc.Tracker()
+        self.names = {}  # object name -> category, from /sim/objects/names
+        self.tray_of_color = dict(classify.DEFAULT_TRAY)  # replaced by /sim/task when it arrives
         cb = ReentrantCallbackGroup()
+        latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                             reliability=ReliabilityPolicy.RELIABLE)
+        self.create_subscription(String, "/sim/objects/names", self.on_names, latched, callback_group=cb)
+        self.create_subscription(String, "/sim/task", self.on_task, latched, callback_group=cb)
         for cam, topic in CAMERAS.items():
             for kind in ("color", "depth"):
                 self.create_subscription(Image, f"/{topic}/{kind}/image_raw",
@@ -51,6 +62,33 @@ class PerceptionNode(Node):
         self.tf_listener = TransformListener(self.tf, self, spin_thread=False)
         self.create_service(Perceive, "perception/perceive", self.on_perceive, callback_group=cb)
         self.get_logger().info("perception ready")
+
+    def on_names(self, msg):
+        try:
+            data = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        if not isinstance(data, dict):
+            return
+        names = {str(name): str(category) for name, category in data.items()}
+        with self.lock:
+            self.names = names
+        self.get_logger().info(f"object names: {len(names)}")
+
+    def on_task(self, msg):
+        try:
+            data = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        trays = data.get("trays") if isinstance(data, dict) else None
+        if not isinstance(trays, dict):
+            return
+        mapping = {str(color): str(tray_id) for tray_id, color in trays.items() if isinstance(color, str) and color}
+        if not mapping:
+            return
+        with self.lock:
+            self.tray_of_color = mapping
+        self.get_logger().info("trays: " + ", ".join(f"{color}={tray_id}" for color, tray_id in mapping.items()))
 
     def store(self, cam, kind, msg):
         with self.lock:
@@ -110,7 +148,7 @@ class PerceptionNode(Node):
         return segments
 
     def detect(self, f, region, scene):
-        """Fill scene.table_z and scene.objects from one frame set. Containers and hood: not yet (milestones M2, M4)."""
+        """Fill scene from one frame set: object categories, and trays by colour. Hood racks are M4."""
         if region != "table":
             raise NotImplementedError(f"region '{region}'")
         cloud, _ = self.cloud_in_pelvis(f)
@@ -118,13 +156,35 @@ class PerceptionNode(Node):
         if result is None:
             raise RuntimeError("table plane not found")
         scene.table_z = result.table_z
+        rgb = geo.rgb_to_np(f["color"])
+        depth = f["depth"]
+        if rgb.shape[0] != depth.height or rgb.shape[1] != depth.width:
+            self.get_logger().warning(
+                f"colour {rgb.shape[1]}x{rgb.shape[0]} differs from depth {depth.width}x{depth.height}")
+            rgb = None
         with self.lock:
             self.tracker.update(result.objects)
+            names, tray_of_color = dict(self.names), dict(self.tray_of_color)
         for c in result.objects:
+            name, category, confidence = classify.classify_object(c.size, rgb, c.pixels, names)
             scene.objects.append(DetectedObject(
-                track_id=c.track_id, yaw=float(c.yaw), top_z=float(c.top_z), partially_visible=c.partially_visible,
+                track_id=c.track_id, name=name, category=category, confidence=float(confidence),
+                yaw=float(c.yaw), top_z=float(c.top_z), partially_visible=c.partially_visible,
                 center=Point(x=float(c.center[0]), y=float(c.center[1]), z=float(c.center[2])),
                 size=Vector3(x=float(c.size[0]), y=float(c.size[1]), z=float(c.size[2]))))
+        for tray in classify.find_trays(result.rejected, rgb, tray_of_color):
+            x, y, z = tray["center"]
+            yaw = tray["yaw"]
+            scene.containers.append(Container(
+                id=tray["id"], kind="tray", color=tray["color"],
+                pose=Pose(position=Point(x=x, y=y, z=z),
+                          orientation=Quaternion(z=math.sin(yaw / 2.0), w=math.cos(yaw / 2.0))),
+                size=Vector3(x=tray["size"][0], y=tray["size"][1], z=tray["size"][2])))
+        named = sum(o.category != "" for o in scene.objects)
+        trays = ", ".join(f"{c.id}:{c.color}" for c in scene.containers) or "none"
+        if not names:
+            self.get_logger().warning("no /sim/objects/names yet, categories left empty")
+        self.get_logger().info(f"{named}/{len(scene.objects)} named, trays {trays}")
 
 
 def main():

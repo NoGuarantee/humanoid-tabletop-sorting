@@ -12,7 +12,7 @@ default: {approach: top, preset: power, z_offset: -0.03, pre_height: 0.10, lift_
 
 by_category:
   box:         {preset: power, align: short_axis}
-  dish:        {preset: pinch, z_offset: -0.01}   # under 5 cm: leaned pinch in grasp_planner; this offset is the upright fallback
+  dish:        {preset: pinch, z_offset: -0.01}   # up to FLAT_MAX_HEIGHT: leaned chord in grasp_planner; this offset is the upright fallback
   figure:      {preset: pinch}
   jar:         {preset: power}
   electronics: {preset: power}

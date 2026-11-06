@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Pick the nearest table cluster and drop it in the tray on the same side. Milestone M1, one object.
+"""Pick one soap dish from a known point and drop it in the tray on the same side. Milestone M1.
 
-Categories are not used: perception still returns geometry only, and the tray is chosen by the arm
-(`y > 0` -> left), not by the task rule. The grasp height comes from grasp_planner, which keeps the
-fingertips FINGERTIP metres below the TCP. Open fingers meet the table at TCP z = 0.039 + 0.070 x
-(tools/table_touch.py); the script refuses to descend when the planned TCP is within 5 mm of that.
+The other objects are parked through `/sim/objects/set` (a debug topic: this script lives in tools/).
+The dish is placed at DISH_AT and the grasp uses that pose, not a camera cluster: the head's detector
+drops this dish, its height sits in the tray band. The pose in the pelvis frame comes from `on_table`,
+the same 4° pitch the trays use. The tray is chosen by the arm (`y > 0` -> left), not by the task rule.
+Open fingers meet the table at TCP z = 0.039 + 0.070 x (tools/table_touch.py); the script refuses a
+vertical hand whose TCP is within 5 mm of that. A leaned pinch is checked in grasp_planner.
 
 Needs hack_motion and hack_perception, not hack_brain: brain would publish /sim/task/done and exit.
 The dev container stays up and `kill` of `ros2 run` leaves its child alive, so stop the nodes by name.
@@ -19,22 +21,24 @@ The dev container stays up and `kill` of `ros2 run` leaves its child alive, so s
       python3 tools/pick_one.py; status=$?; \
       pkill -f "[h]ack_motion/motion_node"; pkill -f "[h]ack_perception/perception_node"; exit $status; }'
 """
-import math
+import json
 import os
 import sys
 import threading
 import time
 
 import rclpy
-from geometry_msgs.msg import Point, Pose, Quaternion
+from geometry_msgs.msg import Point, Pose, Quaternion, Vector3
 from hack_brain.clients import Clients
 from hack_brain.grasp_planner import FINGERTIP, axis_z, load_db, plan_grasps, plan_place, pose, top_down
 from hack_brain.skills import Skills
-from hack_interfaces.msg import Container
-from hack_motion.robot import tray_rim
+from hack_interfaces.msg import Container, DetectedObject, SceneObjects
+from hack_motion.robot import on_table, table_z, tray_rim
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import Parameter
+from rclpy.qos import DurabilityPolicy, QoSProfile
+from std_msgs.msg import String
 
 # Same look-at-table pose as brain_node.LOOK_TABLE. Arms then go to goals move_tcp_check already reached,
 # so the hanging hands are out of the cloud before the picture.
@@ -43,6 +47,10 @@ PARK = (("right", 0.40, -0.35, 0.30), ("left", 0.40, 0.35, 0.30))
 # TCP height where open fingers start to meet the table, from tools/table_touch.py. Stay above it.
 TOUCH_Z = (0.039, 0.070)
 TOUCH_MARGIN = 0.005
+# The flat dish of pool 4, on the right, clear of the parked hand at y -0.35 and of tray_right at y -0.69.
+DISH = "Threshold_Bamboo_Ceramic_Soap_Dish"
+DISH_AT = (0.38, -0.18, 0.0)  # along the table, y, yaw. Right of centre, clear of the parked hand and the tray.
+DISH_SIZE = (0.125, 0.098, 0.051)  # mesh box, long / short / height, same as classify.CATALOG
 
 DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "hack_brain", "config", "grasp_db.yaml")
 
@@ -57,11 +65,44 @@ def touch_z(x):
     return TOUCH_Z[0] + TOUCH_Z[1] * x
 
 
-def nearest(objects):
-    """Closest cluster to the pelvis in xy. A whole view wins over a closer one cut by the frame."""
-    whole = [o for o in objects if not o.partially_visible]
-    pool = whole or list(objects)
-    return min(pool, key=lambda o: math.hypot(o.center.x, o.center.y))
+def place_dish(node):
+    """Park every object and put the soap dish at DISH_AT. Returns False if the sim never answers."""
+    got = []
+    node.create_subscription(
+        String, "/sim/objects/names", lambda m: got.append(json.loads(m.data)),
+        QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+    pub = node.create_publisher(String, "/sim/objects/set", 10)
+    t0 = time.time()
+    while not got and time.time() - t0 < 30.0:
+        time.sleep(0.05)
+    if not got or DISH not in got[0]:
+        print(f"FAIL {DISH} is not in /sim/objects/names", flush=True)
+        return False
+    while pub.get_subscription_count() == 0 and time.time() - t0 < 30.0:
+        time.sleep(0.05)
+    if pub.get_subscription_count() == 0:
+        print("FAIL nothing subscribed to /sim/objects/set", flush=True)
+        return False
+    layout = {name: "park" for name in got[0]}
+    layout[DISH] = {"x": DISH_AT[0], "y": DISH_AT[1], "yaw": DISH_AT[2], "center": True}
+    pub.publish(String(data=json.dumps(layout)))
+    print(f"placed {DISH} at ({DISH_AT[0]:.2f},{DISH_AT[1]:.2f}) yaw {DISH_AT[2]:.2f}, "
+          f"parked {len(layout) - 1}", flush=True)
+    return True
+
+
+def known_dish():
+    """The placed dish in the pelvis frame. Layout metres are along the table; the pelvis is pitched 4°."""
+    sx, sy, sz = DISH_SIZE
+    cx, cy, cz = on_table(DISH_AT[0], DISH_AT[1], sz / 2.0)
+    _, _, top = on_table(DISH_AT[0], DISH_AT[1], sz)
+    obj = DetectedObject(
+        track_id="dish", name=DISH, category="dish", confidence=1.0,
+        center=Point(x=cx, y=cy, z=cz), yaw=float(DISH_AT[2]),
+        size=Vector3(x=sx, y=sy, z=sz), top_z=float(top))
+    scene = SceneObjects(table_z=float(table_z(cx)))
+    scene.objects.append(obj)
+    return obj, scene
 
 
 def tray_for(arm):
@@ -116,18 +157,12 @@ def run(node):
         if not node.api.move_tcp(arm, pose(x, y, z, q), "direct"):
             print(f"FAIL could not park {arm} above the table", flush=True)
             return 1
-    wait_sim(node, 0.5)
-    scene = node.api.perceive("head", "table")
-    if scene is None:
-        print("FAIL no scene", flush=True)
+    if not place_dish(node):
         return 1
-    if not scene.objects:
-        print(f"FAIL no clusters, table_z {scene.table_z:+.3f}", flush=True)
-        return 1
-    obj = nearest(scene.objects)
-    skipped = len(scene.objects) - 1
-    print(f"scene table_z {scene.table_z:+.3f}  clusters {len(scene.objects)}  "
-          f"using {obj.track_id or '?'} ({skipped} left)", flush=True)
+    wait_sim(node, 1.0)
+    obj, scene = known_dish()
+    print(f"dish at ({obj.center.x:.3f},{obj.center.y:.3f}) top {obj.top_z:+.3f} "
+          f"table_z {scene.table_z:+.3f}", flush=True)
     cand = plan_grasps(obj, scene, node.skills.db)[0]
     tray = tray_for(cand.arm)
     place = plan_place(cand.arm, tray, node.skills.db)

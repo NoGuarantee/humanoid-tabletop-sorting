@@ -213,8 +213,6 @@ class CuroboPlanner:
         # pulls the path onto a line that, for the 45° pinch, points down into the table.
         if length < 1e-4 or float(local[dominant].abs()) > 0.85 * length:
             return self._linear_axis(link, goal, state, "xyz"[dominant])
-        from curobo.types import JointState
-
         order = sorted(range(3), key=lambda k: -float(rot[2, k] * local[k]))  # gain height before sliding
         names, waypoints, dt = None, [], None
         here = start.to(end.dtype).clone()
@@ -227,9 +225,25 @@ class CuroboPlanner:
             step.position[0, 0, i, 0] = here
             names, part, dt = self._linear_axis(link, step, js, "xyz"[k])
             waypoints.extend(part)
-            js = JointState.from_position(
-                torch.tensor([waypoints[-1]], device=here.device, dtype=here.dtype), joint_names=names)
+            js = self._chain_state(names, part[-1], js)
         return names, waypoints, dt
+
+    def _chain_state(self, names, waypoint, prev):
+        """Joint state at the end of one axis step, in the planner cspace.
+
+        The interpolated plan also carries locked joints. Passing that wider vector back in makes the
+        IK seed 26 wide while the solver is the 15-dof cspace, and the next plan_pose crashes.
+        """
+        import torch
+        from curobo.types import JointState
+
+        got = {name: float(value) for name, value in zip(names, waypoint)}
+        prev_names = list(prev.joint_names) if getattr(prev, "joint_names", None) else list(self.joint_names)
+        keep = {name: float(value) for name, value in zip(prev_names, prev.position.detach().reshape(-1).tolist())}
+        q = [got.get(name, keep.get(name, 0.0)) for name in self.joint_names]
+        return JointState.from_position(
+            torch.tensor([q], device=prev.position.device, dtype=prev.position.dtype),
+            joint_names=list(self.joint_names))
 
     def _linear_axis(self, link, goal, state, axis):
         """One Cartesian plan that may travel only along `axis` of the goal frame."""

@@ -3,10 +3,10 @@
 Geometry only: no names or categories. Pipeline: RANSAC table plane -> points above it within the table area -> connected
 components on a 2D grid in the plane -> trays and the robot's arms dropped by simple rules -> a pose for each cluster.
 
-The pelvis is not level: measured on all captured frames, both cameras and the floor agree that the table rises along
-+x by 0.07 m/m (about 4 degrees), z = -0.179 + 0.0698 x. So one number cannot describe the table: `table_z` is the plane
-at TABLE_REF_XY (middle of the spawn area), and it is 8.5 mm off at the ends of that area. Heights are measured along
-the plane normal; the table under an object in pelvis is `top_z - size.z`.
+The pelvis is not level in the simulator: captured frames show the table rising along +x by about 0.07 m/m. That fit is
+an observation, not a pose to hardcode. The plane below is fitted from the frame; PRIOR_Z and TABLE_X are search bounds,
+which the rules allow. `table_z` is that plane at TABLE_REF_XY. Heights are measured along the plane normal; the table
+under an object in pelvis is `top_z - size.z`.
 """
 import math
 from dataclasses import dataclass, field

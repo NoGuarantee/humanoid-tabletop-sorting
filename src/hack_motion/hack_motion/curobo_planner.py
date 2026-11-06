@@ -23,6 +23,7 @@ SAME_SOLUTION = 0.3  # rad, joint-space distance: closer solutions fail the same
 START_CLEARANCE = 0.002  # m past the self-collision buffer that a start state must have, or it is moved
 START_CLEAR_STEPS = (0.01, 0.03, 0.1)  # rad, spreads of the samples around a start state in collision
 START_CLEAR_SAMPLES = 512
+START_CLEAR_MAX = 0.08  # rad: a farther jump is a different pose, and a held object comes off
 
 
 class Unreachable(Exception):
@@ -333,8 +334,12 @@ class CuroboPlanner:
         self._self_cost = SelfCollisionCost(SelfCollisionCostCfg(
             weight=1.0, store_pair_distance=True, self_collision_kin_config=kin_cfg.self_collision_config))
 
-    def _clear_of_self(self, q):
-        """One bool per row of q [N x dof]: every sphere pair is START_CLEARANCE past the self-collision buffer."""
+    def _self_overlap(self, q):
+        """Max sphere overlap (m) per row of q [N x dof], after the start clearance is added.
+
+        Positive means cuRobo will refuse to plan from that state. The cost already includes the
+        self-collision buffer; the radius bump is the extra START_CLEARANCE.
+        """
         from curobo.types import JointState
 
         n = q.shape[0]
@@ -343,33 +348,92 @@ class CuroboPlanner:
         spheres[..., 3] += START_CLEARANCE / 2.0
         self._self_cost.setup_batch_tensors(n, 1)
         self._self_cost.forward(spheres)
-        return ~(self._self_cost._pair_distance.view(n, -1) > 0.0).any(dim=1)
+        return self._self_cost._pair_distance.view(n, -1).amax(dim=1)
+
+    def _clear_of_self(self, q):
+        """One bool per row of q [N x dof]: every sphere pair is START_CLEARANCE past the self-collision buffer."""
+        return self._self_overlap(q) <= 0.0
+
+    def _bounds(self, q):
+        import torch
+        lo = torch.tensor([self._inside_limits(name, -math.inf) for name in self.joint_names]).to(q)
+        hi = torch.tensor([self._inside_limits(name, math.inf) for name in self.joint_names]).to(q)
+        return lo, hi
+
+    def _project_clear(self, q, lo, hi):
+        """Walk q [1 x dof] out of the buffer along the overlap gradient.
+
+        Takes the shortest step that is already clear. A shorter step that only reduces the overlap can use up
+        START_CLEAR_MAX before the pose is clear, and then no step is left. None when nothing within the cap helps.
+        """
+        import torch
+
+        eps = 0.02
+        dof = q.shape[1]
+        eye = torch.eye(dof, device=q.device, dtype=q.dtype)
+        cur = q
+        for _ in range(6):
+            overlap = float(self._self_overlap(cur)[0].item())
+            if overlap <= 0.0:
+                return cur
+            samples = torch.clamp(torch.cat([cur + eps * eye, cur - eps * eye], dim=0), min=lo, max=hi)
+            pen = self._self_overlap(samples)
+            grad = (pen[:dof] - pen[dof:]) / (2.0 * eps)
+            norm = torch.linalg.norm(grad)
+            if float(norm) < 1e-8:
+                return None
+            direction = grad / norm
+            improving = None
+            for length in (0.01, 0.02, 0.04, 0.08):
+                trial = torch.clamp(cur - length * direction, min=lo, max=hi)
+                if float(torch.linalg.norm(trial - q).item()) > START_CLEAR_MAX:
+                    continue
+                gap = float(self._self_overlap(trial)[0].item())
+                if gap <= 0.0:
+                    return trial  # the shortest step that is already clear; a shorter one may only nibble
+                if gap < overlap and improving is None:
+                    improving = trial
+            if improving is None:
+                return None
+            cur = improving
+        return cur if float(self._self_overlap(cur)[0].item()) <= 0.0 else None
 
     def _clear_start(self, q):
         """The nearest state to q [1 x dof] that can be planned from.
 
         cuRobo fails every plan from a start inside the self-collision buffer. IK ends on the edge of the buffer, and
         the drives stop short of the command, so the arm does end up inside, and then every goal fails until it moves.
-        Returns q itself when it is clear, or when no sample is: the plan then reports the failure.
+        A random sample around that pose is often 0.2 rad away: the trajectory then starts with a jump and a held
+        object comes off. The overlap gradient picks a step inside START_CLEAR_MAX, the shortest one that is clear.
+        Returns q itself when it is clear, or when nothing close is: the plan then reports the failure.
         """
         import torch
 
         self.start_moved = 0.0
         if self._clear_of_self(q)[0]:
             return q
-        lo = torch.tensor([self._inside_limits(name, -math.inf) for name in self.joint_names]).to(q)
-        hi = torch.tensor([self._inside_limits(name, math.inf) for name in self.joint_names]).to(q)
+        lo, hi = self._bounds(q)
+        projected = self._project_clear(q, lo, hi)
+        if projected is not None and self._clear_of_self(projected)[0]:
+            self.start_moved = float(torch.linalg.norm(projected - q).item())
+            return projected
         rng = torch.Generator(device=q.device).manual_seed(0)  # the global generator seeds cuRobo
+        best_q, best_d = None, START_CLEAR_MAX
         for spread in START_CLEAR_STEPS:
             noise = torch.randn((START_CLEAR_SAMPLES, q.shape[1]), device=q.device, generator=rng)
             samples = torch.clamp(q + spread * noise.to(q), min=lo, max=hi)
-            clear = samples[self._clear_of_self(samples)]
-            if clear.shape[0]:
-                distance = torch.linalg.norm(clear - q, dim=1)
-                best = int(distance.argmin().item())
-                self.start_moved = float(distance[best].item())
-                return clear[best].reshape(1, -1)
-        return q
+            distance = torch.linalg.norm(samples - q, dim=1)
+            clear = self._clear_of_self(samples) & (distance <= START_CLEAR_MAX)
+            if bool(clear.any()):
+                picked = distance[clear]
+                i = int(torch.arange(samples.shape[0], device=q.device)[clear][int(picked.argmin().item())].item())
+                if float(distance[i]) < best_d:
+                    best_q, best_d = samples[i], float(distance[i])
+                    break
+        if best_q is None:
+            return q
+        self.start_moved = best_d
+        return best_q.reshape(1, -1)
 
     def _fail(self, result, goal, arm):
         """One line: best position and rotation error, and where the TCP actually ended up."""

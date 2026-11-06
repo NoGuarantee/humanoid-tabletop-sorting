@@ -176,16 +176,18 @@ FLAT_LITTLE = (-0.0285, 0.0220, -0.2064)
 FLAT_KNUCKLE = (0.020493, -0.000285, -0.136914)
 FLAT_ROLL = math.radians(45)
 FLAT_APERTURE = 0.098  # tip-to-tip distance of the ready hand
-# The soap dish's short side equals this aperture, so a full span puts a pad on each rim and
-# the open fingers lie on the top. The descent may stop 1.5 cm short (skills.GRASP_POS_TOL),
-# and a pad only a few millimetres outside is then on the rim: the index stays near 1.0 and
-# finishes closing only after the lift. INDEX_NEAR keeps the pad far enough outside that a
-# short stop is still beside the wall. THUMB_OUT is the least clearance for the thumb.
-INDEX_NEAR = (0.018, 0.035)
-THUMB_OUT = -0.004
-# pinch_flat closes to about 3 cm. Less dish than that between the open pads, and the index
-# reaches the preset without ever touching the wall.
-MIN_BETWEEN = 0.040
+# Open index, outside the wall, so the descent does not set the finger down on the rim.
+INDEX_NEAR = (0.012, 0.030)
+# Thumb pad just inside the opening, past the 12 mm rim. Deeper than this is toward
+# the centre: at 2.7 cm in and mid-height the pad sat on the floor and the bend
+# folded to 0.72. A short arrival is about 0.5 cm, so the shallow end stays past the rim.
+THUMB_IN = (-0.024, -0.018)
+# Index tip at actuator 4 = 0.48 minus the open tip, right-hand TCP frame. That fraction is
+# the bottom of the curl: deeper than 0.55, which stops 3 cm short of the thumb, and still
+# below the rim. Past it the tip climbs back out.
+FLAT_CURL = (-0.0051, 0.0463, 0.0631)
+# Thumb links at pinch_ready, same frame. A point at or below the top has to be in the opening.
+FLAT_THUMB_LINKS = ((0.0224, 0.0666, -0.1013), (0.0263, 0.0811, -0.1183), FLAT_THUMB)
 # Below this the upright thumb pad, 7 cm above the open index, misses the wall. The soap dish is 5.1 cm.
 FLAT_MAX_HEIGHT = 0.065
 
@@ -235,26 +237,21 @@ def _box_clear(obj, xy):
     return max(dx, dy)
 
 
-def _between(obj, a, b):
-    """Length of the segment that lies inside the box."""
-    n = 40
-    hit = 0
-    for i in range(n + 1):
-        t = i / n
-        if _box_clear(obj, (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))) <= 0.0:
-            hit += 1
-    return hit / n * math.hypot(b[0] - a[0], b[1] - a[1])
-
-
 def _flat_pad_z(obj, scene):
-    """Height of the level pads: under the top, and above the 8 mm dip of the closing index."""
+    """Height of the level pads: a centimetre under the rim, and clear of the table.
+
+    The middle of the box put the thumb on the floor (bend 0.72). 1.8 cm under the rim drove the
+    thumb past open (bend 1.33). A centimetre under the rim is the only height where the thumb
+    stays open and the index meets the dish; that meeting is the top edge, and the finger
+    finishes closing on the lift.
+    """
     local = obj.top_z - obj.size.z if obj.size.z > 0 else scene.table_z
     floor = max(scene.table_z, local)
     low = floor + 0.020
     high = obj.top_z - 0.010
-    if high < floor + 0.012:
+    if high < low:
         return None
-    return min(max(0.5 * (floor + obj.top_z), low), high)
+    return high
 
 
 def _finger_on_top(obj, index_xy, _pad_z, i_w, k_w, hand):
@@ -296,16 +293,41 @@ def _beside_on_dish(obj, index_xy, i_w, rot, sign):
     return False
 
 
+def _curl_depth(obj, index_xy, rot, sign, pad_z):
+    """How far the closing index tip is inside the box at FLAT_CURL, or None when it misses.
+
+    The tip has to cross the near wall. A centimetre under the rim, the curl finishes above
+    the top; the wall is what stops the finger before that, so the end height is not a gate.
+    """
+    curl = (FLAT_CURL[0], sign * FLAT_CURL[1], FLAT_CURL[2])
+    dw = matvec(rot, curl)
+    if pad_z > obj.top_z - 0.008:
+        return None
+    depth = -_box_clear(obj, (index_xy[0] + dw[0], index_xy[1] + dw[1]))
+    if depth < 0.015:
+        return None
+    return depth
+
+
+def _thumb_in_opening(obj, index_xy, rot, sign, pad_z):
+    """Thumb links that reach the dish height sit in the opening, not on the rim."""
+    index = (FLAT_INDEX[0], sign * FLAT_INDEX[1], FLAT_INDEX[2])
+    for pt in FLAT_THUMB_LINKS:
+        local = (pt[0] - index[0], sign * pt[1] - index[1], pt[2] - index[2])
+        w = matvec(rot, local)
+        if pad_z + w[2] <= obj.top_z and _box_clear(obj, (index_xy[0] + w[0], index_xy[1] + w[1])) > -0.012:
+            return False
+    return True
+
+
 def plan_flat_pinches(obj, scene, p, arm):
-    """Pinch a flat object with the palm leaned 45°, across a corner the open fingers can span.
+    """Pinch a flat object with the palm leaned 45° and the thumb already in the opening.
 
     Upright, the thumb pad is 7 cm above the open index, so on a short dish the index curls onto the
-    top and only finishes closing after the lift. Leaning 45° puts the pads level. The aperture is
-    9.8 cm and the soap dish's short side is the same, so a chord straight across that side starts
-    with one pad inside the wall. The pinch crosses a corner: the index a few millimetres outside
-    its wall, the thumb clear of the other, and enough of the dish between them that the closing
-    index meets the wall before the preset. The wrist stays near z = 0, which IK can reach; the
-    sideways pose with the wrist on the table cannot.
+    top and only finishes closing after the lift. Leaning 45° puts the pads level. The curl itself
+    is only about 6 cm and never reaches a thumb that waits outside the far wall, so both pads
+    outside just nick the rim. The thumb goes down into the opening and the index closes through
+    the near wall toward it. The wrist stays near z = 0, which IK can reach.
     """
     pad_z = _flat_pad_z(obj, scene)
     if pad_z is None:
@@ -337,38 +359,42 @@ def plan_flat_pinches(obj, scene, p, arm):
                 idx = (h * hand[0] + s * pinch[0], h * hand[1] + s * pinch[1])
                 thu = (idx[0] + gap * pinch[0], idx[1] + gap * pinch[1])
                 near, far = _box_clear(obj, idx), _box_clear(obj, thu)
-                if not (INDEX_NEAR[0] <= near <= INDEX_NEAR[1] and far >= THUMB_OUT):
+                if not (INDEX_NEAR[0] <= near <= INDEX_NEAR[1] and THUMB_IN[0] <= far <= THUMB_IN[1]):
                     continue
-                span = _between(obj, idx, thu)
                 tcp_x = obj.center.x + idx[0] - i_w[0]
                 tcp_y = obj.center.y + idx[1] - i_w[1]
                 # x 0.26 stalled 15 cm short of the object.
-                if span < MIN_BETWEEN or tcp_x < 0.30:
+                if tcp_x < 0.30:
                     continue
                 if _finger_on_top(obj, idx, pad_z, i_w, k_w, hand):
                     continue
                 if _beside_on_dish(obj, idx, i_w, rot, sign):
+                    continue
+                if not _thumb_in_opening(obj, idx, rot, sign, pad_z):
+                    continue
+                depth = _curl_depth(obj, idx, rot, sign, pad_z)
+                if depth is None:
                     continue
                 # Wrist just in front of this object, on the arm's side of it. A fixed
                 # (0.32, -0.10) pulled the forearm across the centre tray once the dish
                 # sat in that tray's corner.
                 side = -1.0 if arm == "right" else 1.0
                 reach = -math.hypot(tcp_x - (obj.center.x - 0.05), tcp_y - (obj.center.y + side * 0.04))
-                rank = span + 0.4 * reach
+                rank = depth + 0.4 * reach
                 if best is None or rank > best[0]:
-                    best = (rank, span, reach, idx, i_w, yaw)
+                    best = (rank, depth, reach, idx, i_w, yaw)
         if best is not None:
             found.append(best)
     def _rank(item):
-        _inner, span, reach, _idx, _iw, yaw = item
-        # The parked arm reaches a pinch across the short side. A freer corner does not.
+        _inner, depth, reach, _idx, _iw, yaw = item
+        # The nearer angle is the smaller wrist turn from the parked hand.
         dy = abs((yaw - base_yaw + math.pi) % (2.0 * math.pi) - math.pi)
-        return -(span - 0.25 * dy + 0.4 * reach)
+        return -(depth - 0.25 * dy + 0.4 * reach)
 
     found.sort(key=_rank)
     out = []
     yaws = []
-    for _inner, span, _reach, index_xy, i_w, yaw in found:
+    for _inner, depth, _reach, index_xy, i_w, yaw in found:
         if any(abs((yaw - prev + math.pi) % (2 * math.pi) - math.pi) < 0.4 for prev in yaws):
             continue  # the retry is a different corner
         q = quat_from_rpy(roll, 0.0, yaw)
@@ -383,7 +409,7 @@ def plan_flat_pinches(obj, scene, p, arm):
             lift=pose(tcp[0], tcp[1], tcp[2] + lift_h, q),  # straight up: along the fingers would drag it
             hand_preset="pinch_flat",
             force=p.get("force", 0.0),
-            score=span,
+            score=depth,
             approach_preset="pinch_ready",
         ))
         yaws.append(yaw)

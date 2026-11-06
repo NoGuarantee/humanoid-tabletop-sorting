@@ -24,6 +24,9 @@ START_CLEARANCE = 0.002  # m past the self-collision buffer that a start state m
 START_CLEAR_STEPS = (0.01, 0.03, 0.1)  # rad, spreads of the samples around a start state in collision
 START_CLEAR_SAMPLES = 512
 START_CLEAR_MAX = 0.08  # rad: a farther jump is a different pose, and a held object comes off
+# A 45° hand rises as two TCP-axis steps. Past 0.14 m that pair has no plan: the 0.15 m
+# lift of the soap dish reports the start or the end in collision, while 0.12 m still plans.
+LEAN_STEP = 0.12
 
 
 class Unreachable(Exception):
@@ -209,6 +212,22 @@ class CuroboPlanner:
         local = rot.T @ (end - start.to(end.dtype))
         length = float(torch.linalg.norm(local))
         dominant = int(local.abs().argmax().item())
+        # Longer than one leaned step: cut the straight move into pieces, each planned below.
+        if length > LEAN_STEP and float(local[dominant].abs()) <= 0.85 * length:
+            n = math.ceil(length / LEAN_STEP)
+            names, waypoints, dt = None, [], None
+            js = state
+            for step_i in range(1, n + 1):
+                alpha = step_i / n
+                step = goal.clone()
+                step.position[0, 0, i, 0] = start.to(end.dtype) + (end - start.to(end.dtype)) * alpha
+                try:
+                    names, part, dt = self._plan_linear(arm, step, js)
+                except Unreachable as e:
+                    raise Unreachable(f"at {alpha:.2f} of {length:.3f} m: {e}") from e
+                waypoints.extend(part)
+                js = self._chain_state(names, part[-1], js)
+            return names, waypoints, dt
         # A leaned hand's world-vertical move is split across two TCP axes. Freeing only the larger one
         # pulls the path onto a line that, for the 45° pinch, points down into the table.
         if length < 1e-4 or float(local[dominant].abs()) > 0.85 * length:

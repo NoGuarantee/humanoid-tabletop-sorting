@@ -3,6 +3,10 @@
 # z_offset is added to the object's top_z (negative = below the top).
 # align: short_axis = fingers close across the short side, long_axis = across the long side.
 # Values are starting points, tune them per object in the simulator (milestone M2-M3).
+# Slip is not a simulator bug (docs/ANALYSIS.md, section 8 item 10). Set `force` per object to 0.3-0.5
+# (Hand.force -> /inspire_hand/set_force; 1.0 pushes the object out). Presets already aim slightly past
+# the object. Also lower /inspire_hand/set_speed, and rotate the thumb before the other fingers close.
+# `force` is omitted below, so the planner sends 0 and the hand stays at the default limit of 1.0.
 
 default: {approach: top, preset: power, z_offset: -0.03, pre_height: 0.10, lift_height: 0.15, align: short_axis}
 

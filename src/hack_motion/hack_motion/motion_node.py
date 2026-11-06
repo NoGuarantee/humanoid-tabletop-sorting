@@ -16,6 +16,7 @@ import traceback
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from bodyctrl_msgs.msg import CmdSetMotorPosition, SetMotorPosition
+from bodyctrl_msgs.srv import SetForce, SetSpeed
 from hack_interfaces.action import Hand, MoveJoints, MoveTcp
 from rclpy.action import ActionServer
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -30,6 +31,30 @@ from .curobo_planner import Unreachable
 from .robot import ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, TCP_LINK, TRAYS, clip, raise_steps
 
 PERIOD = 0.05  # s, real time between control checks
+# Inspire actuator 6, thumb rotation. It turns across before the other fingers close.
+THUMB = 5
+# /inspire_hand/set_speed: 1.0 is a full stroke in 0.8 s. Half of that keeps the close from kicking the object out.
+HAND_CLOSE_SPEED = 0.5
+HAND_STROKE_S = 0.8
+FINGER_MOVE = 0.05  # a finger this far from where it was is actually closing or turning
+
+
+def _closing(current, target):
+    """A preset that pulls any finger shut. Unknown state counts too: pinch and power both close."""
+    if current is None:
+        return any(v < 0.9 for v in target)
+    return any(target[i] < current[i] - FINGER_MOVE for i in range(6))
+
+
+def _thumb_first(current, target):
+    """Thumb rotation and another finger both have to move. The thumb goes first."""
+    if current is None:
+        return False
+    turns = target[THUMB] < current[THUMB] - FINGER_MOVE
+    others = any(abs(target[i] - current[i]) > FINGER_MOVE for i in range(5))
+    return turns and others
+
+
 # 1/s, integrates the PD undershoot. The arm actuators settle with tau = kd/kp = 0.25 s, so this is damping 0.7.
 COMPENSATION_RATE = 2.0
 MAX_COMPENSATION = 0.3  # rad added on top of the target at most
@@ -61,6 +86,10 @@ class MotionNode(Node):
                     for g in ("arm", "head", "waist")}
         self.hand_cmd = {s: self.create_publisher(JointState, f"/inspire_hand/ctrl/{s}_hand", 10)
                          for s in ("left", "right")}
+        self.hand_speed = {s: self.create_client(SetSpeed, f"/inspire_hand/set_speed/{s}_hand", callback_group=cb)
+                           for s in ("left", "right")}
+        self.hand_force = {s: self.create_client(SetForce, f"/inspire_hand/set_force/{s}_hand", callback_group=cb)
+                           for s in ("left", "right")}
         ActionServer(self, MoveJoints, "motion/move_joints", self.exec_move_joints, callback_group=cb)
         ActionServer(self, Hand, "motion/hand", self.exec_hand, callback_group=cb)
         ActionServer(self, MoveTcp, "motion/move_tcp", self.exec_move_tcp, callback_group=cb)
@@ -245,35 +274,24 @@ class MotionNode(Node):
         if g.hand not in self.hand_cmd or g.preset not in HAND_PRESETS:
             res.success = False
             return res
-        if g.force > 0:
-            # TODO(grasping): call /inspire_hand/set_force/{side}_hand (bodyctrl_msgs/srv/SetForce).
-            # A limit of 1.0 pushes objects out of the hand; 0.3-0.5 is the range to tune (ANALYSIS.md §8.10).
-            # Also /inspire_hand/set_speed, and rotate the thumb before the other fingers close.
-            self.get_logger().warn("Hand.force is not applied yet")
-        target = HAND_PRESETS[g.preset]
-        msg = JointState()
-        msg.name = [str(i) for i in range(1, 7)]
-        msg.position = [float(v) for v in target]
-        self.hand_cmd[g.hand].publish(msg)
-
-        t0, last, still_since = self.now(), None, None
-        fb = Hand.Feedback()
-        while rclpy.ok() and self.now() - t0 < 2.0:  # full stroke takes 0.8 s at default speed
-            time.sleep(PERIOD)
-            with self.lock:
-                st = self.hand_state[g.hand]
-            if st is None or len(st.position) < 6:
-                continue
-            pos = list(st.position[:6])
-            fb.position = [float(p) for p in pos]
-            handle.publish_feedback(fb)
-            if last is not None and max(abs(a - b) for a, b in zip(pos, last)) < 0.005:
-                still_since = still_since or self.now()
-                if self.now() - still_since > 0.2:
-                    break
-            else:
-                still_since = None
-            last = pos
+        target = [float(v) for v in HAND_PRESETS[g.preset]]
+        # 0 keeps the limit already set (Hand.action). 1.0 pushes the object out; grasps pass 0.3-0.5.
+        if g.force > 0 and not self._set_hand_limit(g.hand, g.force):
+            self.get_logger().warn(f"set_force {g.hand} {g.force:.2f} was not applied")
+        current = self._finger_pos(g.hand)
+        speed = HAND_CLOSE_SPEED if _closing(current, target) else 1.0
+        if not self._set_hand_speed(g.hand, speed):
+            self.get_logger().warn(f"set_speed {g.hand} {speed:.2f} was not applied")
+        # Turn the thumb across before the other fingers move. One command does both, and the
+        # fingers arrive while the thumb is still swinging.
+        if _thumb_first(current, target):
+            staged = list(current)
+            staged[THUMB] = target[THUMB]
+            self._command_fingers(g.hand, staged, (6,))
+            self._wait_fingers(handle, g.hand, staged, HAND_STROKE_S / speed + 0.6)
+            self.get_logger().info(f"hand {g.hand} thumb across, closing the rest")
+        self._command_fingers(g.hand, target)
+        self._wait_fingers(handle, g.hand, target, HAND_STROKE_S / speed + 0.6)
         with self.lock:
             st = self.hand_state[g.hand]
         if st is not None and len(st.position) >= 6:
@@ -285,6 +303,75 @@ class MotionNode(Node):
                 res.position[i] > target[i] + 0.05 and (not res.effort or res.effort[i] > 0.1) for i in closing)
         res.success = True
         return res
+
+    def _finger_pos(self, side):
+        with self.lock:
+            st = self.hand_state[side]
+        if st is None or len(st.position) < 6:
+            return None
+        return [float(p) for p in st.position[:6]]
+
+    def _command_fingers(self, side, positions, actuators=range(1, 7)):
+        msg = JointState()
+        msg.name = [str(i) for i in actuators]
+        msg.position = [float(positions[i - 1]) for i in actuators]
+        self.hand_cmd[side].publish(msg)
+
+    def _set_hand_limit(self, side, force):
+        req = SetForce.Request()
+        for i in range(6):
+            setattr(req, f"force{i}_ratio", float(force))
+        res = self._call_hand(self.hand_force[side], req)
+        return res is not None and res.force_accepted
+
+    def _set_hand_speed(self, side, speed):
+        req = SetSpeed.Request()
+        for i in range(6):
+            setattr(req, f"speed{i}_ratio", float(speed))
+        res = self._call_hand(self.hand_speed[side], req)
+        return res is not None and res.speed_accepted
+
+    def _call_hand(self, client, request):
+        """Service calls from the action callback. The executor is multi-threaded, so sleep until the reply."""
+        if not client.service_is_ready() and not client.wait_for_service(timeout_sec=1.0):
+            return None
+        fut = client.call_async(request)
+        deadline = time.perf_counter() + 1.0
+        while rclpy.ok() and not fut.done() and time.perf_counter() < deadline:
+            time.sleep(PERIOD)
+        if not fut.done():
+            return None
+        try:
+            return fut.result()
+        except Exception as e:
+            self.get_logger().warn(f"hand service failed: {e}")
+            return None
+
+    def _wait_fingers(self, handle, side, target, timeout):
+        """Until the fingers sit near `target`, or stop short of it. Stillness before anything moves does not count."""
+        t0, last, still_since, moved = self.now(), None, None, False
+        fb = Hand.Feedback()
+        while rclpy.ok() and self.now() - t0 < timeout:
+            time.sleep(PERIOD)
+            pos = self._finger_pos(side)
+            if pos is None:
+                continue
+            fb.position = pos
+            handle.publish_feedback(fb)
+            if last is not None and max(abs(a - b) for a, b in zip(pos, last)) >= 0.005:
+                moved = True
+                still_since = None
+            elif last is not None:
+                still_since = still_since or self.now()
+            last = pos
+            near = max(abs(pos[i] - target[i]) for i in range(6)) < FINGER_MOVE
+            if still_since is None:
+                continue
+            held = self.now() - still_since
+            if near and held > 0.15:
+                return
+            if moved and held > 0.2:  # stopped on the way: the finger met the object
+                return
 
     # ---------------------------------------------------------------- MoveTcp
     def exec_move_tcp(self, handle):

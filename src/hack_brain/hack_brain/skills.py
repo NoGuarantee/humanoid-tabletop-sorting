@@ -31,9 +31,11 @@ class Skills:
             self.c.hand(arm, "open")
             if not self.c.move_tcp(arm, cand.pre_grasp, "direct"):
                 continue  # unreachable from this side: nothing touched yet
-            if cand.approach_preset != "open" and self.c.hand(arm, cand.approach_preset) is None:
+            if cand.approach_preset != "open" and self.c.hand(arm, cand.approach_preset, cand.force) is None:
                 continue
-            if not self._descend(arm, cand.grasp):
+            # A joint-space descent onto a flat pinch swings the open fingers through the dish.
+            linear_only = cand.hand_preset == "pinch_flat"
+            if not self._descend(arm, cand.grasp, linear_only):
                 self.c.hand(arm, "open")
                 self.c.move_tcp(arm, cand.pre_grasp, "linear")
                 continue
@@ -65,10 +67,12 @@ class Skills:
             return ""
         return " ".join(f"{p:.2f}" for p in hr.position)
 
-    def _descend(self, arm, grasp):
+    def _descend(self, arm, grasp, linear_only=False):
         """Down to the grasp. A straight line often meets the body; the same pose can still be free in joint space."""
         if self.c.move_tcp(arm, grasp, "linear", pos_tol=GRASP_POS_TOL):
             return True
+        if linear_only:
+            return False
         return self.c.move_tcp(arm, grasp, "direct", pos_tol=GRASP_POS_TOL)
 
     def _to_approach(self, arm, approach):

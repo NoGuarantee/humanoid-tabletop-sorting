@@ -5,8 +5,8 @@
 # Values are starting points, tune them per object in the simulator (milestone M2-M3).
 # Slip is not a simulator bug (docs/ANALYSIS.md, section 8 item 10). Set `force` per object to 0.3-0.5
 # (Hand.force -> /inspire_hand/set_force; 1.0 pushes the object out). Presets already aim slightly past
-# the object. Also lower /inspire_hand/set_speed, and rotate the thumb before the other fingers close.
-# `force` is omitted below, so the planner sends 0 and the hand stays at the default limit of 1.0.
+# the object. motion_node lowers /inspire_hand/set_speed on a close and rotates the thumb first.
+# `force` 0 keeps the current limit (the default 1.0 until something sets it).
 
 default: {approach: top, preset: power, z_offset: -0.03, pre_height: 0.10, lift_height: 0.15, align: short_axis}
 
@@ -23,7 +23,7 @@ by_name:
   3D_Dollhouse_Sink: {}
   LADYBUG_BEAD: {}
   # pool 4: dish
-  Threshold_Bamboo_Ceramic_Soap_Dish: {}
+  Threshold_Bamboo_Ceramic_Soap_Dish: {force: 0.4}  # 1.0 pushes the dish out; pick_one tunes this
   Cole_Hardware_Bowl_Scirocco_YellowBlue: {}
   Ecoforms_Cup_B4_SAN: {}
   # pool 4: box

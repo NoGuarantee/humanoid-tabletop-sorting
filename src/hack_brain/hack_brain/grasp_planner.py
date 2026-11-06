@@ -174,17 +174,20 @@ FLAT_RING = (-0.0094, 0.0220, -0.2082)
 FLAT_LITTLE = (-0.0285, 0.0220, -0.2064)
 # right_index_1 origin in that same frame. It sits behind the pads; the pinch is placed on the far side of it.
 FLAT_KNUCKLE = (0.020493, -0.000285, -0.136914)
-FLAT_ROLL = math.radians(45)
+# 45° put the pads level, and the finger then crosses the outer face above the rim: the close
+# stops on that edge. 32° hangs the finger nearer to vertical, so the tip, not the knuckle,
+# is what meets the wall.
+FLAT_ROLL = math.radians(32)
 FLAT_APERTURE = 0.098  # tip-to-tip distance of the ready hand
-# Open index, outside the wall, so the descent does not set the finger down on the rim.
-INDEX_NEAR = (0.012, 0.030)
-# Thumb pad just inside the opening, past the 12 mm rim. Deeper than this is toward
-# the centre: at 2.7 cm in and mid-height the pad sat on the floor and the bend
-# folded to 0.72. A short arrival is about 0.5 cm, so the shallow end stays past the rim.
-THUMB_IN = (-0.024, -0.018)
-# Index tip at actuator 4 = 0.48 minus the open tip, right-hand TCP frame. That fraction is
-# the bottom of the curl: deeper than 0.55, which stops 3 cm short of the thumb, and still
-# below the rim. Past it the tip climbs back out.
+# Open index tip outside the outer face. A 4 cm gap closed to the command and touched nothing.
+# Closer than 1.2 cm, the knuckle is already on the rim and the close stops before the tip moves.
+INDEX_NEAR = (0.012, 0.028)
+# Thumb pad inside the opening, past the 12 mm rim. At 32° it is 2.2 cm above the index, so
+# the 2.6 cm index height leaves the thumb just under the rim.
+THUMB_IN = (-0.055, -0.012)
+# Index tip at actuator 4 = 0.48 minus the open tip, right-hand TCP frame. The finger chain
+# below reproduces this; the placement uses the whole path (`_face_under`), not this one point.
+# Past 0.48 the tip climbs back out, so the close aims at 0.55 and the wall is what stops it.
 FLAT_CURL = (-0.0051, 0.0463, 0.0631)
 # Thumb links at pinch_ready, same frame. A point at or below the top has to be in the opening.
 FLAT_THUMB_LINKS = ((0.0224, 0.0666, -0.1013), (0.0263, 0.0811, -0.1183), FLAT_THUMB)
@@ -237,21 +240,21 @@ def _box_clear(obj, xy):
     return max(dx, dy)
 
 
-def _flat_pad_z(obj, scene):
-    """Height of the level pads: a centimetre under the rim, and clear of the table.
+# Open index tip below the rim. At 32° the thumb is 2.2 cm higher, so 2.6 cm puts the thumb
+# just under the rim. 1.2 cm (thumb above the rim) stops the index at 0.86 and it slips on the
+# lift. 3.2 cm, with the tip 4 cm outside, closed to the command and touched nothing.
+INDEX_UNDER_RIM = 0.026
+INDEX_CLEAR_TABLE = 0.018
 
-    The middle of the box put the thumb on the floor (bend 0.72). 1.8 cm under the rim drove the
-    thumb past open (bend 1.33). A centimetre under the rim is the only height where the thumb
-    stays open and the index meets the dish; that meeting is the top edge, and the finger
-    finishes closing on the lift.
-    """
+
+def _flat_pad_z(obj, scene):
+    """Height of the open index tip: in the band where the close meets the dish, and off the table."""
     local = obj.top_z - obj.size.z if obj.size.z > 0 else scene.table_z
     floor = max(scene.table_z, local)
-    low = floor + 0.020
-    high = obj.top_z - 0.010
-    if high < low:
+    index_z = obj.top_z - INDEX_UNDER_RIM
+    if index_z < floor + INDEX_CLEAR_TABLE:
         return None
-    return high
+    return index_z
 
 
 def _finger_on_top(obj, index_xy, _pad_z, i_w, k_w, hand):
@@ -293,20 +296,63 @@ def _beside_on_dish(obj, index_xy, i_w, rot, sign):
     return False
 
 
-def _curl_depth(obj, index_xy, rot, sign, pad_z):
-    """How far the closing index tip is inside the box at FLAT_CURL, or None when it misses.
+# right_index chain from the URDF. Positive rotation is the close: the tip at actuator 0.48
+# (52% of the way shut) is FLAT_INDEX + FLAT_CURL. The sim commands the opposite sign because
+# its joint axis is flipped; the finger moves the same way.
+_INDEX_AXIS = (0.0, -0.069756, -0.997564)
+_INDEX_TIP = (0.0142, 0.0411, -0.0053)  # in right_index_2, the open tip FLAT_INDEX
+_INDEX_TRAVEL = 1.333  # rad from open to shut
+_INDEX_MIMIC = 1.1169
+# Closing fractions at which the tip is checked. 0.20 is actuator 0.80, where a tip that
+# started 3 cm outside reaches the face while it is still at the open height.
+_CURL_FRACTIONS = (0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.52)
 
-    The tip has to cross the near wall. A centimetre under the rim, the curl finishes above
-    the top; the wall is what stops the finger before that, so the end height is not a gate.
+
+def _rx(axis, angle):
+    x, y, z = axis
+    c, s = math.cos(angle), math.sin(angle)
+    k = 1.0 - c
+    return (
+        (c + x * x * k, x * y * k - z * s, x * z * k + y * s),
+        (y * x * k + z * s, c + y * y * k, y * z * k - x * s),
+        (z * x * k - y * s, z * y * k + x * s, c + z * z * k),
+    )
+
+
+def _index_tip_tcp(closing):
+    """Right-hand TCP frame position of the index tip, `closing` from 0 (open) to 1 (shut)."""
+    q1 = closing * _INDEX_TRAVEL
+    q2 = _INDEX_MIMIC * q1
+    p = matvec(_rx((0.0, 0.0, -1.0), q2), _INDEX_TIP)
+    p = tuple(p[i] + (0.008099, 0.031095, -0.001)[i] for i in range(3))  # index_2 origin, in index_1
+    p = matvec(_rx(_INDEX_AXIS, q1), p)
+    p = matvec(rpy_matrix(1.5359, 0.0, 0.0), p)
+    p = tuple(p[i] + (-0.000285, 0.020275, 0.136946)[i] for i in range(3))  # index_1 origin, in the palm
+    return matvec(rpy_matrix(3.14, 0.0, 1.570796), p)  # palm to TCP
+
+
+_TIP_OPEN = _index_tip_tcp(0.0)
+_CURL_DELTAS = tuple(
+    tuple(_index_tip_tcp(f)[i] - _TIP_OPEN[i] for i in range(3)) for f in _CURL_FRACTIONS)
+
+
+def _face_under(obj, index_xy, rot, sign, pad_z):
+    """How far under the rim the index tip is when it first reaches the outer face.
+
+    None when the tip climbs to the top edge before it has crossed that face: the close then
+    stops on the edge and the rest of the curl, on the lift, happens in the air.
     """
-    curl = (FLAT_CURL[0], sign * FLAT_CURL[1], FLAT_CURL[2])
-    dw = matvec(rot, curl)
-    if pad_z > obj.top_z - 0.008:
-        return None
-    depth = -_box_clear(obj, (index_xy[0] + dw[0], index_xy[1] + dw[1]))
-    if depth < 0.015:
-        return None
-    return depth
+    for delta in _CURL_DELTAS:
+        local = (delta[0], sign * delta[1], delta[2])
+        dw = matvec(rot, local)
+        xy = (index_xy[0] + dw[0], index_xy[1] + dw[1])
+        z = pad_z + dw[2]
+        if _box_clear(obj, xy) > 0.0:
+            continue  # still outside
+        if z > obj.top_z - 0.012:
+            return None
+        return obj.top_z - z
+    return None
 
 
 def _thumb_in_opening(obj, index_xy, rot, sign, pad_z):
@@ -321,13 +367,13 @@ def _thumb_in_opening(obj, index_xy, rot, sign, pad_z):
 
 
 def plan_flat_pinches(obj, scene, p, arm):
-    """Pinch a flat object with the palm leaned 45° and the thumb already in the opening.
+    """Pinch a flat object with the palm leaned 32° and the thumb already in the opening.
 
     Upright, the thumb pad is 7 cm above the open index, so on a short dish the index curls onto the
-    top and only finishes closing after the lift. Leaning 45° puts the pads level. The curl itself
-    is only about 6 cm and never reaches a thumb that waits outside the far wall, so both pads
-    outside just nick the rim. The thumb goes down into the opening and the index closes through
-    the near wall toward it. The wrist stays near z = 0, which IK can reach.
+    top. At 45° the pads are level and the finger crosses the outer face above the rim, so the close
+    stops on that edge. At 32° the tip leads. It starts within 3 cm of the wall and 2.6 cm under the
+    rim, which puts the thumb just under the rim. A 4 cm gap closes in the air. The wrist stays
+    near z = 0, which IK can reach.
     """
     pad_z = _flat_pad_z(obj, scene)
     if pad_z is None:
@@ -372,7 +418,7 @@ def plan_flat_pinches(obj, scene, p, arm):
                     continue
                 if not _thumb_in_opening(obj, idx, rot, sign, pad_z):
                     continue
-                depth = _curl_depth(obj, idx, rot, sign, pad_z)
+                depth = _face_under(obj, idx, rot, sign, pad_z)
                 if depth is None:
                     continue
                 # Wrist just in front of this object, on the arm's side of it. A fixed

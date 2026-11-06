@@ -11,7 +11,7 @@ import math
 import time
 
 from .curobo_robot import load_robot_cfg
-from .robot import JOINTS, TCP_LINK, plan_limits, table_scene
+from .robot import CUBOID_CACHE, JOINTS, TCP_LINK, fingertip, plan_limits, world_scene
 
 
 LOCK_TOL = 0.02  # rad
@@ -65,6 +65,9 @@ class CuroboPlanner:
         self.locks = {}  # lock_joints the current planner was built with
         self.trays = ()  # trays of this task for the next build (motion_node, from /sim/task)
         self.world_trays = ()  # trays the current planner was built with
+        self.objects = ()  # detected neighbours, (id, x, y, z, yaw, sx, sy, sz, top_z). motion_node, from perception
+        self._scene = None  # cuboid dict the collision world currently holds
+        self.scene_note = ""  # what the last plan put in the world, for the move log
         self.start_moved = 0.0  # rad, how far the last plan moved its start state off the self-collision buffer
 
     def load(self, lock_positions, graphs="reset"):
@@ -102,8 +105,13 @@ class CuroboPlanner:
         self._build_self_check(cfg["kinematics"])
         t0 = time.perf_counter()
         self.world_trays = self.trays
+        # The cache is allocated here and never grown: update_world writes poses into it, and the CUDA graph keeps
+        # those buffers. More cuboids than the cache raises inside cuRobo instead of rebuilding the planner.
+        scene, _ = world_scene(self.trays, self.objects)
+        self._scene = scene
         self.mp = MotionPlanner(MotionPlannerCfg.create(
-            robot=copy.deepcopy(cfg), scene_model=table_scene(self.trays), use_cuda_graph=graphs != "off"))
+            robot=copy.deepcopy(cfg), scene_model=scene, collision_cache={"cuboid": CUBOID_CACHE},
+            use_cuda_graph=graphs != "off"))
         self.joint_names = list(self.mp.joint_names)
         torch.cuda.synchronize()
         return (f"{reason}curobo ready in {time.perf_counter() - t0:.1f} s, "
@@ -158,6 +166,7 @@ class CuroboPlanner:
             raise RuntimeError("curobo is not loaded")
         if mode not in ("direct", "linear"):
             raise RuntimeError(f"unknown mode {mode}")
+        self._sync_scene(target)
         goal, state = self._goal(arm, target, q_by_name)
         if mode == "direct":
             if self._already(goal, state, arm, pos_tol, rot_tol):
@@ -186,6 +195,29 @@ class CuroboPlanner:
             start = [round(v, 3) for v in state.position.detach().reshape(-1).tolist()]
             raise Unreachable(f"no collision-free joint path to {min(len(solutions), MAX_PATHS)} IK solutions from {start}")
         return self._plan_linear(arm, goal, state)
+
+    def _sync_scene(self, target):
+        """Put the current neighbours into the collision world, except the one the fingertips are aimed at.
+
+        Rebuilding the planner for a new set of boxes costs seconds and recaptures the CUDA graph. The cuboid cache
+        is fixed at load, and update_world only rewrites those tensors, which the captured graph already reads.
+        """
+        position = target.position
+        orientation = target.orientation
+        near = fingertip((position.x, position.y, position.z),
+                         (orientation.x, orientation.y, orientation.z, orientation.w))
+        scene, left_out = world_scene(self.trays, self.objects, near)
+        n = len(scene["cuboid"]) - 1 - len(self.trays)
+        note = f"{n} objects" + (f", left out {left_out}" if left_out else "")
+        if scene == self._scene:
+            self.scene_note = note
+            return
+        from curobo._src.geom.types import SceneCfg
+
+        t0 = time.perf_counter()
+        self.mp.update_world(SceneCfg.create(scene))
+        self._scene = scene
+        self.scene_note = f"{note}, world updated in {time.perf_counter() - t0:.2f} s"
 
     def _plan_linear(self, arm, goal, state):
         """plan_pose with the moving TCP held on the line through the goal along one axis of the goal frame.

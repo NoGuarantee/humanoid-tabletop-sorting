@@ -61,6 +61,8 @@ class PerceptionNode(Node):
         self.tf = Buffer()
         self.tf_listener = TransformListener(self.tf, self, spin_thread=False)
         self.create_service(Perceive, "perception/perceive", self.on_perceive, callback_group=cb)
+        # Motion builds the cuRobo world from this, between its own plans. Latched: a plan after the scan still sees it.
+        self.scene_pub = self.create_publisher(SceneObjects, "perception/scene", latched)
         self.get_logger().info("perception ready")
 
     def on_names(self, msg):
@@ -125,6 +127,7 @@ class PerceptionNode(Node):
         try:
             self.detect(f, req.region or "table", res.scene)
             res.success, res.message = True, "ok"
+            self.scene_pub.publish(res.scene)
         except NotImplementedError as e:
             res.success, res.message = False, f"not_implemented: {e}"
         except Exception as e:  # never kill the service: the brain decides what to do

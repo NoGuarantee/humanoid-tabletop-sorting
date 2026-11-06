@@ -17,6 +17,7 @@ import rclpy
 from ament_index_python.packages import get_package_share_directory
 from bodyctrl_msgs.msg import CmdSetMotorPosition, SetMotorPosition
 from hack_interfaces.action import Hand, MoveJoints, MoveTcp
+from hack_interfaces.msg import SceneObjects
 from rclpy.action import ActionServer
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
@@ -46,11 +47,13 @@ class MotionNode(Node):
         self.compensation = {}  # joint -> rad on top of the target, kept between moves (see move_joints)
         self.hand_state = {"left": None, "right": None}
         self.task_trays = None  # trays of the task from /sim/task, None until it arrives
+        self.scene_objects = ()  # neighbours from the latest perception/scene, tuples for the cuRobo world
         cb = ReentrantCallbackGroup()
         self.create_subscription(JointState, "/joint_states", self.on_joints, 10, callback_group=cb)
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
                              reliability=ReliabilityPolicy.RELIABLE)
         self.create_subscription(String, "/sim/task", self.on_task, latched, callback_group=cb)
+        self.create_subscription(SceneObjects, "perception/scene", self.on_scene, latched, callback_group=cb)
         for side in ("left", "right"):
             self.create_subscription(JointState, f"/inspire_hand/state/{side}_hand",
                                      lambda m, s=side: self.on_hand(s, m), 10, callback_group=cb)
@@ -103,6 +106,16 @@ class MotionNode(Node):
             trays = {}
         self.task_trays = tuple(sorted(name for name in trays if name in TRAYS))
         self.get_logger().info(f"trays in the world: {list(self.task_trays)}")
+
+    def on_scene(self, msg):
+        """The latest objects, as cuboids for the next plan. The one under the goal is left out there, not here."""
+        objs = tuple(
+            (o.track_id or f"obj{i}", float(o.center.x), float(o.center.y), float(o.center.z), float(o.yaw),
+             float(o.size.x), float(o.size.y), float(o.size.z), float(o.top_z))
+            for i, o in enumerate(msg.objects))
+        with self.lock:
+            self.scene_objects = objs
+        self.get_logger().info(f"perception scene: {len(objs)} objects")
 
     def on_joints(self, msg):
         with self.lock:
@@ -361,6 +374,7 @@ class MotionNode(Node):
                 planner = self._planner_obj()
                 with self.lock:
                     snapshot = dict(self.q)
+                    planner.objects = self.scene_objects
                 note = planner.load(snapshot)
                 if note != "curobo already loaded":
                     self.get_logger().info(note)
@@ -375,7 +389,7 @@ class MotionNode(Node):
             names = [n for n, _ in known]
             waypoints = [[q[i] for _, i in known] for q in waypoints]
             self.get_logger().info(f"move_tcp {g.arm} {mode}: {len(waypoints)} waypoints, {len(names)} joints, "
-                                   f"start moved {planner.start_moved:.3f} rad")
+                                   f"start moved {planner.start_moved:.3f} rad, {planner.scene_note}")
             other = next(joints for arm, joints in ARM_JOINTS.items() if arm != g.arm)
             ok, _, msg = self.follow(names, waypoints, dt, tol=0.01, max_time=g.max_time, held=other)
         pos_err, rot_err = self.tcp_error(g.arm, g.target)

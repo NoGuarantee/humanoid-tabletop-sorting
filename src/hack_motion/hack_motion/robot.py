@@ -83,6 +83,106 @@ def table_scene(trays=()):
     return scene
 
 
+# Neighbours on the table. Without them the arm plans through whatever is standing there and pushes it; a pushed
+# object that leaves the table is -10. 1 cm on every side, on top of cuRobo's 1 cm activation distance: the drives
+# still close the last few millimetres. Wider than that and two objects with the 2 cm spawn gap become one block,
+# and the fingers cannot reach the one being grasped.
+OBJECT_MARGIN = 0.01
+EXCLUDE_PAD = 0.02  # m past the measured half-size. The grasp aims at the centre; a cluster cut by the frame is off by this
+FINGERTIP = 0.21  # m from the TCP to the fingertips along -z. The same number as grasp_planner and perception
+CUBOID_CACHE = 16  # table + the three trays + the objects below, allocated once so a later update stays in place
+MAX_OBJECTS = CUBOID_CACHE - 1 - len(TRAYS)
+
+
+def fingertip(position, xyzw):
+    """(x, y, z) of the fingertips. `xyzw` is the ROS orientation of the TCP."""
+    x, y, z, w = xyzw
+    zx = 2 * (x * z + w * y)
+    zy = 2 * (y * z - w * x)
+    zz = 1 - 2 * (x * x + y * y)
+    return (position[0] - FINGERTIP * zx, position[1] - FINGERTIP * zy, position[2] - FINGERTIP * zz)
+
+
+def _object_axes(yaw):
+    """Unit axes of an object in pelvis: long, across, table normal. `yaw` is in the table plane, as perception reports it."""
+    c, s = math.cos(_TILT), math.sin(_TILT)
+    yc, ys = math.cos(yaw), math.sin(yaw)
+    e1 = (c, 0.0, s)  # pelvis +x projected onto the table, perception's e1 for this tilt
+    long = (yc * e1[0], ys, yc * e1[2])
+    across = (-ys * e1[0], yc, -ys * e1[2])
+    return long, across, (-s, 0.0, c)
+
+
+def _quat_wxyz(rows):
+    """(w, x, y, z) of a rotation matrix given by its three rows."""
+    (r00, r01, r02), (r10, r11, r12), (r20, r21, r22) = rows
+    trace = r00 + r11 + r22
+    if trace > 0.0:
+        scale = math.sqrt(trace + 1.0) * 2.0
+        return 0.25 * scale, (r21 - r12) / scale, (r02 - r20) / scale, (r10 - r01) / scale
+    if r00 > r11 and r00 > r22:
+        scale = math.sqrt(1.0 + r00 - r11 - r22) * 2.0
+        return (r21 - r12) / scale, 0.25 * scale, (r01 + r10) / scale, (r02 + r20) / scale
+    if r11 > r22:
+        scale = math.sqrt(1.0 + r11 - r00 - r22) * 2.0
+        return (r02 - r20) / scale, (r01 + r10) / scale, 0.25 * scale, (r12 + r21) / scale
+    scale = math.sqrt(1.0 + r22 - r00 - r11) * 2.0
+    return (r10 - r01) / scale, (r02 + r20) / scale, (r12 + r21) / scale, 0.25 * scale
+
+
+def _in_footprint(obj, point):
+    """True when `point` is over this object's measured footprint, EXCLUDE_PAD past the half-size."""
+    _, ox, oy, oz, yaw, sx, sy, _, _ = obj
+    long, across, _ = _object_axes(yaw)
+    dx, dy, dz = point[0] - ox, point[1] - oy, point[2] - oz
+    along = dx * long[0] + dy * long[1] + dz * long[2]
+    cross = dx * across[0] + dy * across[1] + dz * across[2]
+    return abs(along) <= sx / 2 + EXCLUDE_PAD and abs(cross) <= sy / 2 + EXCLUDE_PAD
+
+
+def _cuboid(obj, names):
+    """(name, {dims, pose}) of one object. `names` are cuboids already in the scene, so a repeated id gets a suffix."""
+    ident, ox, oy, oz, yaw, sx, sy, sz, _ = obj
+    long, across, normal = _object_axes(yaw)
+    quat = _quat_wxyz((
+        (long[0], across[0], normal[0]),
+        (long[1], across[1], normal[1]),
+        (long[2], across[2], normal[2]),
+    ))
+    name = ident or "object"
+    suffix = 2
+    while name in names:
+        name = f"{ident or 'object'}_{suffix}"
+        suffix += 1
+    dims = [sx + 2 * OBJECT_MARGIN, sy + 2 * OBJECT_MARGIN, max(sz, 0.005) + 2 * OBJECT_MARGIN]
+    return name, {"dims": dims, "pose": [ox, oy, oz, *quat]}
+
+
+def world_scene(trays=(), objects=(), near=None):
+    """Table, the trays of the task, and the detected objects around the one being reached.
+
+    `objects` are `(id, x, y, z, yaw, size_x, size_y, size_z, top_z)` in pelvis, metres and radians.
+    `near` is the fingertips of the goal. The object under them is left out: the fingers have to go into it,
+    and a cuboid there makes every grasp unreachable. Returns `(scene, [ids left out])`.
+    """
+    scene = table_scene(trays)
+    left_out = []
+    kept = []
+    for obj in objects:
+        if obj[5] <= 0.0 or obj[6] <= 0.0:
+            continue
+        if near is not None and _in_footprint(obj, near):
+            left_out.append(obj[0])
+            continue
+        kept.append(obj)
+    if near is not None and len(kept) > MAX_OBJECTS:
+        kept.sort(key=lambda obj: (obj[1] - near[0]) ** 2 + (obj[2] - near[1]) ** 2)
+    for obj in kept[:MAX_OBJECTS]:
+        name, cub = _cuboid(obj, scene["cuboid"])
+        scene["cuboid"][name] = cub
+    return scene, left_out
+
+
 # Joint moves that bring a hanging arm up in front of the chest, the start of every cuRobo plan. cuRobo cannot plan
 # from the hang, where the forearm is inside the thigh, and the hanging hand is below table height: any elbow fold from
 # the hang swings the fingers forward 0.4 m under the pelvis, into the table edge. Out to the side first, fold the elbow

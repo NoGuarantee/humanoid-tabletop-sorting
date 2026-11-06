@@ -94,6 +94,8 @@ def table_scene(trays=()):
 OBJECT_MARGIN = 0.01
 EXCLUDE_PAD = 0.02  # m past the measured half-size. The grasp aims at the centre; a cluster cut by the frame is off by this
 FINGERTIP = 0.21  # m from the TCP to the fingertips along -z. The same number as grasp_planner and perception
+VIA_CLEAR = 0.04  # m, fingertips above a neighbour the straight plan could not pass
+HAND_PAD = 0.12  # m, the open hand past an object's bounding circle when deciding what the approach must clear
 CUBOID_CACHE = 16  # table + the three trays + the objects below, allocated once so a later update stays in place
 MAX_OBJECTS = CUBOID_CACHE - 1 - len(TRAYS)
 
@@ -185,6 +187,79 @@ def world_scene(trays=(), objects=(), near=None):
         name, cub = _cuboid(obj, scene["cuboid"])
         scene["cuboid"][name] = cub
     return scene, left_out
+
+
+def _xy_segment_distance(point, a, b):
+    """Metres from `point` to the segment ab, both in the table plane."""
+    ax, ay = a
+    bx, by = b
+    px, py = point
+    dx, dy = bx - ax, by - ay
+    length2 = dx * dx + dy * dy
+    if length2 < 1e-12:
+        return math.hypot(px - ax, py - ay)
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length2))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+def on_the_way(obj, start_xyz, goal_xyz, pad=HAND_PAD):
+    """True when this object's bounding circle comes within `pad` of the straight line from start to goal."""
+    dist = _xy_segment_distance((obj[1], obj[2]), start_xyz[:2], goal_xyz[:2])
+    return dist <= 0.5 * math.hypot(obj[5], obj[6]) + pad
+
+
+def clearance_z(top_zs, start_z, goal_z, fingertip=FINGERTIP, margin=VIA_CLEAR):
+    """TCP z that puts the fingertips `margin` above these neighbour tops, or None.
+
+    None when there is nothing to clear, or both the start and the goal are already that high:
+    a waypoint there would be the pose that just failed. A top-down hand carries its fingertips
+    `fingertip` m below the TCP.
+    """
+    if not top_zs:
+        return None
+    need = max(top_zs) + fingertip + margin
+    if need <= max(start_z, goal_z) + 0.01:
+        return None
+    return need
+
+
+def sphere_cuboid_overlap(center, radius, dims, pose):
+    """Metres the sphere penetrates the cuboid. Negative when the sphere is clear of it.
+
+    `pose` is (x, y, z, w, x, y, z), the same layout as a cuRobo cuboid.
+    """
+    px, py, pz = pose[:3]
+    w, x, y, z = pose[3:7]
+    r00 = 1 - 2 * (y * y + z * z)
+    r01 = 2 * (x * y - w * z)
+    r02 = 2 * (x * z + w * y)
+    r10 = 2 * (x * y + w * z)
+    r11 = 1 - 2 * (x * x + z * z)
+    r12 = 2 * (y * z - w * x)
+    r20 = 2 * (x * z - w * y)
+    r21 = 2 * (y * z + w * x)
+    r22 = 1 - 2 * (x * x + y * y)
+    dx, dy, dz = center[0] - px, center[1] - py, center[2] - pz
+    local = (r00 * dx + r10 * dy + r20 * dz,
+             r01 * dx + r11 * dy + r21 * dz,
+             r02 * dx + r12 * dy + r22 * dz)
+    half = (dims[0] / 2, dims[1] / 2, dims[2] / 2)
+    outside = tuple(max(0.0, abs(v) - h) for v, h in zip(local, half))
+    gap = math.sqrt(outside[0] ** 2 + outside[1] ** 2 + outside[2] ** 2) - radius
+    if all(abs(v) <= h for v, h in zip(local, half)):
+        return min(h - abs(v) for v, h in zip(local, half)) + radius
+    return -gap
+
+
+def spheres_hit(spheres, cuboids):
+    """True when any sphere (x, y, z, r) penetrates a cuboid. r <= 0 is an unused sphere slot."""
+    for x, y, z, r in spheres:
+        if r <= 0.0:
+            continue
+        for cub in cuboids.values():
+            if sphere_cuboid_overlap((x, y, z), r, cub["dims"], cub["pose"]) > 0.0:
+                return True
+    return False
 
 
 # Joint moves that bring a hanging arm up in front of the chest, the start of every cuRobo plan. cuRobo cannot plan

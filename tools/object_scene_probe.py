@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src" / "hack_motion"))
 
 from hack_motion.robot import (  # noqa: E402
-    MAX_OBJECTS, OBJECT_MARGIN, TRAYS, _object_axes, fingertip, table_z, world_scene)
+    FINGERTIP, HAND_PAD, MAX_OBJECTS, OBJECT_MARGIN, TRAYS, VIA_CLEAR, _object_axes, clearance_z, fingertip,
+    on_the_way, sphere_cuboid_overlap, spheres_hit, table_z, world_scene)
 
 ROBOT = ROOT / "src" / "hack_motion" / "robot"
 
@@ -64,6 +65,32 @@ def check_geometry():
     far = f"o{MAX_OBJECTS + 2}"
     if left or len(scene["cuboid"]) != 1 + MAX_OBJECTS or "o0" not in scene["cuboid"] or far in scene["cuboid"]:
         raise SystemExit(f"kept {sorted(scene['cuboid'])}, left out {left}")
+
+    block = obj("block", 0.40, 0.0, 0.0, 0.0, 0.10, 0.10, 0.08)
+    if not on_the_way(block, (0.30, 0.0, 0.2), (0.50, 0.0, 0.2)):
+        raise SystemExit("an object on the segment was not on the way")
+    aside = math.hypot(0.5 * math.hypot(0.10, 0.10) + HAND_PAD + 0.02, 0)
+    if on_the_way(block, (0.30, aside, 0.2), (0.50, aside, 0.2)):
+        raise SystemExit("an object clear of the segment was on the way")
+    need = 0.0 + FINGERTIP + VIA_CLEAR
+    if clearance_z([0.0], 0.10, 0.10) != need:
+        raise SystemExit(f"clearance should be {need}")
+    if clearance_z([0.0], need, need) is not None:
+        raise SystemExit("a hand already above the neighbour still wants a detour")
+    if clearance_z([], 0.10, 0.10) is not None:
+        raise SystemExit("no neighbour still wants a detour")
+
+    pose = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+    dims = [0.20, 0.20, 0.20]
+    if sphere_cuboid_overlap((0.0, 0.0, 0.0), 0.02, dims, pose) <= 0.0:
+        raise SystemExit("a sphere in the box was clear of it")
+    if sphere_cuboid_overlap((0.5, 0.0, 0.0), 0.02, dims, pose) > 0.0:
+        raise SystemExit("a sphere away from the box hit it")
+    cuboids = {"block": {"dims": dims, "pose": pose}}
+    if not spheres_hit([(0.0, 0.0, 0.0, 0.02)], cuboids):
+        raise SystemExit("spheres_hit missed a sphere in the box")
+    if spheres_hit([(0.0, 0.0, 0.0, 0.0)], cuboids):
+        raise SystemExit("an unused sphere slot counted as a hit")
     print("geometry ok", flush=True)
 
 
@@ -173,12 +200,97 @@ def torch_cat(a, b):
     return torch.cat([a, b], dim=0)
 
 
+def check_raise(planner):
+    """The joint raise stops when its spheres enter an object, and runs when the table is empty.
+
+    The start is the folded arm out to the side, which is clear of the thigh. The last step brings that
+    hand in over the table, and a box on a sphere of that step has to stop it.
+    """
+    from hack_motion.robot import ARM_JOINTS, raise_steps
+
+    q = {n: planner.ready.get(n, 0.0) for n in planner.joint_names}
+    for arm in ARM_JOINTS:
+        q.update(zip(ARM_JOINTS[arm], raise_steps(arm)[1]))
+    step = raise_steps("right")[2]
+    planner.objects = ()
+    planner.sync_world(None)
+    if planner.segment_blocked(q, ARM_JOINTS["right"], step):
+        raise SystemExit("the raise stopped with nothing on the table")
+    end = dict(q)
+    end.update(zip(ARM_JOINTS["right"], step))
+    picked = None
+    for x, y, z, r in planner._sphere_rows(end):
+        if r > 0.01 and x > 0.30 and z > table_z(x) + 0.05:
+            picked = (x, y, z, r)
+            break
+    if picked is None:
+        raise SystemExit("the last raise step has no sphere over the table")
+    x, y, z, r = picked
+    side = 2 * (r + 0.02)
+    planner.objects = (obj("raise_block", x, y, z, 0.0, side, side, side),)
+    planner.sync_world(None)
+    clear = bool(planner._clear_of_self(planner._joints_tensor(q))[0].item())
+    if not planner.segment_blocked(q, ARM_JOINTS["right"], step):
+        raise SystemExit(f"a box on the raise did not stop it (start clear of self: {clear})")
+    planner.objects = ()
+    planner.sync_world(None)
+    print("raise check ok", flush=True)
+
+
+def right_tcp(planner, q):
+    import torch
+    from curobo.types import JointState
+    from hack_motion.robot import TCP_LINK
+
+    qq = torch.tensor([[q[n] for n in planner.joint_names]], device="cuda", dtype=torch.float32)
+    state = JointState.from_position(qq, joint_names=planner.joint_names)
+    poses = planner.mp.compute_kinematics(state).tool_poses
+    i = list(poses.tool_frames).index(TCP_LINK["right"])
+    return tuple(float(v) for v in poses.position[0, 0, i].detach().tolist())
+
+
+def check_detour(planner, q):
+    """The fallback itself: up above a wall that stands on the way, then down, without entering the wall.
+
+    plan() only calls this when the straight attempt failed. Here it is called on its own, so a wall the
+    straight planner can already skirt still has to be cleared by the detour.
+    """
+    start = right_tcp(planner, q)
+    # Far enough past the wall that the descent at the goal does not land in it, and short enough to reach.
+    goal_xyz = (min(start[0] + 0.22, 0.58), float(start[1]), 0.16)
+    wall_x = start[0] + 0.08
+    top = 0.02
+    wall = obj("wall", wall_x, start[1], top - 0.04, 0.0, 0.04, 0.08, 0.08)
+    planner.objects = (wall,)
+    planner.sync_world(target(*goal_xyz))
+    if "wall" not in planner._scene["cuboid"]:
+        raise SystemExit(f"the wall was left out: {planner.scene_note}")
+    goal_msg = target(*goal_xyz)
+    posed, state = planner._goal("right", goal_msg, q)
+    z = planner._clearance("right", posed, state, goal_msg)
+    print(f"detour over the wall, tcp start {[round(v, 3) for v in start]}, clearance {None if z is None else round(z, 3)}",
+          flush=True)
+    got = planner._plan_detour("right", goal_msg, q, 0.01, 0.1)
+    if got is None:
+        raise SystemExit(f"no detour, scene {planner.scene_note}")
+    names, way, _ = got
+    if "detour" not in planner.scene_note:
+        raise SystemExit(f"scene note has no detour: {planner.scene_note}")
+    after = path_overlap(planner, q, names, way, planner._scene["cuboid"]["wall"])
+    print(f"  {planner.scene_note}, {len(way)} waypoints, overlap {after * 100:.1f} cm", flush=True)
+    if after > 0.005:
+        raise SystemExit("the detour goes through the wall")
+    planner.objects = ()
+    planner.sync_world(None)
+
+
 def check_plan():
     from hack_motion.curobo_planner import CuroboPlanner
 
     planner = CuroboPlanner(str(ROBOT / "tiangong2pro_with_hands.urdf"), str(ROBOT / "tienkung_curobo.yml"))
     planner.trays = tuple(sorted(TRAYS))
     print(planner.load(None), flush=True)
+    check_raise(planner)
     q = raised(planner)
     goal = ("right", 0.48, -0.32, 0.22)
     print("empty world", flush=True)
@@ -216,6 +328,7 @@ def check_plan():
         raise SystemExit("leaving the grasped object out still has no plan")
     if planner.scene_note.find("grasp") < 0 or "neighbour" not in planner._scene["cuboid"]:
         raise SystemExit(f"scene {planner.scene_note}, cuboids {list(planner._scene['cuboid'])}")
+    check_detour(planner, q)
     print("plan ok", flush=True)
 
 

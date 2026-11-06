@@ -321,12 +321,13 @@ class MotionNode(Node):
             time.sleep(PERIOD)
         return False
 
-    def _leave_colliding_home(self):
+    def _leave_colliding_home(self, planner):
         """Bring an arm that hangs at home up in front of the chest by joints (robot.RAISE_STEPS).
 
         At home the forearm spheres are inside the thigh, and cuRobo will not plan from a state in collision.
-        Only when every joint of the arm is near home: these joint moves are not collision-checked, and from
-        a working pose they could sweep the arm through the table.
+        Only when every joint of the arm is near home: from a working pose the same joint moves could sweep
+        the arm through the table. Once the arm is out of the thigh, a step that would enter an object is
+        skipped and the plan that follows goes around it.
         """
         for arm, names in ARM_JOINTS.items():
             q = self.joints(names)
@@ -334,6 +335,17 @@ class MotionNode(Node):
                 continue
             self.get_logger().info(f"{arm} arm at home, raising it in front of the chest")
             for i, step in enumerate(raise_steps(arm)):
+                with self.lock:
+                    snapshot = dict(self.q)
+                try:
+                    blocked = planner.segment_blocked(snapshot, names, step)
+                except Exception:
+                    self.get_logger().error(traceback.format_exc())
+                    blocked = False
+                if blocked:
+                    self.get_logger().info(
+                        f"{arm} raise stops before step {i + 1}: an object is on that joint path")
+                    break
                 ok, err, msg = self.move_joints(names, step, tol=0.1)
                 if not ok:
                     raise RuntimeError(f"{arm} arm stopped on raise step {i + 1}: {msg} (err {err:.3f})")
@@ -372,7 +384,6 @@ class MotionNode(Node):
             try:
                 if not self._wait_joints():
                     return MoveTcp.Result(success=False, message="no /joint_states")
-                self._leave_colliding_home()
                 planner = self._planner_obj()
                 with self.lock:
                     snapshot = dict(self.q)
@@ -380,6 +391,12 @@ class MotionNode(Node):
                 note = planner.load(snapshot)
                 if note != "curobo already loaded":
                     self.get_logger().info(note)
+                # Every object, including the one this goal will grasp. The raise is not aimed at it yet.
+                planner.sync_world(None)
+                self._leave_colliding_home(planner)
+                with self.lock:
+                    snapshot = dict(self.q)
+                    planner.objects = self.scene_objects
                 names, waypoints, dt = planner.plan(
                     g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol)
             except Unreachable as e:

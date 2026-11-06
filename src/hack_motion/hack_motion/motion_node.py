@@ -243,7 +243,9 @@ class MotionNode(Node):
             res.success = False
             return res
         if g.force > 0:
-            # TODO(grasping): call /inspire_hand/set_force/{side}_hand (bodyctrl_msgs/srv/SetForce)
+            # TODO(grasping): call /inspire_hand/set_force/{side}_hand (bodyctrl_msgs/srv/SetForce).
+            # A limit of 1.0 pushes objects out of the hand; 0.3-0.5 is the range to tune (ANALYSIS.md §8.10).
+            # Also /inspire_hand/set_speed, and rotate the thumb before the other fingers close.
             self.get_logger().warn("Hand.force is not applied yet")
         target = HAND_PRESETS[g.preset]
         msg = JointState()

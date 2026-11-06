@@ -33,6 +33,10 @@ ARM_JOINTS = {
 
 TCP_LINK = {"left": "left_tcp_link", "right": "right_tcp_link"}
 
+# Temporary collision world only. Measured table and tray poses must not ship in the solution: the table, trays, racks
+# and the cabinet are found by the cameras, like the objects (docs/ANALYSIS.md, section 8 item 9). Search bounds, sizes
+# from the docs, which trays exist (/sim/task) and the robot's own geometry may stay. Replace TABLE_PLANE / TRAYS with
+# the plane and containers from perceive.
 # The table in pelvis, as a cuRobo scene. There is one scene and the robot does not walk (hackathon/docs/TASKS.md): near
 # edge at x +0.22, 0.76 deep, 2.44 wide (hackathon/config/scene.yaml, and the simulator log prints the same). The top is
 # not level in pelvis: z = -0.1792 + 0.0700 x, 4 degrees. Fitted to depth, and the open fingers touch it there at x 0.28,

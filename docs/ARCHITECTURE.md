@@ -59,7 +59,7 @@ motion и brain на другой, интерфейсы те же.
 | `perception/perceive` | srv `Perceive` | `camera` (head / torso), `region` (table / hood) → `scene`, `success`, `message` |
 | `motion/move_tcp` | action `MoveTcp` | `arm`, `target` (Pose в pelvis), `mode` (direct / linear) → `success`, ошибки, `message` |
 | `motion/move_joints` | action `MoveJoints` | `joints[]`, `positions[]`, `speed` → `success`, `max_error` |
-| `motion/hand` | action `Hand` | `hand`, `preset`, `force` → `object_detected`, `position[]`, `effort[]` |
+| `motion/hand` | action `Hand` | `hand`, `preset`, `force` → `object_detected`, `position[]`, `effort[]`. `force` должен вызывать `/inspire_hand/set_force` (рабочий диапазон 0.3–0.5: полная сила выталкивает объект). Сжатие — чуть за объект, скорость через `/inspire_hand/set_speed`, сначала поворот большого пальца |
 
 Внутри brain используются Python-структуры `GraspCandidate` и `PlacePlan` из
 [grasp_planner.py](../src/hack_brain/hack_brain/grasp_planner.py).
@@ -81,7 +81,10 @@ Motion обещает остальным модулям:
 
 - Контракт `MoveTcp` и `MoveJoints` от бэкенда не зависит, brain про бэкенд не знает.
 - Мир для cuRobo собирается из `SceneObjects`: стол, ящики и соседние объекты как кубоиды, шкаф и штативы по
-  геометрии из perception.
+  геометрии из perception. Заранее измеренные позы сцены в код не зашиваем (стол, ящики, штативы, шкаф находятся
+  камерами). Можно границы поиска, размеры из документации, состав ящиков из `/sim/task` и геометрию робота.
+  `robot.TABLE_PLANE` и `robot.TRAYS` — временная заглушка коллизий, снятая с симулятора; её заменяют плоскость и
+  контейнеры из `perceive`. Куда класть предмет, `brain` уже берёт из `scene.containers`.
 - Исполнение: траектория отправляется потоком `cmd_pos` по времени `/clock`, в конце доводка по `/joint_states`.
   Приводы недолетают до цели, поэтому запас по коллизиям 2–3 см.
 - Прогрев cuRobo идёт фоном с INIT и входит в лимит каждой раскладки: `run.sh` стартует заново на каждую.

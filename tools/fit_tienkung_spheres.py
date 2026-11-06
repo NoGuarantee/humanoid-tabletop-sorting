@@ -62,12 +62,24 @@ READY_POSE = {**HOME_POSE, "shoulder_roll_l_joint": 0.2, "shoulder_roll_r_joint"
 # A wrist bent far enough brings wrist_roll within a fraction of a millimetre of elbow_yaw, two joints away. The
 # ready pose never brings them together and the sampled poses rarely do, so the builder keeps the pair. The two
 # links are joined through wrist_pitch and cannot pass through each other, so the pair only gives false positives.
-FOLDED_WRIST = {f"elbow_yaw_{s}_link": [f"wrist_roll_{s}_link"] for s in "lr"}
+# left_tcp_link / right_tcp_link are the wrist cap, fixed to wrist_roll. Over a side tray the cap sits about 2 mm
+# inside the forearm buffer at the roll stop, and a straight descent keeps that pose the whole way down.
+FOLDED_WRIST = {
+    **{f"elbow_yaw_{s}_link": [f"wrist_roll_{s}_link", tcp] for s, tcp in (("l", "left_tcp_link"), ("r", "right_tcp_link"))},
+    "left_tcp_link": ["elbow_yaw_l_link"],
+    "right_tcp_link": ["elbow_yaw_r_link"],
+}
 # Added to every link's spheres in the self-collision check, so a pair of links gets twice this. Measured on 300
 # sphere-free configurations against the real meshes: 10 mm gives no intersections and at least 12.8 mm between the
 # links that can really meet. 15 mm puts the raised arm in collision (shoulder_yaw against waist_yaw). 10 mm costs
 # reach, two goals of move_tcp_check have no path, so we use 5 mm; the 300-configuration measure was not repeated for it.
 SELF_COLLISION_BUFFER = 0.005
+# left_tcp_link is the wrist cap, not the fingers (those are on L_base_link and keep the margin above). Over the
+# left tray the wrist rolls near its stop, and 5 mm here puts the closest seeds 3 mm from the goal and 1.2 mm
+# inside the margin, so IK rejects them. With no margin on this one link the goal is under 1 cm and clear
+# (tools/tray_margin_probe.py). A wrist folded to the joint limits still overlaps the forearm by about 2 mm;
+# that pair is ignored with wrist_roll (FOLDED_WRIST). The right cap stays at 5 mm.
+TCP_BUFFER = {"left_tcp_link": 0.0}
 # Any buffer makes elbow_yaw touch shoulder_yaw in every pose, and then nothing is collision-free. Only elbow_pitch
 # is between them, so they cannot pass through each other.
 BENT_ELBOW = {f"elbow_yaw_{s}_link": [f"shoulder_yaw_{s}_link"] for s in "lr"}
@@ -269,6 +281,9 @@ def use_home_pose_in_builder(builder):
 
 def apply_margin(kinematics):
     kinematics["self_collision_buffer"] = {link: SELF_COLLISION_BUFFER for link in kinematics["self_collision_buffer"]}
+    for link, buf in TCP_BUFFER.items():
+        if link in kinematics["self_collision_buffer"]:
+            kinematics["self_collision_buffer"][link] = buf
     for a, bs in BENT_ELBOW.items():
         ignore = kinematics["self_collision_ignore"].setdefault(a, [])
         ignore.extend(b for b in bs if b not in ignore)

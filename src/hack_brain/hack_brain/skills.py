@@ -47,7 +47,9 @@ class Skills:
             if not self.c.move_tcp(arm, cand.lift, "linear"):
                 self.log.warn(f"lift failed; opening {arm}")
                 self.c.hand(arm, "open")
-                return None
+                if not self.c.move_tcp(arm, cand.pre_grasp, "linear"):
+                    self.c.move_tcp(arm, cand.pre_grasp, "direct")
+                continue
             # The close can register a brush. After the lift the fingers finish their travel if nothing came up.
             held = self.c.hand(arm, cand.hand_preset, cand.force)
             if not self.holding(arm, held):

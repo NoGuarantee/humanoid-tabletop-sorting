@@ -33,7 +33,7 @@ from hack_brain.clients import Clients
 from hack_brain.grasp_planner import FINGERTIP, axis_z, load_db, plan_grasps, plan_place, pose, top_down
 from hack_brain.skills import Skills
 from hack_interfaces.msg import Container, DetectedObject, SceneObjects
-from hack_motion.robot import on_table, table_z, tray_rim
+from hack_motion.robot import TRAY_SIZE, TRAYS, on_table, table_z, tray_rim
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import Parameter
@@ -47,10 +47,14 @@ PARK = (("right", 0.40, -0.35, 0.30), ("left", 0.40, 0.35, 0.30))
 # TCP height where open fingers start to meet the table, from tools/table_touch.py. Stay above it.
 TOUCH_Z = (0.039, 0.070)
 TOUCH_MARGIN = 0.005
-# The flat dish of pool 4, on the right, clear of the parked hand at y -0.35 and of tray_right at y -0.69.
+# The flat dish of pool 4. (0.38, -0.18) put a corner inside tray_center (rim x 0.43..0.65,
+# y -0.16..0.16) and the forearm lay across that tray. This spot is in front of the right arm:
+# 8 cm clear of tray_center and 13 cm clear of tray_right.
 DISH = "Threshold_Bamboo_Ceramic_Soap_Dish"
-DISH_AT = (0.38, -0.18, 0.0)  # along the table, y, yaw. Right of centre, clear of the parked hand and the tray.
+DISH_AT = (0.34, -0.32, 0.0)  # along the table, y, yaw
 DISH_SIZE = (0.125, 0.098, 0.051)  # mesh box, long / short / height, same as classify.CATALOG
+# Metres of air between the dish box and a tray. Less than this and the wrist sits on the rim.
+DISH_CLEAR = 0.04
 
 DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "hack_brain", "config", "grasp_db.yaml")
 
@@ -89,6 +93,27 @@ def place_dish(node):
     print(f"placed {DISH} at ({DISH_AT[0]:.2f},{DISH_AT[1]:.2f}) yaw {DISH_AT[2]:.2f}, "
           f"parked {len(layout) - 1}", flush=True)
     return True
+
+
+def tray_boxes():
+    """Pelvis AABB of each tray, from the temporary collision sizes in robot.py."""
+    hx, hy = TRAY_SIZE[0] / 2.0, TRAY_SIZE[1] / 2.0
+    boxes = []
+    for name, (along, y) in TRAYS.items():
+        x0 = on_table(along - hx, y, 0.0)[0]
+        x1 = on_table(along + hx, y, 0.0)[0]
+        boxes.append((name, min(x0, x1), max(x0, x1), y - hy, y + hy))
+    return boxes
+
+
+def dish_hits_tray(obj):
+    """Tray name when the dish box comes within DISH_CLEAR of it."""
+    hx, hy = obj.size.x / 2.0, obj.size.y / 2.0
+    for name, x0, x1, y0, y1 in tray_boxes():
+        if (obj.center.x - hx < x1 + DISH_CLEAR and obj.center.x + hx > x0 - DISH_CLEAR
+                and obj.center.y - hy < y1 + DISH_CLEAR and obj.center.y + hy > y0 - DISH_CLEAR):
+            return name
+    return None
 
 
 def known_dish():
@@ -163,6 +188,10 @@ def run(node):
     obj, scene = known_dish()
     print(f"dish at ({obj.center.x:.3f},{obj.center.y:.3f}) top {obj.top_z:+.3f} "
           f"table_z {scene.table_z:+.3f}", flush=True)
+    hit = dish_hits_tray(obj)
+    if hit is not None:
+        print(f"FAIL the dish is within {DISH_CLEAR * 100:.0f} cm of {hit}", flush=True)
+        return 1
     cand = plan_grasps(obj, scene, node.skills.db)[0]
     tray = tray_for(cand.arm)
     place = plan_place(cand.arm, tray, node.skills.db)

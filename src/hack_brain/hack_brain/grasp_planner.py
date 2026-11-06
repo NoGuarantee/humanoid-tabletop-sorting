@@ -166,17 +166,22 @@ def grasp_xy(obj, tcp_yaw, preset):
 # A fully sideways hand (wrist at the table, z ≈ -0.14) has no IK.
 FLAT_INDEX = (0.0294, 0.0220, -0.2088)
 FLAT_THUMB = (0.0365, 0.0913, -0.1401)
+# The other open tips, beside the index. Spread is along TCP x. A yaw that points that
+# spread into the dish sets the middle and ring on the top while the index closes in the
+# air. From the URDF knuckle origins, plus the index tip's offset from FLAT_KNUCKLE.
+FLAT_MIDDLE = (0.0119, 0.0220, -0.2090)
+FLAT_RING = (-0.0094, 0.0220, -0.2082)
+FLAT_LITTLE = (-0.0285, 0.0220, -0.2064)
 # right_index_1 origin in that same frame. It sits behind the pads; the pinch is placed on the far side of it.
 FLAT_KNUCKLE = (0.020493, -0.000285, -0.136914)
 FLAT_ROLL = math.radians(45)
 FLAT_APERTURE = 0.098  # tip-to-tip distance of the ready hand
-# The soap dish's short side equals this aperture, so both pads cannot sit outside the box.
-# The chord that the parked arm can reach leaves the thumb 3 mm inside the box (bend reading
-# 1.22, past open) and the index just outside, so the index closes to the preset without
-# meeting the wall. Putting the index 12 mm inside the box and the thumb 12 mm outside — on
-# the wall — has no collision-free path. INDEX_NEAR is the index clearance (negative = inside
-# the box), THUMB_OUT the least clearance accepted for the thumb.
-INDEX_NEAR = (-0.016, 0.006)
+# The soap dish's short side equals this aperture, so a full span puts a pad on each rim and
+# the open fingers lie on the top. The descent may stop 1.5 cm short (skills.GRASP_POS_TOL),
+# and a pad only a few millimetres outside is then on the rim: the index stays near 1.0 and
+# finishes closing only after the lift. INDEX_NEAR keeps the pad far enough outside that a
+# short stop is still beside the wall. THUMB_OUT is the least clearance for the thumb.
+INDEX_NEAR = (0.018, 0.035)
 THUMB_OUT = -0.004
 # pinch_flat closes to about 3 cm. Less dish than that between the open pads, and the index
 # reaches the preset without ever touching the wall.
@@ -252,21 +257,42 @@ def _flat_pad_z(obj, scene):
     return min(max(0.5 * (floor + obj.top_z), low), high)
 
 
-def _finger_on_top(obj, index_xy, pad_z, i_w, k_w, hand):
-    """The open index crosses the top face, so a straight descent would set the finger down on it.
+def _finger_on_top(obj, index_xy, _pad_z, i_w, k_w, hand):
+    """The open index would be set down on the top face by a straight descent.
 
-    `index_xy` is the pad relative to the centre, `hand` points out of the dish. The finger is about
-    1 cm thick on the inner side of that line.
+    `index_xy` is the pad relative to the centre, `hand` points out of the dish. The pad can finish
+    beside the wall while the finger behind it is still above the top. The descent lowers that part
+    through the top height at the same xy, so the whole finger counts, not only the part that ends
+    below the top. The finger is about 1 cm thick on the inner side of that line.
     """
-    for a in (0.0, 0.2, 0.4, 0.6, 0.8):
-        if pad_z + a * (k_w[2] - i_w[2]) > obj.top_z + 0.004:
-            continue
+    for a in (0.0, 0.2, 0.4, 0.6, 0.8, 1.0):
         p = (index_xy[0] + a * (k_w[0] - i_w[0]), index_xy[1] + a * (k_w[1] - i_w[1]))
         belly = (p[0] - 0.008 * hand[0], p[1] - 0.008 * hand[1])
-        # The mesh box overstates a hollow dish. Under 2 cm into the box is still the rim; deeper,
-        # the descent sets the finger down on the face.
-        if _box_clear(obj, p) < -0.020 or _box_clear(obj, belly) < -0.020:
+        # Under 12 mm into the box is the rim. Deeper, the finger comes down on the opening.
+        if _box_clear(obj, p) < -0.012 or _box_clear(obj, belly) < -0.012:
             return True
+    return False
+
+
+def _beside_on_dish(obj, index_xy, i_w, rot, sign):
+    """Middle, ring or little would come down on the opening. The index is the finger that closes.
+
+    The tip can sit outside the box while the finger behind it lies 2 cm into the opening.
+    Each pair is the knuckle and the open tip in the right-hand TCP frame.
+    """
+    pairs = (
+        ((0.00295, -0.000285, -0.1371), FLAT_MIDDLE),
+        ((-0.01827, -0.000285, -0.1363), FLAT_RING),
+        ((-0.03742, -0.000285, -0.1345), FLAT_LITTLE),
+    )
+    for knuckle, tip in pairs:
+        kw = matvec(rot, (knuckle[0], sign * knuckle[1], knuckle[2]))
+        tw = matvec(rot, (tip[0], sign * tip[1], tip[2]))
+        for a in (0.0, 0.25, 0.5, 0.75, 1.0):
+            w = tuple((1 - a) * kw[j] + a * tw[j] for j in range(3))
+            p = (index_xy[0] + w[0] - i_w[0], index_xy[1] + w[1] - i_w[1])
+            if _box_clear(obj, p) < -0.012:
+                return True
     return False
 
 
@@ -316,12 +342,18 @@ def plan_flat_pinches(obj, scene, p, arm):
                 span = _between(obj, idx, thu)
                 tcp_x = obj.center.x + idx[0] - i_w[0]
                 tcp_y = obj.center.y + idx[1] - i_w[1]
-                # x 0.26 stalled 15 cm short. The pinch at (0.32, -0.10) is the one that reached.
+                # x 0.26 stalled 15 cm short of the object.
                 if span < MIN_BETWEEN or tcp_x < 0.30:
                     continue
                 if _finger_on_top(obj, idx, pad_z, i_w, k_w, hand):
                     continue
-                reach = -math.hypot(tcp_x - 0.317, tcp_y + 0.100)
+                if _beside_on_dish(obj, idx, i_w, rot, sign):
+                    continue
+                # Wrist just in front of this object, on the arm's side of it. A fixed
+                # (0.32, -0.10) pulled the forearm across the centre tray once the dish
+                # sat in that tray's corner.
+                side = -1.0 if arm == "right" else 1.0
+                reach = -math.hypot(tcp_x - (obj.center.x - 0.05), tcp_y - (obj.center.y + side * 0.04))
                 rank = span + 0.4 * reach
                 if best is None or rank > best[0]:
                     best = (rank, span, reach, idx, i_w, yaw)

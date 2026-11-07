@@ -43,6 +43,7 @@ class ModelPoseService:
         self.scene = None
         self.prepared_key = None
         self.last_scene_key = None
+        self.last_pose_key = None
         self.next_scene_after = 0.
         self.pose = None
         self.want_pose = False
@@ -152,10 +153,11 @@ class ModelPoseService:
             # 6D is opt-in and keeps the exact segmentation prepared for its exposure.
             if self.want_pose and self.scene is not None:
                 key, _, _ = self.scene
-                if (key == self.prepared_key
+                if (key == self.prepared_key and key != self.last_pose_key
                         and is_fresh(key, self.generation, now, POSE_INPUT_AGE_NS)):
                     if self.worker.submit("pose", key, self.pool()):
                         self.pending = ("pose", key, None)
+                        self.last_pose_key = key
                         self.worker_deadline = wall + WORKER_JOB_LIMIT_S
                         self.want_pose = False
                     return

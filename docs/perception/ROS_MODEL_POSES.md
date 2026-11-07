@@ -47,6 +47,8 @@ bash run.sh rgbd_enable_model_poses:=true rgbd_device:=cuda:0 \
 
 | Launch / node parameter | Environment default | Значение по умолчанию |
 |---|---|---|
+| `serialized_images` | нет | true: XCDR1 raw Image; false: typed ROS Image |
+| `perceive_frame_wait_s` | нет | 0,75 wall s; bounds 0..1 |
 | `rgbd_model_dir` | `NSSR_RGBD_MODEL_DIR` / verified marker | пусто |
 | `rgbd_enable_model_poses` | `NSSR_RGBD_ENABLE_MODEL_POSES` | false |
 | `rgbd_device` | `NSSR_RGBD_DEVICE` | cpu |
@@ -64,8 +66,8 @@ bash run.sh rgbd_enable_model_poses:=true rgbd_device:=cuda:0 \
 
 ## Планирование и свежесть
 
-Одна ROS-подписка на поток: reliable KEEP_LAST=2, как у моста. При модели есть
-оба CameraInfo. Внутри камеры нужны одинаковые stamp, optical frame,
+Одна ROS-подписка на поток: reliable KEEP_LAST=2, как у моста. Оба CameraInfo
+подписаны также без model bundle; baseline и worker используют один буфер целых экспозиций. Внутри камеры нужны одинаковые stamp, optical frame,
 разрешение и pinhole K; две камеры объединяются только при общем stamp.
 Иначе допускается одна полная камера. TF запрашивается на время кадра.
 
@@ -74,7 +76,9 @@ Worker — отдельный spawn-процесс, одна задача и о�
 плоскость переиспользуются для 6D, не вычисляются повторно. Каждая экспозиция
 ставится на 6D не больше одного раза, включая неудачный fit.
 
-`Perceive` не ожидает worker: готовая сцена подставляется только до **0,65 sim s**
+`Perceive` ждёт целую экспозицию не раньше начала запроса и не позже текущего
+ROS clock, до 0,75 wall s (параметр `perceive_frame_wait_s`), отпуская input lock.
+Он не ожидает inference worker: готовая сцена подставляется только до **0,65 sim s**
 с исходными RGB-D того же stamp. Иначе идёт штатный sensor-based путь.
 Предел **1,0 sim s** — отказ до/после обработки `Perceive`, а не предел
 подстановки worker-сцены. Высота стола относится к `(0.38, 0)` в pelvis.
@@ -150,7 +154,10 @@ train с офлайн-разметкой. Это модельные priors, не
 для сдачи **не согласована**; решение команды остаётся открытым блокером 6D.
 Полная история обучения/данных находится в linked research PR/release.
 
-Итоговая проверка и точные hashes/метрики:
+Живая проверка первого ответа: **6/6** свежих после LOOK_TABLE, RPC 0,324–0,593 s,
+возраст 0,23–0,45 sim s. Полный контракт, версии и оставшиеся ограничения:
+[LIVE_PERCEIVE_20261108.md](LIVE_PERCEIVE_20261108.md).
+Предыдущие offline/replay измерения остаются историческим снимком:
 [VALIDATION_20261107.md](VALIDATION_20261107.md).
 На отдельном live Sort3/pool 4 после штатного `LOOK_TABLE`:
 

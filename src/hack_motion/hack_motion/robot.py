@@ -106,6 +106,16 @@ RAISE_STEPS = (
 PLAN_ROLL_LIMIT = 1.3  # rad
 
 
+# The MoveTcp `ready` pose: out to the side with the elbow folded (RAISE_STEPS[1]), off the table and, unlike the
+# end of the raise, out of the head camera's view of the table.
+READY_STEP = 1
+
+
+def ready_pose(arm):
+    """Arm joints of the MoveTcp `ready` mode, in ARM_JOINTS[arm] order."""
+    return raise_steps(arm)[READY_STEP]
+
+
 def plan_limits(name):
     """(lower, upper) of a joint for planning: JOINTS narrowed by the shoulder singularity."""
     _, _, lo, hi = JOINTS[name]

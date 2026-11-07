@@ -59,6 +59,7 @@ def _thumb_first(current, target):
 COMPENSATION_RATE = 2.0
 MAX_COMPENSATION = 0.3  # rad added on top of the target at most
 HOME_TOL = 0.1  # rad, every arm joint within this of 0 -> the arm hangs at home
+READY_TOL = 0.05  # rad: a `ready` move that timed out this close to the raised pose still counts
 HELD_TOL = 0.05  # rad, the arm MoveTcp did not ask for: it only holds its pose
 # Joint step of one follow segment. 0.3 rad left the 10 cm grasp descent (21 planned waypoints, no joint
 # past 0.3) as a single joint-space chord, so the hand did not travel the straight line cuRobo had planned.
@@ -441,7 +442,7 @@ class MotionNode(Node):
         if backend != "curobo":
             return MoveTcp.Result(success=False, message=f"not_implemented: planner {backend}")
         mode = g.mode or "direct"
-        if mode not in ("direct", "linear"):
+        if mode not in ("direct", "linear", "ready"):
             return MoveTcp.Result(success=False, message=f"unknown mode {mode}")
         pos_tol = g.pos_tol or 0.01
         rot_tol = g.rot_tol or 0.1
@@ -469,7 +470,12 @@ class MotionNode(Node):
             self.get_logger().info(f"move_tcp {g.arm} {mode}: {len(waypoints)} waypoints, {len(names)} joints, "
                                    f"start moved {planner.start_moved:.3f} rad")
             other = next(joints for arm, joints in ARM_JOINTS.items() if arm != g.arm)
-            ok, _, msg = self.follow(names, waypoints, dt, tol=0.01, max_time=g.max_time, held=other)
+            ok, err, msg = self.follow(names, waypoints, dt, tol=0.01, max_time=g.max_time, held=other)
+        if mode == "ready":  # the goal is joints, the target pose is not used
+            reached = ok or (msg == "timeout" and err <= READY_TOL)
+            note = f" ({planner.ready_note})" if planner.ready_note else ""
+            self.get_logger().info(f"move_tcp {g.arm} ready{note}: joint error {err:.3f} rad, {msg}")
+            return MoveTcp.Result(success=reached, message="ok" if reached else msg)
         pos_err, rot_err = self.tcp_error(g.arm, g.target)
         if pos_err is None:
             return MoveTcp.Result(success=False, pos_error=0.0, rot_error=0.0, message=f"{msg}; no tf")

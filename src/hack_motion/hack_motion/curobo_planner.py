@@ -11,7 +11,7 @@ import math
 import time
 
 from .curobo_robot import load_robot_cfg
-from .robot import JOINTS, TCP_LINK, plan_limits, table_scene
+from .robot import ARM_JOINTS, JOINTS, TCP_LINK, plan_limits, ready_pose, table_scene
 
 
 LOCK_TOL = 0.02  # rad
@@ -69,6 +69,7 @@ class CuroboPlanner:
         self.trays = ()  # trays of this task for the next build (motion_node, from /sim/task)
         self.world_trays = ()  # trays the current planner was built with
         self.start_moved = 0.0  # rad, how far the last plan moved its start state off the self-collision buffer
+        self.ready_note = ""  # how the last `ready` plan was found, when not the plain way
 
     def load(self, lock_positions, graphs="reset"):
         """Create the motion planner. Returns a one-line description.
@@ -159,8 +160,10 @@ class CuroboPlanner:
         """
         if self.mp is None:
             raise RuntimeError("curobo is not loaded")
-        if mode not in ("direct", "linear"):
+        if mode not in ("direct", "linear", "ready"):
             raise RuntimeError(f"unknown mode {mode}")
+        if mode == "ready":
+            return self._plan_ready(arm, q_by_name)
         goal, state = self._goal(arm, target, q_by_name)
         if mode == "direct":
             if self._already(goal, state, arm, pos_tol, rot_tol):
@@ -189,6 +192,57 @@ class CuroboPlanner:
             start = [round(v, 3) for v in state.position.detach().reshape(-1).tolist()]
             raise Unreachable(f"no collision-free joint path to {min(len(solutions), MAX_PATHS)} IK solutions from {start}")
         return self._plan_linear(arm, goal, state)
+
+    def _plan_ready(self, arm, q_by_name):
+        """A collision-free joint path that puts `arm` and body_yaw back to robot.ready_pose.
+
+        `direct` picks the IK solution nearest the current joints, so after a place, or after a pose-only park,
+        the arm can sit by a stop (elbow_yaw -2.95, wrist_pitch 1.03 on 2026-11-07), and from there no pre-grasp
+        plans. Every pick starts from fixed joints instead. The other arm keeps its joints.
+        """
+        import torch
+        from curobo.types import JointState
+
+        self.ready_note = ""
+        missing = [name for name in self.joint_names if q_by_name.get(name) is None]
+        if missing:
+            raise RuntimeError(f"no /joint_states for {missing}")
+        q = torch.tensor([[self._inside_limits(name, q_by_name[name]) for name in self.joint_names]],
+                         device="cuda", dtype=torch.float32)
+        q = self._clear_start(q)
+        state = JointState.from_position(q, joint_names=self.joint_names)
+        want = dict(zip(self.joint_names, q.reshape(-1).tolist()))
+        want.update(zip(ARM_JOINTS[arm], ready_pose(arm)))
+        if "body_yaw_joint" in want:
+            want["body_yaw_joint"] = self.ready.get("body_yaw_joint", 0.0)
+        if max(abs(want[n] - v) for n, v in zip(self.joint_names, q.reshape(-1).tolist())) < LOCK_TOL:
+            return list(self.joint_names), [q.reshape(-1).tolist()], None
+        goal_js = JointState.from_position(
+            torch.tensor([[want[n] for n in self.joint_names]], device=q.device, dtype=q.dtype),
+            joint_names=self.joint_names)
+        traj = self.mp.plan_cspace(goal_js, state)
+        if (traj is None or not _flag(traj.success, any_ok=True)) and self.world_trays:
+            # The trays are solid blocks here and hollow in the scene: a hand can rest inside one (the left hand
+            # 0.8 cm into tray_center on 2026-11-07), and then no state of that robot is free. Leave without them.
+            traj = self._without_trays(lambda: self.mp.plan_cspace(goal_js, state))
+            if traj is not None and _flag(traj.success, any_ok=True):
+                self.ready_note = "planned without the trays"
+        if traj is None or not _flag(traj.success, any_ok=True):
+            start = [round(v, 3) for v in q.reshape(-1).tolist()]
+            raise Unreachable(f"no collision-free joint path to the ready {arm} arm from {start}")
+        return self._trajectory(traj)
+
+    def _without_trays(self, plan):
+        checker = self.mp.scene_collision_checker
+        try:
+            for name in self.world_trays:
+                checker.enable_obstacle(name, False)
+            self.mp.graph_planner.reset_buffer()  # it keeps node feasibility from the old scene
+            return plan()
+        finally:
+            for name in self.world_trays:
+                checker.enable_obstacle(name, True)
+            self.mp.graph_planner.reset_buffer()
 
     def _plan_linear(self, arm, goal, state):
         """plan_pose with the moving TCP held on the line through the goal along one axis of the goal frame.
@@ -274,8 +328,24 @@ class CuroboPlanner:
         finally:
             self.mp.update_tool_pose_criteria({link: ToolPoseCriteria()})
         if result is None or not _flag(result.success, any_ok=True):
-            raise Unreachable(f"no straight collision-free path along the goal {axis} axis")
+            raise Unreachable(f"no straight collision-free path along the goal {axis} axis; start {self._violated(state)}")
         return self._trajectory(result)
+
+    def _violated(self, state):
+        """The constraints a joint state breaks, as the graph planner's start check sees them, e.g. 'scene_collision 39'."""
+        try:
+            gp = self.mp.graph_planner
+            buf = gp._max_act_buffer
+            buf[:] = state.position.detach().reshape(1, 1, -1)
+            cc = gp.feasibility_rollout.compute_metrics_from_action(buf).costs_and_constraints
+            bad = []
+            for group in (cc.constraints, cc.hybrid_costs_constraints):
+                for name, value in zip(getattr(group, "names", []), getattr(group, "values", [])):
+                    if value is not None and float(value[0].max().item()) > 0.0:
+                        bad.append(f"{name} {float(value[0].max().item()):.3g}")
+            return ", ".join(bad) or "free"
+        except Exception as e:  # diagnostics only: never hide the planning error behind this one
+            return f"? ({e!r})"
 
     def _trajectory(self, result):
         plan = result.get_interpolated_plan()

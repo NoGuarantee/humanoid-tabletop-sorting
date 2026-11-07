@@ -36,6 +36,7 @@ from . import geometry as geo
 from . import table_clusters as tc
 from .diagnostics import DiagnosticSink
 from .tray_rims import color_openings
+from .cdr_image import ros_image
 from .rgbd.geometry import table_z_at
 from .rgbd_frames import STREAMS, PairBuffer, decode_image, stamp_ns
 
@@ -52,7 +53,8 @@ class PerceptionNode(Node):
         self.lock = threading.RLock()
         self.frame_arrived = threading.Condition(self.lock)
         self.diagnostics = DiagnosticSink(self.get_logger())
-        self.declare_parameter("perceive_frame_wait_s", .35)
+        self.declare_parameter("perceive_frame_wait_s", .75)
+        raw_images = self.declare_parameter('serialized_images', True, ParameterDescriptor(read_only=True)).value
         self.clear_baseline()
         self.names = {}  # object name -> category, from /sim/objects/names
         self.tray_of_color = dict(classify.DEFAULT_TRAY)  # replaced by /sim/task when it arrives
@@ -87,8 +89,10 @@ class PerceptionNode(Node):
             for kind, stream in STREAMS.items():
                 msg_type = CameraInfo if kind.endswith("_info") else Image
                 self.create_subscription(msg_type, f"/{topic}/{stream}",
-                                         lambda m, c=cam, k=kind: self.store(c, k, m),
-                                         camera_qos, callback_group=camera_group)
+                                         lambda m, c=cam, k=kind, raw=raw_images and msg_type is Image:
+                                             self.store_image(c, k, m, raw),
+                                         camera_qos, callback_group=camera_group,
+                                         raw=raw_images and msg_type is Image)
         self.get_logger().info("perception ready")
 
     def on_names(self, msg):
@@ -140,6 +144,15 @@ class PerceptionNode(Node):
             else:
                 self.camera_buffer.add(CAMERAS[cam], kind, msg)
             self.frame_arrived.notify_all()
+
+    def store_image(self, cam, kind, msg, raw):
+        if raw:
+            try:
+                msg = ros_image(msg)
+            except (ValueError, UnicodeError) as exc:
+                self.diagnostics.submit(dict(event='image_decode_error', camera=cam, reason=str(exc)))
+                return
+        self.store(cam, kind, msg)
 
     def snapshot(self, cam, *, now_ns=None, after_ns=0):
         now = self.get_clock().now().nanoseconds if now_ns is None else now_ns

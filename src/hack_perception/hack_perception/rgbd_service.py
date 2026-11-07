@@ -344,9 +344,10 @@ class ModelPoseService:
             else:
                 sensors = [None if view is None else
                            dict(decode_view(view), T=self.transform_at(view["depth"].header)) for view in views]
-        except (TransformException, ValueError):
+        except (TransformException, ValueError) as exc:
             # The matching TF or next complete exposure may arrive before the next pump.
             self._diag_pump_stage = 'decode_tf_unavailable'
+            timing['decode_tf_error'] = str(exc)
             return
         finally:
             timing['decode_tf_s'] = perf_counter()-started

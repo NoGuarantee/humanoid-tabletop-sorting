@@ -5,6 +5,8 @@ tipped over on the table, so a failed grasp before the lift costs nothing. Once 
 right tray (+10); lifted and left on the table, still in the hand or in a wrong tray is -10, on the floor -10 always.
 So a skill must know whether it holds the object, and putting it back on the table after a lift does not help.
 """
+from geometry_msgs.msg import Pose
+
 from .grasp_planner import FINGERTIP, flat_hold_point, plan_grasps, plan_place, pose, tcp_from_local
 
 # The joint loop accepts 0.01 rad. On a 0.7 m arm that is already about 1 cm at the TCP, and the default
@@ -46,7 +48,7 @@ class Skills:
                 self.c.move_tcp(arm, cand.pre_grasp, "linear")
                 continue
             self.log.info(f"hand {arm} closed on an object ({self._fingers(hr)})")
-            if not self.c.move_tcp(arm, cand.lift, "linear"):
+            if not self._lift(arm, cand):
                 self.log.warn(f"lift failed; opening {arm}")
                 self.c.hand(arm, "open")
                 if not self.c.move_tcp(arm, cand.pre_grasp, "linear"):
@@ -66,6 +68,18 @@ class Skills:
         if hr is None or not hr.position:
             return ""
         return " ".join(f"{p:.2f}" for p in hr.position)
+
+    def _lift(self, arm, cand):
+        """Straight up with the object. A 0.15 m straight line from a grasp by the table edge (x 0.25) had no plan
+        while the 0.12 m one back to the pre-grasp did (2026-11-07): then that first, and the rest from there.
+        The pre-grasp is already clear of the table, so the second step is not required."""
+        if self.c.move_tcp(arm, cand.lift, "linear"):
+            return True
+        if cand.pre_grasp.position.z <= cand.grasp.position.z or not self.c.move_tcp(arm, cand.pre_grasp, "linear"):
+            return False
+        if cand.lift.position.z > cand.pre_grasp.position.z:
+            self.c.move_tcp(arm, cand.lift, "linear")
+        return True
 
     def _descend(self, arm, grasp, linear_only=False):
         """Down to the grasp. A straight line often meets the body; the same pose can still be free in joint space."""
@@ -124,4 +138,14 @@ class Skills:
             self.log.warn("release pose not reached; opening above the tray")
         self.c.hand(cand.arm, "open")
         self.c.move_tcp(cand.arm, plan.retreat, "linear")
+        self.ready(cand.arm)
         return True
+
+    def ready(self, arm):
+        """Arm out to the side (robot.ready_pose) by a collision-free joint path, so the next plan starts from
+        known joints and the head camera sees the table.
+
+        After the carry the arm can be one IK branch away from any table pose: the next pre-grasp had no plan.
+        The target pose is not used in this mode.
+        """
+        return self.c.move_tcp(arm, Pose(), "ready")

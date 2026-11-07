@@ -34,7 +34,7 @@ import time
 import rclpy
 from geometry_msgs.msg import Point, Pose, Quaternion, Vector3
 from hack_brain.clients import Clients
-from hack_brain.grasp_planner import FINGERTIP, load_db, plan_grasps, plan_place, pose, top_down
+from hack_brain.grasp_planner import FINGERTIP, load_db, plan_grasps, plan_place
 from hack_brain.skills import Skills
 from hack_interfaces.msg import Container, DetectedObject, SceneObjects
 from hack_motion.robot import TRAY_SIZE, TRAYS, on_table, table_z, tray_rim
@@ -45,10 +45,8 @@ from rclpy.parameter import Parameter
 from rclpy.qos import DurabilityPolicy, QoSProfile
 from std_msgs.msg import String
 
-# Same look-at-table pose as brain_node.LOOK_TABLE. Arms then go to goals move_tcp_check already reached,
-# so the hanging hands are out of the cloud before the picture.
+# Same look-at-table pose as brain_node.LOOK_TABLE. Arms then go to the ready pose, out of the picture.
 LOOK = {"head_pitch_joint": 0.4, "head_yaw_joint": 0.0, "body_yaw_joint": 0.0}
-PARK = (("right", 0.40, -0.35, 0.30), ("left", 0.40, 0.35, 0.30))
 # TCP height where open fingers start to meet the table, from tools/table_touch.py. Stay above it.
 TOUCH_Z = (0.039, 0.070)
 TOUCH_MARGIN = 0.005
@@ -204,14 +202,12 @@ def run(node, name, at, use_camera):
         print("FAIL head did not look at the table", flush=True)
         return 1
     wait_sim(node, 0.5)
-    q = top_down(0.0)
-    # Only the arm on the object's side. The left park once ended with the shoulder at -2.3 rad and the arm
-    # across the head camera, and no plan left that pose. The other arm stays hanging, below the table.
-    for arm, x, y, z in PARK:
-        if (arm == "left") != (at[1] > 0):
-            continue
-        if not node.api.move_tcp(arm, pose(x, y, z, q), "direct"):
-            print(f"FAIL could not park {arm} above the table", flush=True)
+    # Both arms to the ready pose, out of the head camera's view. The first plan raises both hanging arms in front
+    # of the chest, across the picture. A park by TCP pose ended by joint stops twice (shoulder -2.3 rad on the
+    # left, elbow_yaw -2.95 on the right on 2026-11-07), and no pre-grasp planned from there.
+    for arm in ("right", "left"):
+        if not node.skills.ready(arm):
+            print(f"FAIL could not bring {arm} to the ready pose", flush=True)
             return 1
     if not place_object(node, name, at):
         return 1

@@ -34,7 +34,7 @@ def main():
         parser.error('repeats must be 2..5, first iteration is warmup')
     torch.set_num_threads(2)
     source = Path(__file__).resolve().parents[1] / 'src/hack_perception'
-    hashes = {str(p.relative_to(source)): digest(p) for p in sorted(source.rglob('*.py'))}
+    hashes = {str(p.relative_to(source)): digest(p) for p in sorted(source.rglob('*.py')) if not p.name.startswith('._')}
     manifest = json.loads((args.data/'inputs.json').read_text())
     inputs = {'inputs.json': digest(args.data/'inputs.json')}
     rows = []

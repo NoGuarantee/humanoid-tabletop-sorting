@@ -194,6 +194,17 @@ class ServiceTimingTest(unittest.TestCase):
             service.pump()
         service.worker.submit.assert_not_called()
 
+    def test_spawn_failure_leaves_service_available_with_worker_unavailable_status(self):
+        service = self.service
+        service.worker_restarts = 0
+        service.clear_baseline = Mock()
+        service.worker.close = Mock()
+        service.node.get_logger = lambda: SimpleNamespace(error=lambda x: None)
+        with patch.object(self.module, 'PoseWorker', side_effect=RuntimeError('spawn denied')):
+            service.restart_worker('test', 10.)
+        self.assertEqual(service.estimate()['status'], 'worker_unavailable')
+        self.assertFalse(service.lock.held)
+
 
 if __name__ == '__main__':
     unittest.main()

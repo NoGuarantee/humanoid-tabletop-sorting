@@ -35,7 +35,7 @@ class ModelPoseService:
         self.pool_override = pool_override
         self.task = None
         self.generation = 0
-        self.buffer = PairBuffer()
+        self.buffer = node.camera_buffer
         self.lock = lock
         self.clear_baseline = clear_baseline
         self.on_demand = on_demand
@@ -195,7 +195,8 @@ class ModelPoseService:
         return None
 
     def transform_at(self, header):
-        tf = self.tf.lookup_transform("pelvis", header.frame_id, Time.from_msg(header.stamp))
+        tf = self.tf.lookup_transform("pelvis", header.frame_id, Time.from_msg(header.stamp),
+                                      timeout=Duration(seconds=.03))
         return transform_matrix(tf)
 
     def complete(self, item, now):
@@ -303,6 +304,8 @@ class ModelPoseService:
                     started = perf_counter()
                     if self.worker.submit("pose", key, request):
                         self.pending = ("pose", key, None)
+                        self._worker_notices.append(('info', json.dumps(dict(
+                            event='rgbd_pose_submitted', stamp_ns=key[1], wall_s=wall_time()))))
                         self._diag_pending_started = wall
                         self.last_pose_key = key
                         self.worker_deadline = wall + WORKER_JOB_LIMIT_S
@@ -349,10 +352,11 @@ class ModelPoseService:
             timing['decode_tf_s'] = perf_counter()-started
 
         self._diag_pump_stage = 'submit_lock'
+        decoded_now = self.now_ns()
         with self._timed_lock(timing, 'submit_lock'):
             self._diag_pump_stage = 'scene_submit'
             started = perf_counter()
-            if (is_fresh(key, self.generation, self.now_ns(), INPUT_AGE_NS)
+            if (is_fresh(key, self.generation, decoded_now, INPUT_AGE_NS)
                     and self.worker.submit("scene", key, (sensors, mapping))):
                 self.pending = ("scene", key, views)
                 self._diag_pending_started = wall
@@ -361,9 +365,9 @@ class ModelPoseService:
                 self.next_scene_after = wall + SCENE_PERIOD_S
             timing['submit_s'] = perf_counter()-started
 
-    def scene_for(self, camera):
+    def scene_for(self, camera, *, now_ns=None):
         """Return the camera frame and scene measured at that exposure, if still fresh."""
-        now = self.now_ns()
+        now = self.now_ns() if now_ns is None else now_ns
         with self.lock:
             if self.scene is None or not is_fresh(self.scene[0], self.generation, now, SCENE_AGE_NS - INPUT_AGE_NS):
                 return None
@@ -381,8 +385,8 @@ class ModelPoseService:
 
     def estimate(self, timing=None):
         timing = {} if timing is None else timing
+        now = self.now_ns()
         with self._timed_lock(timing, 'estimate_lock'):
-            now = self.now_ns()
             pool = self.pool()
             if self.state != "ready":
                 return response(self.state, pool=pool)

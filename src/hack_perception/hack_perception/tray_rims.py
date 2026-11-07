@@ -24,6 +24,8 @@ def color_openings(sensor, cloud, plane, tray_of_color):
     measured_plane = normal, -float(normal @ plane.point)
     found = {}
     for color in range(3):
+        if ('red', 'green', 'blue')[color] not in tray_of_color:
+            continue
         observed = support & (channel == color)
         # Floor plastic connects separate visible rim strips. Rasterisation
         # can leave one-pixel gaps at corners. Dilate only

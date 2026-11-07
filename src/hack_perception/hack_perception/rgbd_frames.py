@@ -51,6 +51,12 @@ class PairBuffer:
             views.append(None if any(msg is None for msg in view.values()) else view)
         return views
 
+    def latest_for(self, camera, now_ns, max_age_ns, *, after_ns=0):
+        exposures = set.intersection(*(set(self.frames[camera, kind]) for kind in STREAMS))
+        stamp = max((stamp for stamp in exposures if stamp > 0 and stamp >= after_ns
+                     and 0 <= now_ns-stamp <= max_age_ns), default=None)
+        return None if stamp is None else self.at(stamp)[CAMERAS.index(camera)]
+
 
 def decode_image(msg, encoding, dtype, channels):
     if msg.encoding != encoding:

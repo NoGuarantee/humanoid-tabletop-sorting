@@ -37,7 +37,7 @@ from . import table_clusters as tc
 from .diagnostics import DiagnosticSink
 from .tray_rims import color_openings
 from .rgbd.geometry import table_z_at
-from .rgbd_frames import STREAMS, decode_image, stamp_ns
+from .rgbd_frames import STREAMS, PairBuffer, decode_image, stamp_ns
 
 CAMERAS = {"head": "cam_head", "torso": "cam_torso"}
 BASE = "pelvis"
@@ -85,8 +85,6 @@ class PerceptionNode(Node):
         camera_group = MutuallyExclusiveCallbackGroup()
         for cam, topic in CAMERAS.items():
             for kind, stream in STREAMS.items():
-                if kind == "depth_info" and self.model_poses is None:
-                    continue
                 msg_type = CameraInfo if kind.endswith("_info") else Image
                 self.create_subscription(msg_type, f"/{topic}/{stream}",
                                          lambda m, c=cam, k=kind: self.store(c, k, m),
@@ -126,6 +124,10 @@ class PerceptionNode(Node):
         # Callers hold the shared input lock once the node is running.
         self.frames = {cam: {} for cam in CAMERAS}
         self.tracker = tc.Tracker()
+        if not hasattr(self, 'camera_buffer'):
+            self.camera_buffer = PairBuffer()
+        else:
+            self.camera_buffer.clear()
 
     def store(self, cam, kind, msg):
         received_wall = monotonic()
@@ -135,16 +137,20 @@ class PerceptionNode(Node):
                 self.frames[cam][key] = msg
             if self.model_poses is not None:
                 self.model_poses.store(CAMERAS[cam], kind, msg, received_wall=received_wall)
+            else:
+                self.camera_buffer.add(CAMERAS[cam], kind, msg)
             self.frame_arrived.notify_all()
 
-    def snapshot(self, cam):
+    def snapshot(self, cam, *, now_ns=None, after_ns=0):
+        now = self.get_clock().now().nanoseconds if now_ns is None else now_ns
         with self.lock:
-            f = dict(self.frames[cam])
+            view = self.camera_buffer.latest_for(CAMERAS[cam], now, 1_000_000_000, after_ns=after_ns)
             epoch = self.model_poses.generation if self.model_poses is not None else None
-        if not all(k in f for k in ("color", "depth", "info")):
+        if view is None:
             return None, None
-        if len({(stamp_ns(m.header), m.header.frame_id) for m in f.values()}) != 1:
+        if len({(stamp_ns(m.header), m.header.frame_id) for m in view.values()}) != 1:
             return None, None
+        f = dict(color=view['color'], depth=view['depth'], info=view['color_info'])
         return f, (epoch, stamp_ns(f["depth"].header))
 
     def cloud_in_pelvis(self, f, stride=1):
@@ -178,21 +184,26 @@ class PerceptionNode(Node):
         f, key, model = None, None, None
         # A service called after LOOK_TABLE must not return a pre-motion frame.
         # Condition.wait releases the input lock so camera and TF callbacks run.
-        with self.frame_arrived:
-            while cam in CAMERAS:
+        while cam in CAMERAS:
+            # Never acquire the ROS clock mutex under the input lock: clock
+            # reset callbacks acquire those locks in the opposite order.
+            now = self.get_clock().now().nanoseconds
+            with self.frame_arrived:
                 if self.model_poses is not None:
-                    model = self.model_poses.scene_for(CAMERAS[cam])
+                    model = self.model_poses.scene_for(CAMERAS[cam], now_ns=now)
                     if model is not None and model[0][1] >= requested_ns:
                         break
                     model = None
-                f, key = self.snapshot(cam)
+                f, key = self.snapshot(cam, now_ns=now, after_ns=requested_ns)
                 if f is not None and key[1] >= requested_ns:
                     break
                 remaining = deadline - monotonic()
                 if remaining <= 0:
                     f, key = None, None
                     break
-                self.frame_arrived.wait(timeout=remaining)
+                # /clock can catch up without another camera callback. Retain
+                # older complete exposures instead of overwriting with a future one.
+                self.frame_arrived.wait(timeout=min(remaining, .005))
         timing['frame_wait_s'] = monotonic()-start
         if model is not None:
             key, f, geometry = model
@@ -277,16 +288,16 @@ class PerceptionNode(Node):
                 center=Point(x=float(c.center[0]), y=float(c.center[1]), z=float(c.center[2])),
                 size=Vector3(x=float(c.size[0]), y=float(c.size[1]), z=float(c.size[2]))))
         rejected = result.rejected if result is not None else []
-        if result is not None and set(tray_of_color.values()) - {tray.id for tray in model_trays}:
+        trays = classify.merge_trays(model_trays, rejected, rgb, tray_of_color)
+        missing = {color: ident for color, ident in tray_of_color.items()
+                   if ident not in {tray[0] for tray in trays}}
+        if result is not None and missing:
             dtype = '>u2' if f['depth'].is_bigendian else '<u2'
             depth_mm = decode_image(f['depth'], '16UC1', dtype, 1)[..., 0].astype(np.uint16, copy=False)
             sensor = dict(rgb=rgb, depth=depth_mm,
                           K=np.asarray(f['info'].k).reshape(3, 3), T=camera_tf)
-            measured = color_openings(sensor, cloud, result.plane, tray_of_color) if rgb is not None else []
-            measured = {tray.id: tray for tray in measured}
-            measured.update({tray.id: tray for tray in model_trays})
-            model_trays = list(measured.values())
-        trays = classify.merge_trays(model_trays, rejected, rgb, tray_of_color)
+            measured = color_openings(sensor, cloud, result.plane, missing) if rgb is not None else []
+            trays.extend((tray.id, tray.color, tray.center, tray.yaw, tray.size) for tray in measured)
         for tray_id, color, center, yaw, size in trays:
             x, y, z = map(float, center)
             scene.containers.append(Container(

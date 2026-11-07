@@ -41,6 +41,17 @@ class ModelPoseInputsTest(unittest.TestCase):
         buffer.clear()
         self.assertIsNone(buffer.latest(now_ns=110, max_age_ns=10))
 
+    def test_camera_selects_complete_post_request_exposure_that_clock_has_reached(self):
+        buffer = PairBuffer()
+        for ns in (99, 100, 101):
+            for kind, message in frames(ns, CAMERAS[0]).items():
+                buffer.add(CAMERAS[0], kind, message)
+        view = buffer.latest_for(CAMERAS[0], 100, 10, after_ns=100)
+        self.assertEqual(stamp_ns(view['depth'].header), 100)
+        self.assertIsNone(buffer.latest_for(CAMERAS[0], 100, 10, after_ns=101))
+        view = buffer.latest_for(CAMERAS[0], 101, 10, after_ns=101)
+        self.assertEqual(stamp_ns(view['depth'].header), 101)
+
     def test_pair_queries_tf_for_each_camera_at_the_exposure(self):
         queries = []
 

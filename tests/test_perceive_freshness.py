@@ -35,7 +35,7 @@ class PerceiveFreshnessTest(unittest.TestCase):
     def test_first_response_waits_for_post_request_complete_exposure(self):
         node=self.node
         past=node.get_clock().now().nanoseconds-100_000_000
-        for kind in ('color','depth','color_info'):node.store('head',kind,message(past))
+        for kind in ('color','depth','color_info','depth_info'):node.store('head',kind,message(past))
         emitted=[]
         def publish():
             time.sleep(.02)
@@ -44,6 +44,7 @@ class PerceiveFreshnessTest(unittest.TestCase):
             time.sleep(.02)
             emitted.append(fresh)
             node.store('head','color_info',message(fresh))
+            node.store('head','depth_info',message(fresh))
         thread=threading.Thread(target=publish);thread.start()
         requested=node.get_clock().now().nanoseconds
         result=node.on_perceive(Perceive.Request(camera='head',region='table'),Perceive.Response())
@@ -56,7 +57,7 @@ class PerceiveFreshnessTest(unittest.TestCase):
     def test_pre_request_exposure_is_not_returned_even_if_under_old_ttl(self):
         node=self.node
         old=node.get_clock().now().nanoseconds-1_000_000
-        for kind in ('color','depth','color_info'):node.store('head',kind,message(old))
+        for kind in ('color','depth','color_info','depth_info'):node.store('head',kind,message(old))
         started=time.monotonic()
         result=node.on_perceive(Perceive.Request(camera='head',region='table'),Perceive.Response())
         self.assertFalse(result.success)
@@ -65,6 +66,8 @@ class PerceiveFreshnessTest(unittest.TestCase):
     def test_mixed_camera_headers_are_not_a_snapshot(self):
         node=self.node
         stamp=node.get_clock().now().nanoseconds
-        for kind in ('color','depth','color_info'):node.store('head',kind,message(stamp))
+        for kind in ('color','depth','color_info','depth_info'):node.store('head',kind,message(stamp))
         node.store('head','color',message(stamp+1))
-        self.assertEqual(node.snapshot('head'),(None,None))
+        frames,key=node.snapshot('head')
+        self.assertEqual(key[1],stamp)
+        self.assertEqual(frames['color'].header.stamp,frames['depth'].header.stamp)

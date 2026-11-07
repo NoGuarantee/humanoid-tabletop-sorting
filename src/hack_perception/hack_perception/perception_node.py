@@ -12,6 +12,7 @@ Status:
 import json
 import math
 import threading
+import time
 
 import numpy as np
 import rclpy
@@ -37,6 +38,8 @@ BASE = "pelvis"
 ARM_FRAMES = (("elbow_pitch_l_link", "wrist_pitch_l_link", "left_tcp_link"),
               ("elbow_pitch_r_link", "wrist_pitch_r_link", "right_tcp_link"))
 FINGERS = 0.21  # along -z of the TCP; keep equal to grasp_planner.FINGERTIP
+STILL_WINDOW = 0.5  # s: a frame at rest this long may take the latest transform (lookup_at)
+STILL_TOLERANCE = 0.002  # max change of any 4x4 entry over that window: 2 mm, about 0.1°
 
 
 class PerceptionNode(Node):
@@ -101,14 +104,42 @@ class PerceptionNode(Node):
             return None
         return f
 
+    def lookup_at(self, frame, stamp, sim_wait, wall_cap=30.0):
+        """Transform frame -> pelvis at stamp, waiting up to sim_wait seconds of /clock for /tf to catch up.
+
+        tf2's own timeout counts wall time, and the sim runs below real time. Even waiting on /clock, this node's
+        buffer once stayed 1.07 s behind the depth frame while /tf on the wire kept within 30 ms of it
+        (2026-11-07, tools/stamp_probe.py). Then the latest transform stands in, if the frame did not move over
+        STILL_WINDOW before it: the brain and pick_one look with the head and waist at rest.
+        wall_cap bounds the wait if /clock stalls."""
+        t = Time.from_msg(stamp)
+        start, wall = self.get_clock().now(), time.monotonic()
+        while not self.tf.can_transform(BASE, frame, t):
+            if ((self.get_clock().now() - start).nanoseconds > sim_wait * 1e9
+                    or time.monotonic() - wall > wall_cap):
+                break
+            time.sleep(0.02)
+        try:
+            return self.tf.lookup_transform(BASE, frame, t)
+        except TransformException as e:
+            latest = self.tf.lookup_transform(BASE, frame, Time())
+            t_latest = Time.from_msg(latest.header.stamp)
+            before = self.tf.lookup_transform(BASE, frame, t_latest - Duration(seconds=STILL_WINDOW))
+            moved = geo.transform_matrix(latest) - geo.transform_matrix(before)
+            lag = (t - t_latest).nanoseconds * 1e-9
+            now = (self.get_clock().now() - t).nanoseconds * 1e-9
+            self.get_logger().warning(f"{frame}: /tf here {lag:.2f} s behind the frame, frame {now:.2f} s old, "
+                                      f"moved {np.abs(moved).max():.4f} over {STILL_WINDOW} s")
+            if np.abs(moved).max() > STILL_TOLERANCE:
+                raise e
+            return latest
+
     def cloud_in_pelvis(self, f, stride=1):
         """Organised point cloud of the depth frame in pelvis: (HxWx3 array with NaN where no depth, 4x4 cam->pelvis)."""
         depth = f["depth"]
-        tf = self.tf.lookup_transform(BASE, depth.header.frame_id, Time.from_msg(depth.header.stamp),
-                                      # tf at the frame time: the head may move. Just after the sim starts
-                                      # /tf ran 1 s behind the depth frame (2026-11-07), and 0.5 s gave up.
-                                      timeout=Duration(seconds=2.0))
-        m = geo.transform_matrix(tf)
+        # tf at the frame time: the head may move. Just after the sim starts /tf ran 1 s behind the depth frame
+        # (2026-11-07), and 0.5 s gave up.
+        m = geo.transform_matrix(self.lookup_at(depth.header.frame_id, depth.header.stamp, sim_wait=2.0))
         z = geo.depth_to_m(depth)[::stride, ::stride]
         v, u = np.mgrid[0:depth.height:stride, 0:depth.width:stride]
         pts = geo.apply(m, geo.deproject(u, v, z, f["info"]).reshape(-1, 3)).reshape(z.shape + (3,))
@@ -139,9 +170,7 @@ class PerceptionNode(Node):
         segments = []
         for frames in ARM_FRAMES:
             try:
-                poses = [geo.transform_matrix(self.tf.lookup_transform(BASE, name, Time.from_msg(stamp),
-                                                                       timeout=Duration(seconds=0.2)))
-                         for name in frames]
+                poses = [geo.transform_matrix(self.lookup_at(name, stamp, sim_wait=0.2)) for name in frames]
             except TransformException as e:
                 self.get_logger().warning(f"no arm mask: {e}")
                 continue

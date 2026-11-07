@@ -215,7 +215,10 @@ def clusters_above(cloud, plane, robot_segments=()):
     pts = cloud.reshape(-1, 3)
     with np.errstate(invalid="ignore"):
         height = plane.height(pts)
-        mask = (height > MIN_HEIGHT) & (pts[:, 0] > TABLE_X[0]) & (pts[:, 0] < TABLE_X[1]) \
+        # Cells connect in the table plane whatever their height, so an arm above an object joined it into one
+        # 0.48 m cluster, rejected as the robot: the Philips box under the ready right arm (2026-11-07).
+        mask = (height > MIN_HEIGHT) & (height < MAX_HEIGHT) \
+            & (pts[:, 0] > TABLE_X[0]) & (pts[:, 0] < TABLE_X[1]) \
             & (pts[:, 1] > TABLE_Y[0]) & (pts[:, 1] < TABLE_Y[1])
     idx = np.flatnonzero(mask)
     if len(robot_segments):

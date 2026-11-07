@@ -9,6 +9,9 @@ is printed. The placed pose in the pelvis frame comes from `on_table`, the same 
 The tray is chosen by the arm (`y > 0` -> left), not by the task rule.
 Open fingers meet the table at TCP z = 0.039 + 0.070 x (tools/table_touch.py); the script refuses a
 vertical hand whose TCP is within 5 mm of that. A leaned pinch is checked in grasp_planner.
+`--set key=value` overrides this object's grasp_db entry; `--sweep key=v1,v2,...` picks once per value
+(placing the object again each time) and prints a table, e.g. `--set preset=pinch --sweep across=0.05,0.06`.
+A value that holds belongs in grasp_db.yaml by_name.
 
 Needs hack_motion and hack_perception, not hack_brain: brain would publish /sim/task/done and exit.
 The dev container stays up and `kill` of `ros2 run` leaves its child alive, so stop the nodes by name.
@@ -199,8 +202,9 @@ class PickOne(Node):
             self.waist = msg.position[msg.name.index("body_yaw_joint")]
 
 
-def watch(node, stop):
-    """--watch: the head turns against the waist, so its camera stays on the table while a grasp swings the waist.
+def watch(node, stop, aim=0.0):
+    """--watch: the head turns against the waist, so its camera stays on the object (bearing aim, rad from pelvis x)
+    while a grasp swings the waist.
 
     The plans turn the waist up to 0.8 rad, and the video of a slip then shows the far end of the table. Motion
     serializes only TCP moves, so this runs beside the pick. Debugging only: the brain keeps the head still.
@@ -208,9 +212,9 @@ def watch(node, stop):
     target = 0.0
     while not stop.is_set():
         w = node.waist
-        if w is not None and abs(-w - target) > 0.05:
-            target = max(-1.5, min(1.5, -w))
-            node.api.move_joints(["head_yaw_joint", "head_pitch_joint"], [target, 0.44])
+        if w is not None and abs(aim - w - target) > 0.05:
+            target = max(-1.5, min(1.5, aim - w))
+            node.api.move_joints(["head_yaw_joint", "head_pitch_joint"], [target, 0.6])
         time.sleep(0.2)
 
 
@@ -255,7 +259,8 @@ def run(node, name, at, use_camera, watching=False):
     print(f"grasp -> {tray.id}", flush=True)
     stop = threading.Event()
     if watching:
-        threading.Thread(target=watch, args=(node, stop), daemon=True).start()
+        aim = math.atan2(obj.center.y, obj.center.x)
+        threading.Thread(target=watch, args=(node, stop, aim), daemon=True).start()
     try:
         held = node.skills.pick(obj, scene)
     finally:
@@ -271,12 +276,25 @@ def run(node, name, at, use_camera, watching=False):
     return 0
 
 
+def parse_kv(kv):
+    """'across=0.05' -> ('across', 0.05); values that are not numbers stay strings."""
+    key, value = kv.split("=", 1)
+    try:
+        return key, float(value)
+    except ValueError:
+        return key, value
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--object", default=DISH, help="substring of a CATALOG name")
     ap.add_argument("--at", type=float, nargs=3, default=PLACE_AT, metavar=("ALONG", "Y", "YAW"))
     ap.add_argument("--known", action="store_true", help="grasp from the placed pose, not the camera")
     ap.add_argument("--watch", action="store_true", help="turn the head against the waist during the pick (video)")
+    ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                    help="grasp_db parameter for this object, e.g. preset=pinch or across=0.05")
+    ap.add_argument("--sweep", metavar="KEY=V1,V2,...",
+                    help="pick once per value (object placed again each time), then print a table")
     args = ap.parse_args()
     names = [n for n in CATALOG if args.object in n]
     if len(names) != 1:
@@ -289,8 +307,22 @@ def main():
     spin = threading.Thread(target=executor.spin, daemon=True)
     spin.start()
     status = 1
+    entry = node.skills.db.setdefault("by_name", {}).setdefault(names[0], {})
+    entry.update(dict(parse_kv(kv) for kv in args.set))
     try:
-        status = run(node, names[0], tuple(args.at), use_camera, args.watch)
+        if args.sweep:
+            key, values = args.sweep.split("=", 1)
+            results = []
+            for v in values.split(","):
+                entry[key] = parse_kv(f"{key}={v}")[1]
+                print(f"==== {key}={entry[key]}", flush=True)
+                results.append((entry[key], run(node, names[0], tuple(args.at), use_camera, args.watch)))
+            print(f"==== sweep {key} on {names[0]} with {args.set}", flush=True)
+            for v, st in results:
+                print(f"  {key}={v}: {'OK' if st == 0 else 'fail'}", flush=True)
+            status = 0 if any(st == 0 for _, st in results) else 1
+        else:
+            status = run(node, names[0], tuple(args.at), use_camera, args.watch)
     finally:
         executor.shutdown()
         spin.join(timeout=5.0)

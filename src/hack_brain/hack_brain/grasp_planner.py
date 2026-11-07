@@ -142,8 +142,10 @@ def span_across(obj, tcp_yaw):
     return abs(math.cos(delta)) * obj.size.x + abs(math.sin(delta)) * obj.size.y
 
 
-def grasp_xy(obj, tcp_yaw, preset, arm):
+def grasp_xy(obj, tcp_yaw, preset, arm, p=None):
     """Where `tcp_at` aims so the object sits between the pads. Objects up to FLAT_MAX_HEIGHT use `plan_flat_pinches`.
+
+    grasp_db `ahead` and `across` (m, right-hand TCP frame) move the aim; `tools/pick_one.py --sweep` searches them.
 
     The palm faces TCP +y on the right hand and -y on the left, so the object has to lie on that side of the
     axis. Choosing the side by distance from the pelvis put a right-hand object behind the back of the hand.
@@ -153,8 +155,9 @@ def grasp_xy(obj, tcp_yaw, preset, arm):
         return x, y
     # The index-to-thumb line (FLAT_INDEX, FLAT_THUMB) runs 3 cm ahead of the axis, between 2.2 and 9.1 cm across.
     # Aimed at the axis, that line crossed a long face 1 cm from its end and the pads turned the object.
-    ahead = 0.5 * (FLAT_INDEX[0] + FLAT_THUMB[0])
-    across = 0.5 * (FLAT_INDEX[1] + FLAT_THUMB[1])
+    p = p or {}
+    ahead = p.get("ahead", 0.5 * (FLAT_INDEX[0] + FLAT_THUMB[0]))
+    across = p.get("across", 0.5 * (FLAT_INDEX[1] + FLAT_THUMB[1]))
     if arm == "left":
         across = -across
     c, s = math.cos(tcp_yaw), math.sin(tcp_yaw)
@@ -490,7 +493,7 @@ def plan_grasps(obj, scene, db):
         if preset == "pinch" and i > 0 and span_across(obj, yaw) > UPRIGHT_APERTURE:
             continue
         q = top_down(yaw)
-        x, y = grasp_xy(obj, yaw, preset, arm)
+        x, y = grasp_xy(obj, yaw, preset, arm, p)
         out.append(GraspCandidate(
             arm=arm,
             pre_grasp=tcp_at(x, y, z + p.get("pre_height", 0.10), q),

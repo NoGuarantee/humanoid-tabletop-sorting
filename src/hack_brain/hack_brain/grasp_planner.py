@@ -141,23 +141,23 @@ def span_across(obj, tcp_yaw):
     return abs(math.cos(delta)) * obj.size.x + abs(math.sin(delta)) * obj.size.y
 
 
-def grasp_xy(obj, tcp_yaw, preset):
-    """Where the fingertips close.
+def grasp_xy(obj, tcp_yaw, preset, arm):
+    """Where `tcp_at` aims so the object sits between the pads. Objects up to FLAT_MAX_HEIGHT use `plan_flat_pinches`.
 
-    The palm centre is what `tcp_at` aims at. A pinch there closes over the middle, and a dish is only a rim
-    at that height, so the fingers meet nothing. Aim at the near rim: the thumb closes along TCP +y and meets
-    the wall. Objects no taller than FLAT_MAX_HEIGHT use `plan_flat_pinches` instead.
+    The palm faces TCP +y on the right hand and -y on the left, so the object has to lie on that side of the
+    axis. Choosing the side by distance from the pelvis put a right-hand object behind the back of the hand.
     """
     x, y = obj.center.x, obj.center.y
     if preset != "pinch":
         return x, y
-    # The open index tip lies 2.2 cm toward TCP +y from the point tcp_at aims at. Aiming the axis at the
-    # rim puts that tip inside the object, and the close pushes the finger past open (a reading above 1).
-    shift = 0.5 * span_across(obj, tcp_yaw) + 0.03
-    dx, dy = -math.sin(tcp_yaw), math.cos(tcp_yaw)  # TCP +y
-    near = (x - shift * dx, y - shift * dy)
-    far = (x + shift * dx, y + shift * dy)
-    return near if math.hypot(*near) <= math.hypot(*far) else far
+    # The index-to-thumb line (FLAT_INDEX, FLAT_THUMB) runs 3 cm ahead of the axis, between 2.2 and 9.1 cm across.
+    # Aimed at the axis, that line crossed a long face 1 cm from its end and the pads turned the object.
+    ahead = 0.5 * (FLAT_INDEX[0] + FLAT_THUMB[0])
+    across = 0.5 * (FLAT_INDEX[1] + FLAT_THUMB[1])
+    if arm == "left":
+        across = -across
+    c, s = math.cos(tcp_yaw), math.sin(tcp_yaw)
+    return x - ahead * c + across * s, y - ahead * s - across * c
 
 
 # Ready fingertips in the right-hand TCP frame: fingers open, thumb rotated to actuator 6 = 0.1, thumb bend open.
@@ -166,6 +166,7 @@ def grasp_xy(obj, tcp_yaw, preset):
 # A fully sideways hand (wrist at the table, z ≈ -0.14) has no IK.
 FLAT_INDEX = (0.0294, 0.0220, -0.2088)
 FLAT_THUMB = (0.0365, 0.0913, -0.1401)
+UPRIGHT_APERTURE = FLAT_THUMB[1] - FLAT_INDEX[1]  # across TCP y, hand vertical
 # The other open tips, beside the index. Spread is along TCP x. A yaw that points that
 # spread into the dish sets the middle and ring on the top while the index closes in the
 # air. From the URDF knuckle origins, plus the index tip's offset from FLAT_KNUCKLE.
@@ -475,23 +476,29 @@ def plan_grasps(obj, scene, db):
         if flat:
             return flat
     if p.get("preset", "power") == "pinch":
-        p = dict(p)  # the thumb pad is 7 cm above the open index; keep that pad below the top
-        p["z_offset"] = -min(0.5 * obj.size.z, max(0.06, 0.4 * obj.size.z))
+        p = dict(p)  # the thumb pad is 6.9 cm above the open index; keep that pad 2 cm below the top
+        p["z_offset"] = -min(0.6 * obj.size.z, FLAT_THUMB[2] - FLAT_INDEX[2] + 0.02)
     z = fingertip_z(obj, scene, p)  # tips, not the TCP: tcp_at lifts the palm by FINGERTIP
     base_yaw = pinch_yaw(obj.yaw, p.get("align", "short_axis"))
+    preset = p.get("preset", "power")
     out = []
     for i, dyaw in enumerate((0.0, math.pi / 2)):  # second candidate: rotated hand, used on a retry
         yaw = base_yaw + dyaw
+        # A retry across a side wider than the pads would land the thumb on top of the object.
+        if preset == "pinch" and i > 0 and span_across(obj, yaw) > UPRIGHT_APERTURE:
+            continue
         q = top_down(yaw)
-        x, y = grasp_xy(obj, yaw, p.get("preset", "power"))
+        x, y = grasp_xy(obj, yaw, preset, arm)
         out.append(GraspCandidate(
             arm=arm,
             pre_grasp=tcp_at(x, y, z + p.get("pre_height", 0.10), q),
             grasp=tcp_at(x, y, z, q),
             lift=tcp_at(x, y, z + p.get("lift_height", 0.15), q),
-            hand_preset=p.get("preset", "power"),
+            hand_preset=preset,
             force=p.get("force", 0.0),
             score=1.0 - 0.5 * i,
+            # The thumb swings across on the close. Set it before the descent so it does not sweep the object.
+            approach_preset="pinch_ready" if preset == "pinch" else "open",
         ))
     return out
 

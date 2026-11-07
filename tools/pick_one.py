@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Pick one soap dish from a known point and drop it in the tray on the same side. Milestone M1.
+"""Pick one object from a known point and drop it in the tray on the same side. Milestone M1.
 
 The other objects are parked through `/sim/objects/set` (a debug topic: this script lives in tools/).
-The dish is placed at DISH_AT and the grasp uses that pose, not a camera cluster: the head's detector
-drops this dish, its height sits in the tray band. The pose in the pelvis frame comes from `on_table`,
-the same 4° pitch the trays use. The tray is chosen by the arm (`y > 0` -> left), not by the task rule.
+`--object` is any substring of a name in classify.CATALOG, `--at` is along the table, y, yaw.
+The default dish uses its placed pose: the head's detector drops it, its height sits in the tray band.
+Anything else uses the head camera unless `--known` is given, and the difference from the placed pose
+is printed. The placed pose in the pelvis frame comes from `on_table`, the same 4° pitch the trays use.
+The tray is chosen by the arm (`y > 0` -> left), not by the task rule.
 Open fingers meet the table at TCP z = 0.039 + 0.070 x (tools/table_touch.py); the script refuses a
 vertical hand whose TCP is within 5 mm of that. A leaned pinch is checked in grasp_planner.
 
@@ -18,10 +20,12 @@ The dev container stays up and `kill` of `ros2 run` leaves its child alive, so s
       ros2 run hack_perception perception_node --ros-args -p use_sim_time:=true & \
       for i in $(seq 90); do ros2 action list | grep -q motion/move_tcp && \
         ros2 service list | grep -q perception/perceive && break; sleep 2; done; \
-      python3 tools/pick_one.py; status=$?; \
+      python3 tools/pick_one.py --object Brother; status=$?; \
       pkill -f "[h]ack_motion/motion_node"; pkill -f "[h]ack_perception/perception_node"; exit $status; }'
 """
+import argparse
 import json
+import math
 import os
 import sys
 import threading
@@ -34,6 +38,7 @@ from hack_brain.grasp_planner import FINGERTIP, load_db, plan_grasps, plan_place
 from hack_brain.skills import Skills
 from hack_interfaces.msg import Container, DetectedObject, SceneObjects
 from hack_motion.robot import TRAY_SIZE, TRAYS, on_table, table_z, tray_rim
+from hack_perception.classify import CATALOG
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import Parameter
@@ -51,10 +56,9 @@ TOUCH_MARGIN = 0.005
 # y -0.16..0.16) and the forearm lay across that tray. This spot is in front of the right arm:
 # 8 cm clear of tray_center and 13 cm clear of tray_right.
 DISH = "Threshold_Bamboo_Ceramic_Soap_Dish"
-DISH_AT = (0.34, -0.32, 0.0)  # along the table, y, yaw
-DISH_SIZE = (0.125, 0.098, 0.051)  # mesh box, long / short / height, same as classify.CATALOG
-# Metres of air between the dish box and a tray. Less than this and the wrist sits on the rim.
-DISH_CLEAR = 0.04
+PLACE_AT = (0.34, -0.32, 0.0)  # along the table, y, yaw
+# Metres of air between the object box and a tray. Less than this and the wrist sits on the rim.
+TRAY_CLEAR = 0.04
 
 DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "hack_brain", "config", "grasp_db.yaml")
 
@@ -69,8 +73,8 @@ def touch_z(x):
     return TOUCH_Z[0] + TOUCH_Z[1] * x
 
 
-def place_dish(node):
-    """Park every object and put the soap dish at DISH_AT. Returns False if the sim never answers."""
+def place_object(node, name, at):
+    """Park every object and put this one at `at`. Returns False if the sim never answers."""
     got = []
     node.create_subscription(
         String, "/sim/objects/names", lambda m: got.append(json.loads(m.data)),
@@ -79,19 +83,18 @@ def place_dish(node):
     t0 = time.time()
     while not got and time.time() - t0 < 30.0:
         time.sleep(0.05)
-    if not got or DISH not in got[0]:
-        print(f"FAIL {DISH} is not in /sim/objects/names", flush=True)
+    if not got or name not in got[0]:
+        print(f"FAIL {name} is not in /sim/objects/names", flush=True)
         return False
     while pub.get_subscription_count() == 0 and time.time() - t0 < 30.0:
         time.sleep(0.05)
     if pub.get_subscription_count() == 0:
         print("FAIL nothing subscribed to /sim/objects/set", flush=True)
         return False
-    layout = {name: "park" for name in got[0]}
-    layout[DISH] = {"x": DISH_AT[0], "y": DISH_AT[1], "yaw": DISH_AT[2], "center": True}
+    layout = {n: "park" for n in got[0]}
+    layout[name] = {"x": at[0], "y": at[1], "yaw": at[2], "center": True}
     pub.publish(String(data=json.dumps(layout)))
-    print(f"placed {DISH} at ({DISH_AT[0]:.2f},{DISH_AT[1]:.2f}) yaw {DISH_AT[2]:.2f}, "
-          f"parked {len(layout) - 1}", flush=True)
+    print(f"placed {name} at ({at[0]:.2f},{at[1]:.2f}) yaw {at[2]:.2f}, parked {len(layout) - 1}", flush=True)
     return True
 
 
@@ -106,27 +109,51 @@ def tray_boxes():
     return boxes
 
 
-def dish_hits_tray(obj):
-    """Tray name when the dish box comes within DISH_CLEAR of it."""
+def hits_tray(obj):
+    """Tray name when the object box comes within TRAY_CLEAR of it."""
     hx, hy = obj.size.x / 2.0, obj.size.y / 2.0
     for name, x0, x1, y0, y1 in tray_boxes():
-        if (obj.center.x - hx < x1 + DISH_CLEAR and obj.center.x + hx > x0 - DISH_CLEAR
-                and obj.center.y - hy < y1 + DISH_CLEAR and obj.center.y + hy > y0 - DISH_CLEAR):
+        if (obj.center.x - hx < x1 + TRAY_CLEAR and obj.center.x + hx > x0 - TRAY_CLEAR
+                and obj.center.y - hy < y1 + TRAY_CLEAR and obj.center.y + hy > y0 - TRAY_CLEAR):
             return name
     return None
 
 
-def known_dish():
-    """The placed dish in the pelvis frame. Layout metres are along the table; the pelvis is pitched 4°."""
-    sx, sy, sz = DISH_SIZE
-    cx, cy, cz = on_table(DISH_AT[0], DISH_AT[1], sz / 2.0)
-    _, _, top = on_table(DISH_AT[0], DISH_AT[1], sz)
+def known_object(name, at):
+    """The placed object in the pelvis frame. Layout metres are along the table; the pelvis is pitched 4°."""
+    sx, sy, sz, category, _ = CATALOG[name]
+    cx, cy, cz = on_table(at[0], at[1], sz / 2.0)
+    _, _, top = on_table(at[0], at[1], sz)
     obj = DetectedObject(
-        track_id="dish", name=DISH, category="dish", confidence=1.0,
-        center=Point(x=cx, y=cy, z=cz), yaw=float(DISH_AT[2]),
+        track_id="known", name=name, category=category, confidence=1.0,
+        center=Point(x=cx, y=cy, z=cz), yaw=float(at[2]),
         size=Vector3(x=sx, y=sy, z=sz), top_z=float(top))
     scene = SceneObjects(table_z=float(table_z(cx)))
     scene.objects.append(obj)
+    return obj, scene
+
+
+def seen_object(node, known):
+    """The same object from the head camera, or None. Prints how far it is from the placed pose."""
+    scene = node.api.perceive("head", "table")
+    if scene is None:
+        print("perception gave no scene", flush=True)
+        return None, None
+    for o in scene.objects:
+        print(f"  seen {o.name or '?'} ({o.category} {o.confidence:.2f}) at ({o.center.x:.3f},{o.center.y:.3f}) "
+              f"top {o.top_z:+.3f} size {o.size.x:.3f} {o.size.y:.3f} {o.size.z:.3f} yaw {o.yaw:.2f} "
+              f"partial {o.partially_visible}", flush=True)
+    near = [o for o in scene.objects
+            if math.hypot(o.center.x - known.center.x, o.center.y - known.center.y) < 0.10]
+    if not near:
+        print("no cluster within 10 cm of the placed pose", flush=True)
+        return None, None
+    obj = max(near, key=lambda o: o.confidence)
+    print(f"seen minus placed: x {obj.center.x - known.center.x:+.3f} y {obj.center.y - known.center.y:+.3f} "
+          f"top {obj.top_z - known.top_z:+.3f}", flush=True)
+    if obj.name != known.name:
+        print(f"camera says {obj.name or '?'}, using the placed name {known.name}", flush=True)
+        obj.name, obj.category = known.name, known.category
     return obj, scene
 
 
@@ -167,7 +194,7 @@ class PickOne(Node):
         self.skills = Skills(self.api, load_db(DB), self.get_logger())
 
 
-def run(node):
+def run(node, name, at, use_camera):
     while rclpy.ok() and node.get_clock().now().nanoseconds == 0:
         time.sleep(0.1)
     if not node.api.wait_ready(timeout=120.0):
@@ -178,19 +205,28 @@ def run(node):
         return 1
     wait_sim(node, 0.5)
     q = top_down(0.0)
+    # Only the arm on the object's side. The left park once ended with the shoulder at -2.3 rad and the arm
+    # across the head camera, and no plan left that pose. The other arm stays hanging, below the table.
     for arm, x, y, z in PARK:
+        if (arm == "left") != (at[1] > 0):
+            continue
         if not node.api.move_tcp(arm, pose(x, y, z, q), "direct"):
             print(f"FAIL could not park {arm} above the table", flush=True)
             return 1
-    if not place_dish(node):
+    if not place_object(node, name, at):
         return 1
     wait_sim(node, 1.0)
-    obj, scene = known_dish()
-    print(f"dish at ({obj.center.x:.3f},{obj.center.y:.3f}) top {obj.top_z:+.3f} "
+    obj, scene = known_object(name, at)
+    print(f"placed pose ({obj.center.x:.3f},{obj.center.y:.3f}) top {obj.top_z:+.3f} "
           f"table_z {scene.table_z:+.3f}", flush=True)
-    hit = dish_hits_tray(obj)
+    if use_camera:
+        obj, scene = seen_object(node, obj)
+        if obj is None:
+            print("FAIL the camera did not give the object", flush=True)
+            return 1
+    hit = hits_tray(obj)
     if hit is not None:
-        print(f"FAIL the dish is within {DISH_CLEAR * 100:.0f} cm of {hit}", flush=True)
+        print(f"FAIL the object is within {TRAY_CLEAR * 100:.0f} cm of {hit}", flush=True)
         return 1
     cand = plan_grasps(obj, scene, node.skills.db)[0]
     tray = tray_for(cand.arm)
@@ -212,6 +248,15 @@ def run(node):
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--object", default=DISH, help="substring of a CATALOG name")
+    ap.add_argument("--at", type=float, nargs=3, default=PLACE_AT, metavar=("ALONG", "Y", "YAW"))
+    ap.add_argument("--known", action="store_true", help="grasp from the placed pose, not the camera")
+    args = ap.parse_args()
+    names = [n for n in CATALOG if args.object in n]
+    if len(names) != 1:
+        sys.exit(f"--object {args.object} matches {names}")
+    use_camera = names[0] != DISH and not args.known
     rclpy.init()
     node = PickOne()
     executor = MultiThreadedExecutor()
@@ -220,7 +265,7 @@ def main():
     spin.start()
     status = 1
     try:
-        status = run(node)
+        status = run(node, names[0], tuple(args.at), use_camera)
     finally:
         executor.shutdown()
         spin.join(timeout=5.0)

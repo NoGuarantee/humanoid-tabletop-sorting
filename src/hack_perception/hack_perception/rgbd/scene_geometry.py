@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.spatial.transform import Rotation
 
 from ..classify import DEFAULT_TRAY
 from ..rgbd_labels import TRAY_CLASS
@@ -89,7 +88,11 @@ def _opening(sensor, mask, plane, tray_of_color):
     rim = (height > .045) & (height < .085)
     if np.count_nonzero(rim) < 30:
         return None
-    tangent = Rotation.align_vectors([normal], [[0., 0., 1.]])[0].as_matrix()[:, :2]
+    # Minimal rotation from +Z to the measured normal (Rodrigues). Keeping
+    # this small scene-only path NumPy-only also serves the baseline fallback.
+    x, y, z = normal
+    skew = np.array([[0., 0., x], [0., 0., y], [-x, -y, 0.]])
+    tangent = (np.eye(3) + skew + skew @ skew / (1. + z))[:, :2]
     xy = points[rim] @ tangent
 
     # Search orientations modulo pi. Score by measured short/long spans, with

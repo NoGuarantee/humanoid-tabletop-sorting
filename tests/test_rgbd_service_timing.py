@@ -63,7 +63,8 @@ class ServiceTimingTest(unittest.TestCase):
             self.assertFalse(service.lock.held, 'new timing logs must be outside the input lock')
             self.events.append(json.loads(message))
         service.node = SimpleNamespace(get_logger=lambda: SimpleNamespace(info=log),
-            get_parameter=lambda name: SimpleNamespace(value=''))
+            get_parameter=lambda name: SimpleNamespace(value=''),
+            diagnostics=SimpleNamespace(submit=lambda event: log(json.dumps(event))))
         service.now_ns = lambda: 1_000_000_000
         service.pool_override, service.task, service.generation = 4, None, 2
         service.state, service.on_demand = 'ready', True

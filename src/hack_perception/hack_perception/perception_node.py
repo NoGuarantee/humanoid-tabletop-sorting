@@ -34,8 +34,10 @@ from tf2_ros import Buffer, TransformException, TransformListener
 from . import classify
 from . import geometry as geo
 from . import table_clusters as tc
+from .diagnostics import DiagnosticSink
+from .tray_rims import color_openings
 from .rgbd.geometry import table_z_at
-from .rgbd_frames import STREAMS, stamp_ns
+from .rgbd_frames import STREAMS, decode_image, stamp_ns
 
 CAMERAS = {"head": "cam_head", "torso": "cam_torso"}
 BASE = "pelvis"
@@ -48,6 +50,9 @@ class PerceptionNode(Node):
     def __init__(self):
         super().__init__("hack_perception")
         self.lock = threading.RLock()
+        self.frame_arrived = threading.Condition(self.lock)
+        self.diagnostics = DiagnosticSink(self.get_logger())
+        self.declare_parameter("perceive_frame_wait_s", .35)
         self.clear_baseline()
         self.names = {}  # object name -> category, from /sim/objects/names
         self.tray_of_color = dict(classify.DEFAULT_TRAY)  # replaced by /sim/task when it arrives
@@ -130,6 +135,7 @@ class PerceptionNode(Node):
                 self.frames[cam][key] = msg
             if self.model_poses is not None:
                 self.model_poses.store(CAMERAS[cam], kind, msg, received_wall=received_wall)
+            self.frame_arrived.notify_all()
 
     def snapshot(self, cam):
         with self.lock:
@@ -137,13 +143,15 @@ class PerceptionNode(Node):
             epoch = self.model_poses.generation if self.model_poses is not None else None
         if not all(k in f for k in ("color", "depth", "info")):
             return None, None
+        if len({(stamp_ns(m.header), m.header.frame_id) for m in f.values()}) != 1:
+            return None, None
         return f, (epoch, stamp_ns(f["depth"].header))
 
     def cloud_in_pelvis(self, f, stride=1):
         """Organised point cloud of the depth frame in pelvis: (HxWx3 array with NaN where no depth, 4x4 cam->pelvis)."""
         depth = f["depth"]
         tf = self.tf.lookup_transform(BASE, depth.header.frame_id, Time.from_msg(depth.header.stamp),
-                                      timeout=Duration(seconds=0.5))  # tf at the frame time: the head may move
+                                      timeout=Duration(seconds=0.05))  # matching TF, bounded total wait
         m = geo.transform_matrix(tf)
         z = geo.depth_to_m(depth)[::stride, ::stride]
         v, u = np.mgrid[0:depth.height:stride, 0:depth.width:stride]
@@ -153,23 +161,42 @@ class PerceptionNode(Node):
 
     def on_perceive(self, req, res):
         started = perf_counter()
+        timing = {}
         try:
-            return self._perceive(req, res)
+            return self._perceive(req, res, timing)
         finally:
             elapsed = perf_counter() - started
-            if self.model_poses is not None and elapsed >= .25:
-                self.model_poses._emit_diagnostic(dict(event='perceive_timing',
-                    callback_wall_s=elapsed, success=res.success))
+            self.diagnostics.submit(dict(event='perceive_timing', callback_wall_s=elapsed,
+                stages=timing, success=res.success, message=res.message))
 
-    def _perceive(self, req, res):
+    def _perceive(self, req, res, timing):
         cam = req.camera or "head"
-        model = None
-        if self.model_poses is not None and cam in CAMERAS:
-            model = self.model_poses.scene_for(CAMERAS[cam])
+        requested_ns = self.get_clock().now().nanoseconds
+        timing['request_stamp_ns'] = requested_ns
+        start = monotonic()
+        deadline = start + max(0., min(1., self.get_parameter('perceive_frame_wait_s').value))
+        f, key, model = None, None, None
+        # A service called after LOOK_TABLE must not return a pre-motion frame.
+        # Condition.wait releases the input lock so camera and TF callbacks run.
+        with self.frame_arrived:
+            while cam in CAMERAS:
+                if self.model_poses is not None:
+                    model = self.model_poses.scene_for(CAMERAS[cam])
+                    if model is not None and model[0][1] >= requested_ns:
+                        break
+                    model = None
+                f, key = self.snapshot(cam)
+                if f is not None and key[1] >= requested_ns:
+                    break
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    f, key = None, None
+                    break
+                self.frame_arrived.wait(timeout=remaining)
+        timing['frame_wait_s'] = monotonic()-start
         if model is not None:
             key, f, geometry = model
         else:
-            f, key = self.snapshot(cam) if cam in CAMERAS else (None, None)
             geometry = (None, [])
         res.scene = SceneObjects()
         res.scene.header.frame_id = BASE
@@ -182,12 +209,13 @@ class PerceptionNode(Node):
             return res
         res.scene.header.stamp = header.stamp
         try:
-            self.detect(f, req.region or "table", res.scene, geometry, key[0])
+            self.detect(f, req.region or "table", res.scene, geometry, key[0], timing)
             if self.model_poses is not None and not self.model_poses.valid_scene(key):
                 res.scene = SceneObjects()
                 res.scene.header.frame_id = BASE
                 res.success, res.message = False, "RGB-D worker exposure expired"
                 return res
+            timing['response_age_sim_s'] = (self.get_clock().now().nanoseconds-key[1])*1e-9
             res.success, res.message = True, "ok"
         except NotImplementedError as e:
             res.success, res.message = False, f"not_implemented: {e}"
@@ -201,22 +229,29 @@ class PerceptionNode(Node):
         segments = []
         for frames in ARM_FRAMES:
             try:
-                poses = [geo.transform_matrix(self.tf.lookup_transform(BASE, name, Time.from_msg(stamp),
-                                                                       timeout=Duration(seconds=0.2)))
+                poses = [geo.transform_matrix(self.tf.lookup_transform(BASE, name, Time.from_msg(stamp)))
                          for name in frames]
             except TransformException as e:
-                self.get_logger().warning(f"no arm mask: {e}")
+                self.get_logger().debug(f"no arm mask: {e}")
                 continue
             points = [m[:3, 3] for m in poses] + [poses[-1][:3, 3] - FINGERS * poses[-1][:3, 2]]
             segments += list(zip(points[:-1], points[1:]))
         return segments
 
-    def detect(self, f, region, scene, geometry, epoch):
+    def detect(self, f, region, scene, geometry, epoch, timing):
         """Fill scene from one frame set: object categories, and trays by colour. Hood racks are M4."""
         if region != "table":
             raise NotImplementedError(f"region '{region}'")
-        cloud, _ = self.cloud_in_pelvis(f)
-        result = tc.detect(cloud, self.arm_segments(f["depth"].header.stamp))
+        started = perf_counter()
+        cloud, camera_tf = self.cloud_in_pelvis(f)
+        timing['cloud_tf_s'] = perf_counter()-started
+        started = perf_counter()
+        arms = self.arm_segments(f["depth"].header.stamp)
+        timing['arm_tf_s'] = perf_counter()-started
+        started = perf_counter()
+        result = tc.detect(cloud, arms)
+        timing['cluster_s'] = perf_counter()-started
+        started = perf_counter()
         with self.lock:
             names, tray_of_color = dict(self.names), dict(self.tray_of_color)
         plane, model_trays = geometry
@@ -242,6 +277,15 @@ class PerceptionNode(Node):
                 center=Point(x=float(c.center[0]), y=float(c.center[1]), z=float(c.center[2])),
                 size=Vector3(x=float(c.size[0]), y=float(c.size[1]), z=float(c.size[2]))))
         rejected = result.rejected if result is not None else []
+        if result is not None and set(tray_of_color.values()) - {tray.id for tray in model_trays}:
+            dtype = '>u2' if f['depth'].is_bigendian else '<u2'
+            depth_mm = decode_image(f['depth'], '16UC1', dtype, 1)[..., 0].astype(np.uint16, copy=False)
+            sensor = dict(rgb=rgb, depth=depth_mm,
+                          K=np.asarray(f['info'].k).reshape(3, 3), T=camera_tf)
+            measured = color_openings(sensor, cloud, result.plane, tray_of_color) if rgb is not None else []
+            measured = {tray.id: tray for tray in measured}
+            measured.update({tray.id: tray for tray in model_trays})
+            model_trays = list(measured.values())
         trays = classify.merge_trays(model_trays, rejected, rgb, tray_of_color)
         for tray_id, color, center, yaw, size in trays:
             x, y, z = map(float, center)
@@ -252,9 +296,9 @@ class PerceptionNode(Node):
                 size=Vector3(x=size[0], y=size[1], z=size[2])))
         named = sum(o.category != "" for o in scene.objects)
         trays = ", ".join(f"{c.id}:{c.color}" for c in scene.containers) or "none"
-        if not names:
-            self.get_logger().warning("no /sim/objects/names yet, categories left empty")
-        self.get_logger().info(f"{named}/{len(scene.objects)} named, trays {trays}")
+        timing['classify_trays_s'] = perf_counter()-started
+        timing['named_objects'] = named
+        timing['trays'] = trays
 
 
 def main():
@@ -270,6 +314,7 @@ def main():
         executor.shutdown()
         if node.model_poses is not None:
             node.model_poses.close()
+        node.diagnostics.close()
         node.destroy_node()
         rclpy.try_shutdown()
 

@@ -115,7 +115,7 @@ class ModelPoseService:
         started = perf_counter()
         try:
             event.update(self._diagnostic_state(monotonic(), self.now_ns()))
-            self.node.get_logger().info(json.dumps(event, allow_nan=False))
+            self.node.diagnostics.submit(event)
         except Exception:
             pass  # Diagnostics must not change service/worker failure behavior.
         return perf_counter()-started

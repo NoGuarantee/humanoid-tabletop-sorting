@@ -68,6 +68,30 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(f.c.state, State.DESTINATION)
         self.assertFalse(any(e.phase == State.RELEASE for e in f.commands))
 
+    def test_measured_holding_retries_partial_lift_but_is_bounded(self):
+        f = Fake()
+        f.until(State.LIFT)
+        f.answer('partial_move', ok=False, stopped=True)
+        f.answer(Evidence(f.sim, Hand.HOLDING, 'a', lifted=False, source='measured_contact'))
+        self.assertEqual(f.c.state, State.LIFT)
+        self.assertEqual(f.c.history['a'].lift_attempts, 2)
+        f.answer()
+        f.answer(Evidence(f.sim, Hand.HOLDING, 'a', lifted=False, source='measured_contact'))
+        self.assertEqual(f.c.reason, 'lift_unconfirmed')
+        self.assertFalse(any(e.phase == State.RELEASE for e in f.commands))
+
+    def test_retreat_precedes_visual_placement(self):
+        f = Fake()
+        f.until(State.RELEASE)
+        f.answer()
+        self.assertEqual(f.c.state, State.RETREAT)
+        self.assertFalse(f.c.history['a'].placed)
+        f.answer()
+        self.assertEqual(f.c.state, State.VERIFY_PLACE)
+        self.assertFalse(f.c.history['a'].placed)
+        f.answer()
+        self.assertTrue(f.c.history['a'].placed)
+
     def test_motion_error_without_stop_does_not_recover(self):
         f = Fake()
         f.until(State.TRANSFER)
@@ -275,11 +299,11 @@ class MissionTests(unittest.TestCase):
         f.answer(Scene(-9))
         self.assertEqual(f.c.state, State.DONE)
 
-    def test_retreat_failure_preserves_confirmed_place(self):
+    def test_retreat_failure_does_not_claim_unobserved_place(self):
         f = Fake()
         f.until(State.RETREAT)
         f.answer('retreat_failed', ok=False)
-        self.assertTrue(f.c.history['a'].placed)
+        self.assertFalse(f.c.history['a'].placed)
         self.assertEqual(f.c.reason, 'retreat_failed')
 
     def test_unknown_task_and_rule(self):
@@ -310,6 +334,8 @@ class MissionTests(unittest.TestCase):
         f.until(State.APPROACH)
         f.tick(sim=4, wall=101)
         f.answer()
+        self.assertEqual(f.c.state, State.REFRESH_TARGET)
+        f.answer(Scene(1))
         self.assertEqual(f.c.state, State.RECOVER)
         self.assertFalse(any(x.phase == State.DESCEND for x in f.commands))
 

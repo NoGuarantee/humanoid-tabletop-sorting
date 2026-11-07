@@ -12,12 +12,14 @@ NEXT = {State.OPEN: State.APPROACH, State.DESCEND: State.CLOSE,
         State.CLOSE: State.VERIFY_GRASP, State.LIFT: State.VERIFY_LIFT,
         State.REORIENT: State.VERIFY_REORIENT, State.TRANSFER: State.VERIFY_HOLD,
         State.LOWER: State.RELEASE, State.INSERT: State.RELEASE,
-        State.RELEASE: State.VERIFY_PLACE, State.RETREAT: State.VERIFY_EMPTY}
+        State.RELEASE: State.RETREAT, State.RETREAT: State.VERIFY_PLACE}
 
 
 def _enter(c, state, effects):
     assert c.active is None and not c.blocked and c.state != State.DONE
     c.state = state
+    if state == State.LIFT:
+        c.history[c.target.id].lift_attempts += 1
     c.serial += 1
     c.active = Operation(c.serial, state, c.sim, c.wall)
     effects.append(Effect('RUN', c.serial, state, c.target, c.destination, c.slot))
@@ -155,7 +157,7 @@ def transition(context: Context, event: Event):
             if e.kind == 'RESULT':
                 _may_have_moved(c, op)
             if (e.kind == 'RESULT' and not e.ok and not e.stopped
-                    and c.state not in VERIFY | {State.OBSERVE, State.DESTINATION}):
+                    and c.state not in VERIFY | {State.OBSERVE, State.DESTINATION, State.REFRESH_TARGET}):
                 _stop(c, effects, 'execution_failed_stop_unconfirmed')
             else:
                 c.active = None
@@ -198,7 +200,7 @@ def _result(c, e, op, effects):
                 c.history[c.target.id].placed = True
                 if c.slot is not None:
                     c.used_slots.add((c.destination, c.slot))
-                _enter(c, State.RETREAT, effects)
+                _enter(c, State.VERIFY_EMPTY, effects)
         elif state == State.RECOVER:
             h = c.history[c.target.id]
             if ev.hand == Hand.HOLDING and ev.lifted:
@@ -211,6 +213,8 @@ def _result(c, e, op, effects):
             elif h.lift == Lift.LIFTED:
                 _enter(c, State.REORIENT if c.spec.variant == 'lying' and not c.reoriented
                        else State.DESTINATION, effects)
+            elif h.lift_attempts < c.config.max_attempts:
+                _enter(c, State.LIFT, effects)
             else:
                 _done(c, effects, 'lift_unconfirmed')
         elif ev.hand == Hand.EMPTY:
@@ -219,7 +223,10 @@ def _result(c, e, op, effects):
             _enter(c, State.LIFT, effects)
         elif state == State.VERIFY_LIFT:
             if not ev.lifted:
-                _done(c, effects, 'lift_unconfirmed')
+                if c.history[c.target.id].lift_attempts < c.config.max_attempts:
+                    _enter(c, State.LIFT, effects)
+                else:
+                    _done(c, effects, 'lift_unconfirmed')
             else:
                 c.history[c.target.id].lift = Lift.LIFTED
                 _enter(c, State.REORIENT if c.spec.variant == 'lying' else State.DESTINATION, effects)
@@ -264,11 +271,20 @@ def _result(c, e, op, effects):
                 c.destination, c.slot = destination_in_scene(c, scene, obj) or ('', None)
                 _enter(c, State.OPEN, effects)
     elif state == State.APPROACH:
-        if c.scene is None or not fresh(c.scene.stamp, c.sim, c.config.freshness):
-            _recover(c, effects, 'stale_before_contact')
-        elif c.deadline - c.sim <= c.config.cycle_estimate + c.config.reserve:
+        c.scene_invalidated_at = c.sim
+        _enter(c, State.REFRESH_TARGET, effects)
+    elif state == State.REFRESH_TARGET:
+        scene = e.data
+        if (not isinstance(scene, Scene) or scene.frame != 'pelvis'
+                or not fresh(scene.stamp, c.sim, c.config.freshness, c.scene_invalidated_at)
+                or not any(o.id == c.target.id and o.category == c.target.category and not o.partial
+                           and math.isfinite(o.confidence) and o.confidence >= c.config.min_confidence
+                           for o in scene.objects)):
+            _recover(c, effects, 'target_not_reobserved')
+        elif c.deadline - c.sim <= c.config.reserve:
             _done(c, effects, 'insufficient_time')
         else:
+            c.scene = scene
             _enter(c, State.DESCEND, effects)
     elif state in NEXT:
         _enter(c, NEXT[state], effects)

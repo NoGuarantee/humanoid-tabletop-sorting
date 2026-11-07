@@ -14,13 +14,18 @@ class Pending:
     cancel_requested: bool = False
     cancel_sent: bool = False
     terminal: bool = False
+    response: object = None
+    terminal_stamp: float = 0.0
 
 
 class ActionTransport:
-    def __init__(self, emit):
+    def __init__(self, emit, stop_check=None, now=None):
         self.emit = emit
+        self.stop_check = stop_check
+        self.now = now
         self.lock = threading.RLock()
         self.pending = None
+        self.last_stopped = None
 
     def send(self, op_id, client, goal):
         with self.lock:
@@ -60,6 +65,10 @@ class ActionTransport:
                 response = future.result()
                 result = response.result
                 p.terminal = True
+                if self.stop_check is not None:
+                    p.response = response
+                    p.terminal_stamp = self.now()
+                    return
                 # ROS terminal status is not measured physical stop. Keep cancelled
                 # resources latched even if the server reports SUCCEEDED/CANCELED.
                 if (not p.cancel_requested and response.status == 4
@@ -76,9 +85,13 @@ class ActionTransport:
             if p is None or p.id != op_id:
                 # A result may have arrived before the cancellation effect is executed.
                 # It says nothing about physical stop; do not synthesize confirmation.
-                self.emit(Event('CANCEL_ACK', op_id, ok=False))
+                self.emit(Event('CANCEL_ACK', op_id, ok=self.last_stopped == op_id))
                 return
             p.cancel_requested = True
+            if p.terminal and p.response is not None:
+                # Execution is already terminal; only measured settling remains.
+                self.emit(Event('CANCEL_ACK', op_id))
+                return
             if p.handle is not None:
                 self._cancel(p)
 
@@ -97,3 +110,20 @@ class ActionTransport:
         except Exception:
             accepted = False
         self.emit(Event('CANCEL_ACK', p.id, ok=accepted))
+
+    def poll(self):
+        """Called by the mission owner; wait for new measurements AFTER execution ends."""
+        with self.lock:
+            p = self.pending
+            if p is None or p.response is None:
+                return
+            stopped = self.stop_check(p.id, p.terminal_stamp)
+            if not stopped and self.now() - p.terminal_stamp < 2.0:
+                return
+            response = p.response
+            p.response = None
+            if stopped:
+                self.last_stopped = p.id
+                self.pending = None
+            self.emit(Event('RESULT', p.id, response.result,
+                            ok=stopped and response.status == 4 and bool(response.result.success), stopped=stopped))

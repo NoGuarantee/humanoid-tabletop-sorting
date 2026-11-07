@@ -33,11 +33,11 @@ Runtime использует только разрешённые ROS наблю�
 HOLDING + lifted — историю подъёма, EMPTY + placed + правильный destination/slot — размещение.
 Успех action, закрытие/раскрытие пальцев, отсутствие предмета в кадре этого не доказывают.
 
-Реальный проверяющий слой пока не настроен: Hand.object_detected содержит непроверенную эвристику,
-SceneObjects не передаёт доказательство удержания, вертикальности и глубины вставки. Поэтому его
-ответ UNKNOWN; capabilities verification отсутствует. Никакие пороги силы не объявлены проверенными.
-Срок свежести 2 s, таймаут операции 20 s, резерв 5 s, оценка полного цикла 40 s — настраиваемые
-начальные инженерные значения, требующие измерений. Wall watchdog 15 s, cancel 5 s.
+Реальный датчиковый адаптер описан в `FSM_VALIDATION.md`: свежий устойчивый контакт противопоставленных
+пальцев, TF подъёма, именная RGB-D детекция после отхода. `Hand.object_detected` не используется.
+Пороги являются инженерными эвристиками; физическая калибровка не выполнена. Для пробирок verifier отсутствует.
+Срок свежести 2 s, таймаут операции 20 s, резерв 10 s, оценка цикла 40 s.
+Wall watchdog 15 s, cancel 5 s. Остановка подтверждается новым окном измерений после terminal результата.
 
 После спуска/контакта наблюдение сцены инвалидируется. План подъёма может сохраняться как заранее
 построенная команда навыка, но не как новое наблюдение объекта. Место назначения наблюдается заново
@@ -69,7 +69,7 @@ CANCELLING ждёт ACK и терминальный RESULT; stop_confirmed тр�
 brain сохраняет блокировку и завершает миссию, не обещая физической остановки.
 
 Завершение не возвращает руки/корпус домой. Оно запрещает команды, ограниченно отменяет активную,
-сохраняет reason/hand/history/blocked и выдаёт эффект DONE. Публикация повторяется адаптером 10 раз с интервалом 0.5 wall s,
+сохраняет reason/hand/history/blocked и выдаёт эффект DONE. Публикация повторяется адаптером 3 раза с интервалом 0.2 wall s (fallback 10×0.5 s),
 ошибки одной попытки не мешают остальным. DONE означает конец управления, не успех задания.
 
 ## Состояния
@@ -139,7 +139,8 @@ brain сохраняет блокировку и завершает миссию
 | OBSERVE | RESULT | пусто/лимит попыток/мало времени | reason | done | DONE |
 | OBSERVE | RESULT | failure/stale, retry | retries++ | look | LOOK_TABLE |
 | OPEN | RESULT | success | нет | approach | APPROACH |
-| APPROACH | RESULT | success, scene fresh | нет | descend | DESCEND |
+| APPROACH | RESULT | success | инвалидировать старый кадр | perceive target | REFRESH_TARGET |
+| REFRESH_TARGET | RESULT | свежий прежний target, смещение ≤2 cm | новая сцена | descend | DESCEND |
 | DESCEND | ACCEPTED / SEND_ERROR / RESULT | команда могла исполниться | invalidate scene, hand UNKNOWN, contacted | обработка исхода | DESCEND / CANCELLING / CLOSE |
 | CLOSE | RESULT | success | нет | verify | VERIFY_GRASP |
 | VERIFY_GRASP | RESULT | fresh HOLDING | hand=HOLDING | lift; history UNKNOWN после принятия/неопределённой отправки | LIFT |
@@ -153,9 +154,9 @@ brain сохраняет блокировку и завершает миссию
 | TRANSFER | RESULT | success | нет | verify | VERIFY_HOLD |
 | VERIFY_HOLD | RESULT | fresh HOLDING | hand=HOLDING | lower / insert | LOWER / INSERT |
 | LOWER / INSERT | RESULT | success | hand=UNKNOWN | release | RELEASE |
-| RELEASE | RESULT | success | нет | verify | VERIFY_PLACE |
-| VERIFY_PLACE | RESULT | fresh EMPTY + placed + matching target | placed=True, hand=EMPTY | retreat | RETREAT |
-| RETREAT | RESULT | success | target cleared | verify | VERIFY_EMPTY |
+| RELEASE | RESULT | success | нет | retreat | RETREAT |
+| VERIFY_PLACE | RESULT | fresh EMPTY + placed + matching target | placed=True, hand=EMPTY | verify empty | VERIFY_EMPTY |
+| RETREAT | RESULT | success | нет | verify placement | VERIFY_PLACE |
 | навыки | RESULT / REJECTED | failure, retry | retries++, scene invalid | verify | RECOVER |
 | RECOVER | RESULT | fresh EMPTY, identity usable | hand=EMPTY | look | LOOK_TABLE |
 | RECOVER | RESULT | fresh HOLDING, history LIFTED, lying без подтверждения upright | hand=HOLDING | reorient | REORIENT |
@@ -180,7 +181,8 @@ stateDiagram-v2
     LOOK_TABLE --> OBSERVE
     OBSERVE --> OPEN: цель и бюджет
     OPEN --> APPROACH
-    APPROACH --> DESCEND
+    APPROACH --> REFRESH_TARGET
+    REFRESH_TARGET --> DESCEND
     DESCEND --> CLOSE
     CLOSE --> VERIFY_GRASP
     VERIFY_GRASP --> LIFT
@@ -196,9 +198,9 @@ stateDiagram-v2
     VERIFY_HOLD --> INSERT: tubes
     LOWER --> RELEASE
     INSERT --> RELEASE
-    RELEASE --> VERIFY_PLACE
-    VERIFY_PLACE --> RETREAT
-    RETREAT --> VERIFY_EMPTY
+    RELEASE --> RETREAT
+    VERIFY_PLACE --> VERIFY_EMPTY
+    RETREAT --> VERIFY_PLACE
     RECOVER --> LOOK_TABLE: EMPTY
     RECOVER --> DESTINATION: HOLDING и LIFTED, upright если lying
     RECOVER --> REORIENT: lying без upright
@@ -215,32 +217,26 @@ CHECK и SELECT — локальные ветви reducer, не отдельны
 Операционные ошибки read-only/REJECTED допускают recovery; ошибка движения без stopped не допускает
 recovery и сначала запускает отмену. Потеря соединения завершает ожидание с blocked, если есть active.
 ROS callbacks не создают физические доказательства автоматически. SENSOR — контракт для будущего
-потокового verifier; штатный адаптер его пока не производит и не рекламирует verification capability.
+потокового verifier; адаптер контролирует непрерывность контакта и свежесть состояния кисти при переносе.
 VERIFY_TRANSFER добавлен, чтобы осмотр назначения не позволял использовать старую оценку удержания.
 
 Общий лимит recovery — 6; попыток на объект — 2. Исчерпанные объекты отфильтровываются;
 нет оставшихся допустимых кандидатов → candidates_exhausted, а не «все успешно». Ошибка RETREAT
 сохраняет подтверждённую укладку и завершает миссию. Нет безусловного cleanup-движения.
 
-Проверки перечислены в tests/test_fsm.py, tests/test_transport.py, tests/test_brain_boundary.py.
-На fake доступны все четыре tube-маршрута, сортировка и сценарии ошибок. Реальный адаптер выставляет
-capabilities без verification и пропускает задачу до первой команды. Существующие ROS интерфейсы не менялись.
-Подтверждённая физическая остановка, датчики удержания/укладки и tube-навыки требуют работы
-команды. Реальные ROS integration, colcon и физическое выполнение в симуляторе не проверены.
+Проверки и ограничения перечислены в `FSM_VALIDATION.md`. Существующие ROS интерфейсы не менялись.
 
-## Изменения после review #6
+## Изменения после review #6 (2026-11-08)
 
-Main 035e48a интегрирован; cuRobo, perception, ориентация пальцев и launch shutdown сохранены.
-LOOK_TABLE — отдельная операция MoveJoints до наблюдения стола. Кадр может предшествовать
-запросу perceive, если снят после последнего изменения сцены/камеры и укладывается в freshness.
-REJECTED до принятия DESCEND не означает контакт. ACCEPTED, RESULT или неопределённая ошибка
-отправки инвалидируют сцену и физическое состояние. RECOVER может подтвердить LIFTED свежим
-Evidence.lifted; одно HOLDING этого не доказывает. Без такого доказательства остаётся lift_unconfirmed.
-Неудачный action сохраняет handle для отмены. ROS terminal result не доказывает остановку:
-реальное восстановление после движения остаётся заблокированным без отдельного подтверждения.
-После done worker вызывает shutdown, launch завершается; ошибка конструктора использует отдельный
-fallback Node. Строка published /sim/task/done появляется после серии публикаций для bench.sh.
+Интегрирован main b69da20. Sorting capabilities включают реализованный датчиковый verifier.
+Ошибки движения ждут свежих устойчивых измерений после terminal action; подтверждённый покой
+разрешает RECOVER, отсутствие подтверждения — только отмену/завершение. Motion принимает отмену,
+прекращает выдачу траектории и заменяет цели измеренным удержанием без раскрытия кисти.
+При HOLDING и неподтверждённом подъёме разрешены максимум max_attempts команд LIFT.
+REFRESH_TARGET повторно наблюдает цель после подхода, проверяя прежнюю идентичность и смещение.
+RELEASE → RETREAT → VERIFY_PLACE позволяет убрать кисть из кадра до подтверждения размещения.
+Только после VERIFY_PLACE история помечается placed; неудачный отход не объявляет укладку.
+Done: 3×0.2 s при штатном завершении, 10×0.5 s только в fallback.
 
-PR остаётся draft: verification ещё отсутствует, поэтому сортировка пропускается. Это регрессия
-относительно попыток сортировки на main, не готовое к слиянию физическое решение. Включать
-verification без датчикового адаптера нельзя; fake-тесты не устраняют этот блокер.
+PR остаётся draft до физического прогона: middleware-тесты не подтверждают успешный захват,
+качество perception, калибровку контакта или конечный балл. Tube-навыки по-прежнему отсутствуют.

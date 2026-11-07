@@ -11,6 +11,7 @@ class State(str, Enum):
     OBSERVE = 'OBSERVE'
     OPEN = 'OPEN'
     APPROACH = 'APPROACH'
+    REFRESH_TARGET = 'REFRESH_TARGET'
     DESCEND = 'DESCEND'
     CLOSE = 'CLOSE'
     VERIFY_GRASP = 'VERIFY_GRASP'
@@ -86,6 +87,7 @@ class Evidence:
 @dataclass
 class History:
     attempts: int = 0
+    lift_attempts: int = 0
     lift: Lift = Lift.NEVER_LIFTED
     placed: bool = False
     contacted: bool = False

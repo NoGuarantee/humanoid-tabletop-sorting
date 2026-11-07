@@ -56,7 +56,7 @@ class Fake:
 
     def default(self):
         c = self.c
-        if c.state in (State.OBSERVE, State.DESTINATION):
+        if c.state in (State.OBSERVE, State.DESTINATION, State.REFRESH_TARGET):
             objects = tuple(o for o in self.objects if not c.history.get(o.id) or not c.history[o.id].placed)
             containers = (Container('blue', 'tray'), Container('red', 'tray')) if self.spec.kind == 'sort' else (
                 Container('hood50', 'rack', (0, 1, 2, 3)), Container('hood15', 'rack', (0, 1, 2, 3)))

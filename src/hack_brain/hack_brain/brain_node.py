@@ -32,7 +32,7 @@ class Brain(Node):
         for name in Config.__dataclass_fields__:
             self.declare_parameter(name, getattr(Config(), name))
             values[name] = self.get_parameter(name).value
-        self.context = Context(config=Config(**values))
+        self.mission_context = Context(config=Config(**values))
         self.declare_parameter('grasp_db', os.path.join(
             get_package_share_directory('hack_brain'), 'config', 'grasp_db.yaml'))
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
@@ -40,8 +40,8 @@ class Brain(Node):
         self.create_subscription(String, '/sim/task', lambda m: self.emit(Event('TASK', data=m.data)), latched)
         self.create_subscription(Clock, '/clock', lambda m: self.clock_seen.set(), 10)
         self.done_pub = self.create_publisher(Empty, '/sim/task/done', 10)
-        self.clients = Clients(self, self.emit, load_db(self.get_parameter('grasp_db').value))
-        self.get_logger().info('capabilities: ' + self.clients.unavailable)
+        self.adapters = Clients(self, self.emit, load_db(self.get_parameter('grasp_db').value))
+        self.get_logger().info('capabilities: ' + self.adapters.unavailable)
 
     def emit(self, event):
         priority = 0 if event.kind in ('ERROR', 'CANCEL', 'CONNECTION_LOST') else 1
@@ -52,9 +52,9 @@ class Brain(Node):
         return Event('TICK', data=(sim, time.monotonic()))
 
     def process(self, event):
-        old = self.context
-        self.context, effects = transition(old, event)
-        c = self.context
+        old = self.mission_context
+        self.mission_context, effects = transition(old, event)
+        c = self.mission_context
         if event.kind != 'TICK' or effects:
             try:
                 self.get_logger().info(json.dumps({
@@ -77,13 +77,13 @@ class Brain(Node):
                 self.publish_done()
             else:
                 try:
-                    self.clients.execute(effect, c)
+                    self.adapters.execute(effect, c)
                 except Exception as exc:
                     self.emit(Event('ERROR', data='adapter_exception:' + repr(exc)))
 
-    def publish_done(self):
+    def publish_done(self, fallback=False):
         # Each attempt is independent; cleanup is never a prerequisite.
-        for _ in range(10):
+        for _ in range(10 if fallback else 3):
             self.done_attempts += 1
             try:
                 self.done_pub.publish(Empty())
@@ -92,7 +92,7 @@ class Brain(Node):
                     self.get_logger().error('done publication failed: ' + repr(exc))
                 except Exception:
                     pass
-            time.sleep(0.5)
+            time.sleep(0.5 if fallback else 0.2)
 
         try:
             self.get_logger().info('published /sim/task/done')
@@ -100,27 +100,29 @@ class Brain(Node):
             pass
 
     def mission(self):
-        while self.context.state != State.DONE and rclpy.ok():
+        while self.mission_context.state != State.DONE and rclpy.ok():
             try:
                 self.process(self.tick())
-                if self.context.state == State.DONE:
+                if self.mission_context.state != State.DONE:
+                    self.adapters.poll(self.mission_context)
+                if self.mission_context.state == State.DONE:
                     break
                 try:
                     _, _, event = self.events.get(timeout=0.05)
                 except queue.Empty:
                     continue
                 if event.kind == 'TASK':
-                    if self.context.spec is not None:
+                    if self.mission_context.spec is not None:
                         continue
-                    event = Event('START', data=(parse_task(event.data), self.clients.capabilities))
+                    event = Event('START', data=(parse_task(event.data), self.adapters.capabilities))
                 elif event.kind == 'ROS_SCENE':
-                    if not self.context.active or event.op_id != self.context.active.id:
+                    if not self.mission_context.active or event.op_id != self.mission_context.active.id:
                         continue
-                    event = self.clients.accept_scene(event)
+                    event = self.adapters.accept_scene(event)
                 self.process(event)
             except Exception as exc:
                 self.process(Event('ERROR', data='exception:' + repr(exc)))
-        if self.context.state != State.DONE:
+        if self.mission_context.state != State.DONE:
             self.process(Event('CONNECTION_LOST', data='ros_shutdown'))
         if not self.done_attempts:
             self.publish_done()
@@ -132,7 +134,7 @@ def publish_done_fallback(err):
         node.done_attempts = 0
         node.done_pub = node.create_publisher(Empty, '/sim/task/done', 10)
         node.get_logger().error(f'brain failed to start: {err!r}')
-        Brain.publish_done(node)
+        Brain.publish_done(node, fallback=True)
     finally:
         node.destroy_node()
 
@@ -166,11 +168,11 @@ def main():
         executor.spin()
     except KeyboardInterrupt:
         node.emit(Event('CANCEL', data='shutdown'))
-        until = time.monotonic() + node.context.config.cancel_timeout + 6.0
+        until = time.monotonic() + node.mission_context.config.cancel_timeout + 6.0
         while worker.is_alive() and rclpy.ok() and time.monotonic() < until:
             executor.spin_once(timeout_sec=0.05)
     finally:
-        worker.join(timeout=node.context.config.cancel_timeout + 6.0)
+        worker.join(timeout=node.mission_context.config.cancel_timeout + 6.0)
         if not worker.is_alive():
             node.destroy_node()
         rclpy.try_shutdown()

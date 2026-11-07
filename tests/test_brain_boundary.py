@@ -36,8 +36,8 @@ class BoundaryTests(unittest.TestCase):
                   get_logger=lambda: NS(error=Mock(side_effect=RuntimeError())))
         with patch('time.sleep'):
             brain.publish_done(node)
-        self.assertEqual(node.done_attempts, 10)
-        self.assertEqual(node.done_pub.publish.call_count, 10)
+        self.assertEqual(node.done_attempts, 3)
+        self.assertEqual(node.done_pub.publish.call_count, 3)
 
     def test_worker_shutdown_even_when_mission_raises(self):
         module = load_brain()
@@ -62,21 +62,32 @@ class BoundaryTests(unittest.TestCase):
 
     def test_logging_exception_cannot_drop_done_effect(self):
         brain = load_brain().Brain
-        node = NS(context=Context(), get_logger=lambda: NS(info=Mock(side_effect=RuntimeError())),
+        node = NS(mission_context=Context(), get_logger=lambda: NS(info=Mock(side_effect=RuntimeError())),
                   publish_done=Mock())
         brain.process(node, Event('ERROR', data='dependency_exception'))
-        self.assertEqual(node.context.state, State.DONE)
+        self.assertEqual(node.mission_context.state, State.DONE)
         node.publish_done.assert_called_once()
 
     def test_capability_gate_real_entry_effect_is_done(self):
         brain = load_brain().Brain
-        node = NS(context=Context(), get_logger=lambda: NS(info=Mock()), publish_done=Mock(),
-                  clients=NS(execute=Mock()))
+        node = NS(mission_context=Context(), get_logger=lambda: NS(info=Mock()), publish_done=Mock(),
+                  adapters=NS(execute=Mock()))
         brain.process(node, Event('START', data=(sort_spec(), frozenset())))
         brain.process(node, Event('TICK', data=(1, 100)))
         node.publish_done.assert_called_once()
-        node.clients.execute.assert_not_called()
+        node.adapters.execute.assert_not_called()
 
 
 if __name__ == '__main__':
     unittest.main()
+
+class PublicationTimingTests(unittest.TestCase):
+    def test_normal_and_fallback_have_distinct_retry_budgets(self):
+        brain = load_brain().Brain
+        for fallback,count,delay in ((False,3,.2),(True,10,.5)):
+            node=NS(done_attempts=0,done_pub=NS(publish=Mock()),get_logger=lambda:NS(info=Mock()))
+            with patch('time.sleep') as sleep:
+                brain.publish_done(node,fallback=fallback)
+            self.assertEqual(node.done_attempts,count)
+            self.assertEqual(sleep.call_count,count)
+            self.assertTrue(all(call.args==(delay,) for call in sleep.call_args_list))

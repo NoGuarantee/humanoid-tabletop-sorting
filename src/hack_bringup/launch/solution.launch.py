@@ -9,6 +9,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 def generate_launch_description():
     common = {"use_sim_time": True}
     rgbd = {
+        "perceive_frame_wait_s": ParameterValue(LaunchConfiguration("perceive_frame_wait_s"), value_type=float),
         "rgbd_model_dir": ParameterValue(LaunchConfiguration("rgbd_model_dir"), value_type=str),
         "rgbd_enable_model_poses": ParameterValue(LaunchConfiguration("rgbd_enable_model_poses"), value_type=bool),
         "rgbd_device": ParameterValue(LaunchConfiguration("rgbd_device"), value_type=str),
@@ -18,6 +19,7 @@ def generate_launch_description():
         "rgbd_pool": ParameterValue(LaunchConfiguration("rgbd_pool"), value_type=int),
     }
     return LaunchDescription([
+        DeclareLaunchArgument("perceive_frame_wait_s", default_value="0.35"),
         DeclareLaunchArgument("rgbd_model_dir", default_value=EnvironmentVariable("NSSR_RGBD_MODEL_DIR", default_value="")),
         DeclareLaunchArgument("rgbd_enable_model_poses", default_value=EnvironmentVariable("NSSR_RGBD_ENABLE_MODEL_POSES", default_value="false")),
         DeclareLaunchArgument("rgbd_device", default_value=EnvironmentVariable("NSSR_RGBD_DEVICE", default_value="cpu")),

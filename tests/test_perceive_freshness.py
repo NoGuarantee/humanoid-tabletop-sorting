@@ -12,7 +12,9 @@ except ImportError:
 
 
 def message(stamp):
-    return Record(header=Record(frame_id='head_optical',stamp=Record(sec=stamp//10**9,nanosec=stamp%10**9)))
+    from std_msgs.msg import Header
+    from builtin_interfaces.msg import Time
+    return Record(header=Header(frame_id='head_optical',stamp=Time(sec=stamp//10**9,nanosec=stamp%10**9)))
 
 
 @unittest.skipIf(rclpy is None, 'requires real ROS Humble imports')

@@ -28,15 +28,19 @@ class Skills:
 
     def pick(self, obj, scene, max_attempts=2):
         """-> the GraspCandidate that holds the object, or None (hand open, object hopefully untouched)."""
-        for cand in plan_grasps(obj, scene, self.db)[:max_attempts]:
+        tried = 0
+        for cand in plan_grasps(obj, scene, self.db):
+            if tried >= max_attempts:
+                break
             arm = cand.arm
             self.c.hand(arm, "open")
             if not self.c.move_tcp(arm, cand.pre_grasp, "direct"):
-                continue  # unreachable from this side: nothing touched yet
+                continue  # unreachable from this side: nothing touched yet, does not count
+            tried += 1
             if cand.approach_preset != "open" and self.c.hand(arm, cand.approach_preset, cand.force) is None:
                 continue
             # A joint-space descent onto a flat pinch swings the open fingers through the dish.
-            linear_only = cand.hand_preset == "pinch_flat"
+            linear_only = cand.leaned
             if not self._descend(arm, cand.grasp, linear_only):
                 self.c.hand(arm, "open")
                 self.c.move_tcp(arm, cand.pre_grasp, "linear")
@@ -116,7 +120,7 @@ class Skills:
         plan = plan_place(cand.arm, container, self.db)
         # Keep the grasp orientation. Turning the wrist to yaw 0 on the way tips a pinched object out.
         q = cand.grasp.orientation
-        if cand.hand_preset == "pinch_flat":
+        if cand.leaned:
             # plan_place aimed a vertical hand. The object sits between the pads, not on the TCP axis.
             local = flat_hold_point(cand.arm)
             for name in ("approach", "release", "retreat"):

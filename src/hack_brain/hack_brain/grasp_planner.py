@@ -24,6 +24,7 @@ class GraspCandidate:
     force: float
     score: float
     approach_preset: str = "open"  # commanded at pre_grasp, before the descent
+    leaned: bool = False  # palm rolled off vertical: straight-line descent only, carried by the point between the pads
 
 
 @dataclass
@@ -458,6 +459,7 @@ def plan_flat_pinches(obj, scene, p, arm):
             force=p.get("force", 0.0),
             score=depth,
             approach_preset="pinch_ready",
+            leaned=True,
         ))
         yaws.append(yaw)
         if len(out) == 2:

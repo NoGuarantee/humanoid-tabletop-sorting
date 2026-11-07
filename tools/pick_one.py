@@ -43,6 +43,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.qos import DurabilityPolicy, QoSProfile
+from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 
 # Same look-at-table pose as brain_node.LOOK_TABLE. Arms then go to the ready pose, out of the picture.
@@ -174,7 +175,7 @@ def show_plan(obj, cand, place):
           f"lift {cand.lift.position.z:+.3f}", flush=True)
     print(f"  table contact at x {obj.center.x:.2f} is tcp {touch_z(obj.center.x):+.3f}, "
           f"margin {margin * 100:.1f} cm", flush=True)
-    if cand.hand_preset == "pinch_flat":
+    if cand.leaned:
         # The touch line is for open fingers straight down. A leaned pinch clears the table beside the object.
         print("  hand is leaned; the vertical touch line does not apply", flush=True)
         margin = TOUCH_MARGIN
@@ -190,9 +191,30 @@ class PickOne(Node):
             Parameter("use_sim_time", Parameter.Type.BOOL, True)])
         self.api = Clients(self)
         self.skills = Skills(self.api, load_db(DB), self.get_logger())
+        self.waist = None
+        self.create_subscription(JointState, "/joint_states", self.on_joints, 10)
+
+    def on_joints(self, msg):
+        if "body_yaw_joint" in msg.name:
+            self.waist = msg.position[msg.name.index("body_yaw_joint")]
 
 
-def run(node, name, at, use_camera):
+def watch(node, stop):
+    """--watch: the head turns against the waist, so its camera stays on the table while a grasp swings the waist.
+
+    The plans turn the waist up to 0.8 rad, and the video of a slip then shows the far end of the table. Motion
+    serializes only TCP moves, so this runs beside the pick. Debugging only: the brain keeps the head still.
+    """
+    target = 0.0
+    while not stop.is_set():
+        w = node.waist
+        if w is not None and abs(-w - target) > 0.05:
+            target = max(-1.5, min(1.5, -w))
+            node.api.move_joints(["head_yaw_joint", "head_pitch_joint"], [target, 0.44])
+        time.sleep(0.2)
+
+
+def run(node, name, at, use_camera, watching=False):
     while rclpy.ok() and node.get_clock().now().nanoseconds == 0:
         time.sleep(0.1)
     if not node.api.wait_ready(timeout=120.0):
@@ -231,7 +253,13 @@ def run(node, name, at, use_camera):
         print("FAIL refusing: the fingertips would meet the table", flush=True)
         return 1
     print(f"grasp -> {tray.id}", flush=True)
-    held = node.skills.pick(obj, scene)
+    stop = threading.Event()
+    if watching:
+        threading.Thread(target=watch, args=(node, stop), daemon=True).start()
+    try:
+        held = node.skills.pick(obj, scene)
+    finally:
+        stop.set()
     if held is None:
         print("FAIL nothing held; hand should be open", flush=True)
         return 1
@@ -248,6 +276,7 @@ def main():
     ap.add_argument("--object", default=DISH, help="substring of a CATALOG name")
     ap.add_argument("--at", type=float, nargs=3, default=PLACE_AT, metavar=("ALONG", "Y", "YAW"))
     ap.add_argument("--known", action="store_true", help="grasp from the placed pose, not the camera")
+    ap.add_argument("--watch", action="store_true", help="turn the head against the waist during the pick (video)")
     args = ap.parse_args()
     names = [n for n in CATALOG if args.object in n]
     if len(names) != 1:
@@ -261,7 +290,7 @@ def main():
     spin.start()
     status = 1
     try:
-        status = run(node, names[0], tuple(args.at), use_camera)
+        status = run(node, names[0], tuple(args.at), use_camera, args.watch)
     finally:
         executor.shutdown()
         spin.join(timeout=5.0)

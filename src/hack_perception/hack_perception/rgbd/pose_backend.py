@@ -30,7 +30,12 @@ class PoseBackend:
     def pool_categories(pool):
         return POOL_IDENTITIES[pool]
 
-    def __init__(self, root, *, model_poses=True):
+    def __init__(self, root, *, model_poses=True, device='cpu'):
+        self.device = str(torch.device(device))
+        if torch.device(self.device).type not in ('cpu', 'cuda'):
+            raise ValueError('rgbd_device must select CPU or CUDA')
+        if self.device.startswith('cuda') and not torch.cuda.is_available():
+            raise RuntimeError('CUDA was requested for RGB-D but is unavailable')
         root = Path(root)
         bundle = json.loads((root / "bundle.json").read_text())
         expected_files = {"shape/catalog.json", "identity.pt", "pose.pt", "tube.pt", "yolo.pt"}
@@ -87,7 +92,7 @@ class PoseBackend:
     def segment(self, sensor):
         if self.hooks is not None:
             self.hooks.shape = self.hooks.map = None
-        pred = self.detector.predict(np.ascontiguousarray(sensor["rgb"][..., ::-1]), device="cpu",
+        pred = self.detector.predict(np.ascontiguousarray(sensor["rgb"][..., ::-1]), device=self.device,
                                      imgsz=640, conf=.25, iou=.7, retina_masks=True, verbose=False)[0]
         raster = np.zeros(sensor["depth"].shape, dtype=np.uint16)
         objects = []
@@ -109,7 +114,7 @@ class PoseBackend:
             segmentation = [self.segment(sensor) if sensor is not None else None for sensor in sensors]
         return estimate_scene_geometry(sensors, segmentation, tray_of_color)
 
-    def estimate(self, sensors, pool, segmentation, plane):
+    def estimate(self, sensors, pool, segmentation, plane, names=None):
         """sensors are ordered head/torso; a missing slot is None."""
         masks, objects, crops, desc = [[], [], [], []]
         for index, sensor in enumerate(sensors):
@@ -134,6 +139,8 @@ class PoseBackend:
             refs = [objects[j][i] for j, i in enumerate(ids) if i is not None]
             category = refs[0]["class_id"]
             choices = POOL_IDENTITIES[pool][category]
+            if names and not any(OBJECTS[label] in names for label in choices):
+                continue
             obs = [None if i is None else dict(sensors[j], mask=masks[j] == i) for j, i in enumerate(ids)]
             value = features(obs, OBJECTS[choices[0]])
             if value is None:
@@ -151,7 +158,13 @@ class PoseBackend:
             return []
         guesses = self.guesses(tasks)
         depth_views = [depth_view(sensor) for sensor in sensors if sensor is not None]
-        detections = [self.fit_pose(task, hypotheses, plane, depth_views) for task, hypotheses in zip(tasks, guesses)]
+        detections = []
+        for task, hypotheses in zip(tasks, guesses):
+            if names:
+                if max(hypotheses, key=lambda hypothesis: hypothesis[2])[0] not in names:
+                    continue
+                hypotheses = [hypothesis for hypothesis in hypotheses if hypothesis[0] in names]
+            detections.append(self.fit_pose(task, hypotheses, plane, depth_views))
         return detections
 
     @staticmethod

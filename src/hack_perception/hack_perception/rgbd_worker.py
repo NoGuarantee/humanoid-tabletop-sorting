@@ -1,12 +1,13 @@
-"""Isolated CPU inference with one pending job and one prepared exposure."""
+"""Isolated inference with one pending job and one prepared exposure."""
 
 from multiprocessing import get_context
 import os
 from queue import Empty, Full
 from time import monotonic
+from uuid import uuid4
 
 
-def _serve(requests, results, model_dir, model_poses, torch_threads):
+def _serve(requests, results, model_dir, model_poses, torch_threads, device='cpu'):
     os.environ["YOLO_OFFLINE"] = "true"
     os.environ["YOLO_AUTOINSTALL"] = "false"
     try:
@@ -14,14 +15,16 @@ def _serve(requests, results, model_dir, model_poses, torch_threads):
 
         torch.set_num_threads(torch_threads)
         from .rgbd.pose_backend import PoseBackend
-        from .rgbd_response import infer_response, prepare_scene
+        from .rgbd_response import bind_exposure, infer_response, prepare_scene
+        from .rgbd_frames import CAMERAS
 
-        backend = PoseBackend(model_dir, model_poses=model_poses)
+        backend = PoseBackend(model_dir, model_poses=model_poses, device=device)
     except Exception as exc:
         results.put(("failed", None, repr(exc), None))
         return
     results.put(("ready", None, None, None))
     cache_key, sensors, prepared = None, None, None
+    session_id = uuid4().hex
     while True:
         command = requests.get()
         if command is None:
@@ -35,7 +38,14 @@ def _serve(requests, results, model_dir, model_poses, torch_threads):
                 cache_key, sensors, prepared = key, new_sensors, new_prepared
                 value = prepared[1:]
             elif kind == "pose" and model_poses and prepared is not None and key == cache_key:
-                value = infer_response(backend, sensors, key[1], data, prepared=prepared)
+                if isinstance(data, dict):
+                    value = infer_response(backend, sensors, key[1], data["pool"],
+                                           prepared=prepared, names=data["names"])
+                else:
+                    value = infer_response(backend, sensors, key[1], data, prepared=prepared)
+                if isinstance(value, dict):
+                    bind_exposure(value, key, session_id,
+                                  [camera for camera, sensor in zip(CAMERAS, sensors) if sensor is not None])
             else:
                 raise ValueError("pose request requires the prepared exposure")
         except Exception as exc:
@@ -45,12 +55,12 @@ def _serve(requests, results, model_dir, model_poses, torch_threads):
 
 
 class PoseWorker:
-    def __init__(self, model_dir, model_poses, torch_threads):
+    def __init__(self, model_dir, model_poses, torch_threads, device='cpu'):
         context = get_context("spawn")
         self.requests = context.Queue(maxsize=1)
         self.results = context.Queue(maxsize=1)
         self.process = context.Process(target=_serve, args=(self.requests, self.results, model_dir,
-                                                            model_poses, torch_threads), daemon=True)
+                                                            model_poses, torch_threads, device), daemon=True)
         self.process.start()
 
     def submit(self, kind, key, data):

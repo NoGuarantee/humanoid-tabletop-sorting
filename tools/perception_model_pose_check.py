@@ -63,6 +63,13 @@ def check(node, args):
             if data["schema"] != SCHEMA or data["frame_id"] != "pelvis":
                 raise RuntimeError("unexpected model pose response schema or frame")
             if result.success and last_status == "ok":
+                key = data.get('exposure_key')
+                if (not isinstance(key, dict) or key.get('stamp_ns') != data['stamp_ns']
+                        or not key.get('session_id') or not isinstance(key.get('epoch'), int)):
+                    raise RuntimeError('missing or inconsistent exposure key')
+                for item in data['objects'] + data['containers'] + data.get('observed_regions', []):
+                    if item.get('exposure_key') != key:
+                        raise RuntimeError('mixed exposure IDs/poses/regions')
                 age_s = (node.get_clock().now().nanoseconds - data["stamp_ns"]) / 1e9
                 if 0 <= age_s <= args.max_age_s and data["stamp_ns"] > args.after_stamp_ns:
                     break

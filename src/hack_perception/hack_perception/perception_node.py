@@ -13,13 +13,15 @@ import json
 import math
 import os
 import threading
+from time import monotonic, perf_counter
 
 import numpy as np
 import rclpy
 from geometry_msgs.msg import Point, Pose, Quaternion, Vector3
 from hack_interfaces.msg import Container, DetectedObject, SceneObjects
 from hack_interfaces.srv import Perceive
-from rclpy.callback_groups import ReentrantCallbackGroup
+from rcl_interfaces.msg import ParameterDescriptor
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
@@ -61,16 +63,21 @@ class PerceptionNode(Node):
         model_dir = self.declare_parameter("rgbd_model_dir", os.environ.get("NSSR_RGBD_MODEL_DIR", "")).value
         pool = self.declare_parameter("rgbd_pool", 0).value
         enable_poses = self.declare_parameter("rgbd_enable_model_poses", False).value
+        on_demand = self.declare_parameter("rgbd_on_demand", False).value
+        device = self.declare_parameter("rgbd_device", os.environ.get('NSSR_RGBD_DEVICE', 'cpu')).value
+        self.declare_parameter("rgbd_model_names", "", ParameterDescriptor(read_only=True))
         torch_threads = self.declare_parameter("rgbd_torch_threads", 2).value
         if model_dir:
             try:
                 from .rgbd_service import ModelPoseService
 
                 self.model_poses = ModelPoseService(self, self.tf, model_dir, pool, enable_poses, torch_threads,
-                                                    lock=self.lock, clear_baseline=self.clear_baseline)
+                                                    lock=self.lock, clear_baseline=self.clear_baseline,
+                                                    on_demand=on_demand, device=device)
             except Exception as e:
                 self.get_logger().error(f"could not enable RGB-D model pose service: {e!r}")
         camera_qos = QoSProfile(depth=2, reliability=ReliabilityPolicy.RELIABLE)
+        camera_group = MutuallyExclusiveCallbackGroup()
         for cam, topic in CAMERAS.items():
             for kind, stream in STREAMS.items():
                 if kind == "depth_info" and self.model_poses is None:
@@ -78,7 +85,7 @@ class PerceptionNode(Node):
                 msg_type = CameraInfo if kind.endswith("_info") else Image
                 self.create_subscription(msg_type, f"/{topic}/{stream}",
                                          lambda m, c=cam, k=kind: self.store(c, k, m),
-                                         camera_qos, callback_group=cb)
+                                         camera_qos, callback_group=camera_group)
         self.get_logger().info("perception ready")
 
     def on_names(self, msg):
@@ -116,12 +123,13 @@ class PerceptionNode(Node):
         self.tracker = tc.Tracker()
 
     def store(self, cam, kind, msg):
+        received_wall = monotonic()
         with self.lock:
             if kind != "depth_info":
                 key = "info" if kind == "color_info" else kind
                 self.frames[cam][key] = msg
             if self.model_poses is not None:
-                self.model_poses.store(CAMERAS[cam], kind, msg)
+                self.model_poses.store(CAMERAS[cam], kind, msg, received_wall=received_wall)
 
     def snapshot(self, cam):
         with self.lock:
@@ -144,6 +152,16 @@ class PerceptionNode(Node):
         return pts, m
 
     def on_perceive(self, req, res):
+        started = perf_counter()
+        try:
+            return self._perceive(req, res)
+        finally:
+            elapsed = perf_counter() - started
+            if self.model_poses is not None and elapsed >= .25:
+                self.model_poses._emit_diagnostic(dict(event='perceive_timing',
+                    callback_wall_s=elapsed, success=res.success))
+
+    def _perceive(self, req, res):
         cam = req.camera or "head"
         model = None
         if self.model_poses is not None and cam in CAMERAS:
@@ -242,7 +260,7 @@ class PerceptionNode(Node):
 def main():
     rclpy.init()
     node = PerceptionNode()
-    executor = MultiThreadedExecutor()
+    executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
     try:
         executor.spin()

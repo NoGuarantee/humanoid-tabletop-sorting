@@ -3,6 +3,7 @@ from dataclasses import replace
 import json
 from types import SimpleNamespace as Record
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
@@ -90,7 +91,8 @@ class ModelPoseResponseTest(unittest.TestCase):
                     {"class_id": 1, "instance_id": 2, "confidence": .80},
                 ], None)
                 sensors = [object() if i == slot else None for i in range(2)]
-                payload = infer_response(backend, sensors, 500, 4, prepared=(segmentation, None, []))
+                with patch("hack_perception.rgbd_response.observed_regions", return_value=[]):
+                    payload = infer_response(backend, sensors, 500, 4, prepared=(segmentation, None, []))
                 good, no_depth = payload["objects"]
                 self.assertEqual(good["pose_status"], "ok")
                 self.assertEqual(good["depth_supported_views"], 1)

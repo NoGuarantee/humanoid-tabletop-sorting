@@ -9,8 +9,11 @@
 # never be published. Without cuRobo the nodes still start and MoveTcp answers with the error.
 cd "$(dirname "$0")"
 rm -f weights/.rgbd-ready
-bash tools/curobo_install.sh || { echo "[setup] cuRobo install FAILED, MoveTcp will not work"; exit 0; }
-python3 tools/curobo_warmup.py || echo "[setup] cuRobo warmup failed, the first MoveTcp compiles the kernels"
+if bash tools/curobo_install.sh; then
+    python3 tools/curobo_warmup.py || echo "[setup] cuRobo warmup failed, the first MoveTcp compiles the kernels"
+else
+    echo "[setup] cuRobo install FAILED, MoveTcp will not work"
+fi
 # Presence of the pre-staged archive explicitly opts in to the RGB-D scene worker.
 if [ -f weights/geometry_only_ros_bundle.tar.gz ]; then
     if bash tools/stage_perception_rgbd.sh &&

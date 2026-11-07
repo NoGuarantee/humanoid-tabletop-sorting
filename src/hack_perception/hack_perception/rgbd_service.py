@@ -151,8 +151,8 @@ class ModelPoseService:
 
             # 6D is opt-in and keeps the exact segmentation prepared for its exposure.
             if self.want_pose and self.scene is not None:
-                key, views, _ = self.scene
-                if (key == self.prepared_key and all(view is not None for view in views)
+                key, _, _ = self.scene
+                if (key == self.prepared_key
                         and is_fresh(key, self.generation, now, POSE_INPUT_AGE_NS)):
                     if self.worker.submit("pose", key, self.pool()):
                         self.pending = ("pose", key, None)
@@ -163,7 +163,7 @@ class ModelPoseService:
                 return
             pair = self.buffer.latest(now, INPUT_AGE_NS)
             if pair is None:
-                # Missing one camera must not stop table/tray detection.
+                # Prefer a synchronized pair when both cameras have one.
                 pair = self.buffer.latest(now, INPUT_AGE_NS, paired=False)
             if pair is None:
                 return

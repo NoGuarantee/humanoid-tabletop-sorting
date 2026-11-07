@@ -34,8 +34,7 @@ def _serve(requests, results, model_dir, model_poses, torch_threads):
                 new_prepared = prepare_scene(backend, new_sensors, tray_of_color)
                 cache_key, sensors, prepared = key, new_sensors, new_prepared
                 value = prepared[1:]
-            elif (kind == "pose" and model_poses and key == cache_key
-                  and all(sensor is not None for sensor in sensors)):
+            elif kind == "pose" and model_poses and prepared is not None and key == cache_key:
                 value = infer_response(backend, sensors, key[1], data, prepared=prepared)
             else:
                 raise ValueError("pose request requires the prepared exposure")

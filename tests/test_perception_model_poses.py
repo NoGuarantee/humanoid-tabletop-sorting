@@ -8,7 +8,7 @@ import numpy as np
 
 from hack_perception.rgbd.detection import Detection
 from hack_perception.rgbd_frames import CAMERAS, STREAMS, PairBuffer, decode_pair, decode_view, stamp_ns
-from hack_perception.rgbd_response import SCHEMA, object_response, response
+from hack_perception.rgbd_response import SCHEMA, infer_response, object_response, response
 
 
 def frames(ns, frame):
@@ -78,10 +78,32 @@ class ModelPoseResponseTest(unittest.TestCase):
         self.candidate = Detection("sink", 1, np.eye(4), np.zeros(3), np.ones(3),
                                    .99, .001, 2, "full", True, False, 400, (1, 2))
 
-    def test_model_pose_is_gated_even_when_one_view_fits_well(self):
-        for detection, status in ((replace(self.candidate, views=1), "reacquire_single_view"),
-                                  (replace(self.candidate, clipped=True), "reacquire_clipped"),
-                                  (replace(self.candidate, valid=False), "reacquire_uncertain_fit")):
+    def test_accepts_a_valid_pose_from_either_camera(self):
+        for slot, camera in enumerate(CAMERAS):
+            with self.subTest(camera=camera):
+                instances = (1, None) if slot == 0 else (None, 1)
+                candidate = replace(self.candidate, views=1, instances=instances)
+                backend = Record(estimate=lambda *args: [candidate], pool_categories=lambda pool: {1})
+                segmentation = [None, None]
+                segmentation[slot] = (None, [
+                    {"class_id": 1, "instance_id": 1, "confidence": .99},
+                    {"class_id": 1, "instance_id": 2, "confidence": .80},
+                ], None)
+                sensors = [object() if i == slot else None for i in range(2)]
+                payload = infer_response(backend, sensors, 500, 4, prepared=(segmentation, None, []))
+                good, no_depth = payload["objects"]
+                self.assertEqual(good["pose_status"], "ok")
+                self.assertEqual(good["depth_supported_views"], 1)
+                self.assertEqual(good["instances"], {camera: 1})
+                self.assertEqual(good["T_pelvis_object"], np.eye(4).tolist())
+                self.assertEqual(no_depth["pose_status"], "insufficient_depth")
+                self.assertEqual(no_depth["instances"], {camera: 2})
+
+    def test_still_rejects_unsupported_clipped_or_uncertain_poses(self):
+        for detection, status in ((replace(self.candidate, views=0), "insufficient_depth"),
+                                  (replace(self.candidate, views=1, clipped=True), "reacquire_clipped"),
+                                  (replace(self.candidate, views=1, valid=False), "reacquire_uncertain_fit"),
+                                  (replace(self.candidate, views=2, valid=False), "reacquire_uncertain_fit")):
             with self.subTest(status=status):
                 out = object_response(detection)
                 self.assertEqual(out["pose_status"], status)

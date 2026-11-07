@@ -16,7 +16,7 @@ class WorkerTest(unittest.TestCase):
     def test_pose_is_reused_from_one_prepared_scene_even_after_next_prepare_failed(self):
         requests, results = Queue(), Queue()
         original_key = 1, 100
-        requests.put(("scene", original_key, ("original", None)))
+        requests.put(("scene", original_key, ((None, "torso"), None)))
         requests.put(("scene", (1, 110), ("invalid", None)))
         requests.put(("pose", original_key, 4))
         requests.put(None)
@@ -41,7 +41,7 @@ class WorkerTest(unittest.TestCase):
         self.assertEqual(results.get_nowait()[:3], ("scene", original_key, ("plane", "trays")))
         self.assertEqual(results.get_nowait()[0], "job_failed")
         self.assertEqual(results.get_nowait()[:3],
-                         ("pose", original_key, ("original", 100, 4, ("masks", "plane", "trays"))))
+                         ("pose", original_key, ((None, "torso"), 100, 4, ("masks", "plane", "trays"))))
         self.assertEqual(prepare_scene.call_count, 2)
 
     def test_exposure_expiry_checks_source_stamp_and_epoch(self):

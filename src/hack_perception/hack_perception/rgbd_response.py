@@ -18,8 +18,6 @@ def object_response(detection):
     status = "ok"
     if detection.views == 0:
         status = "insufficient_depth"
-    elif detection.views == 1:
-        status = "reacquire_single_view"
     elif detection.clipped:
         status = "reacquire_clipped"
     elif not detection.valid:
@@ -44,7 +42,10 @@ def infer_response(backend, sensors, stamp, pool, tray_of_color=None, *, prepare
     segmentation, plane, trays = prepared if prepared is not None else prepare_scene(backend, sensors, tray_of_color)
     detections = backend.estimate(sensors, pool, segmentation, plane)
     objects = [object_response(d) for d in detections]
-    for slot, (_, proposals, _) in enumerate(segmentation):
+    for slot, camera_segmentation in enumerate(segmentation):
+        if camera_segmentation is None:
+            continue
+        _, proposals, _ = camera_segmentation
         seen = {d.instances[slot] for d in detections}
         for proposal in proposals:
             ident = proposal["instance_id"]

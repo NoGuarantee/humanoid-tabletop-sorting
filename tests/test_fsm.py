@@ -37,6 +37,42 @@ class MissionTests(unittest.TestCase):
         looks = [x for x in f.commands if x.phase == State.LOOK_TABLE]
         self.assertEqual(len(looks), 1 + c.config.max_empty_observations)
 
+    def test_failed_descend_backs_off_before_looking_again(self):
+        f = Fake(objects=[Object('a', 'figure', name='a')])
+        f.until(State.DESCEND)
+        f.send(Event('ACCEPTED', f.c.active.id))
+        f.answer('timeout', ok=False)  # motion stopped short of the grasp, the arm is down at the object
+        self.assertEqual(f.c.state, State.RECOVER)
+        f.answer()  # hand measured empty
+        self.assertEqual(f.c.state, State.BACK_OFF)
+        self.assertEqual(f.c.last_recovery, 'timeout')
+        f.answer('unreachable', ok=False)  # a failed back-off does not loop back to RECOVER
+        self.assertEqual(f.c.state, State.LOOK_TABLE)
+        self.assertFalse(f.c.arm_low)
+        self.assertTrue(f.run().history['a'].placed)
+
+    def test_failed_approach_does_not_back_off(self):
+        f = Fake(objects=[Object('a', 'figure', name='a')])
+        f.until(State.APPROACH)
+        f.answer('unreachable', ok=False)
+        f.answer()  # RECOVER: hand empty
+        self.assertEqual(f.c.state, State.LOOK_TABLE)
+        self.assertFalse(any(x.phase == State.BACK_OFF for x in f.commands))
+
+    def test_unknown_hand_in_recover_is_measured_again_within_budget(self):
+        f = Fake(objects=[Object('a', 'figure', name='a')])
+        f.until(State.APPROACH)
+        f.answer('unreachable', ok=False)
+        f.answer(Evidence(f.sim, Hand.UNKNOWN))
+        self.assertEqual(f.c.state, State.RECOVER)
+        self.assertEqual(f.c.last_recovery, 'hand_unknown')
+        for _ in range(f.c.config.max_recoveries):
+            if f.c.state == State.DONE:
+                break
+            f.answer(Evidence(f.sim, Hand.UNKNOWN))
+        self.assertEqual(f.c.state, State.DONE)
+        self.assertEqual(f.c.reason, 'physical_unknown')
+
     def test_unreachable_retries_are_bounded(self):
         f = Fake(objects=[Object('a', 'figure', name='a')])
         for _ in range(2):

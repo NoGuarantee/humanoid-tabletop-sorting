@@ -27,6 +27,8 @@ def _enter(c, state, effects):
 
 def _may_have_moved(c, op):
     state = op.phase
+    if state == State.DESCEND:
+        c.arm_low = True
     if state in (State.DESCEND, State.RELEASE):
         c.hand = Hand.UNKNOWN
         c.scene = None
@@ -56,6 +58,7 @@ def _stop(c, effects, reason):
 
 def _recover(c, effects, reason):
     c.scene = None
+    c.last_recovery = reason
     c.recoveries += 1
     if c.recoveries > c.config.max_recoveries:
         _done(c, effects, 'retries_exhausted:' + reason)
@@ -167,6 +170,14 @@ def transition(context: Context, event: Event):
 
 def _result(c, e, op, effects):
     state = c.state
+    if state == State.BACK_OFF:
+        # Up or not, look again: a plan from a low arm fails on its own and spends the recovery budget.
+        if e.kind == 'REJECTED' or not e.ok:
+            c.last_recovery = 'back_off_failed'
+        _enter(c, State.LOOK_TABLE, effects)
+        return
+    if state == State.LIFT and e.kind == 'RESULT' and e.ok:
+        c.arm_low = False
     if e.kind == 'REJECTED' or not e.ok:
         if state in VERIFY:
             c.hand = Hand.UNKNOWN
@@ -184,7 +195,13 @@ def _result(c, e, op, effects):
         ev = evidence(c, e.data, op.sim_start)
         if ev is None or ev.hand == Hand.UNKNOWN:
             c.hand = Hand.UNKNOWN
-            _done(c, effects, 'physical_unknown')
+            if state == State.RECOVER and c.recoveries < c.config.max_recoveries:
+                # A hand still settling after a failed move: measure again, within the recovery budget.
+                c.recoveries += 1
+                c.last_recovery = 'hand_unknown'
+                _enter(c, State.RECOVER, effects)
+            else:
+                _done(c, effects, 'physical_unknown')
             return
         c.hand = ev.hand
         if state == State.VERIFY_EMPTY:
@@ -208,6 +225,9 @@ def _result(c, e, op, effects):
             if ev.hand == Hand.EMPTY:
                 if h.contacted and not c.target.name:
                     _done(c, effects, 'identity_lost_after_contact')
+                elif c.arm_low:
+                    c.arm_low = False
+                    _enter(c, State.BACK_OFF, effects)
                 else:
                     _enter(c, State.LOOK_TABLE, effects)
             elif h.lift == Lift.LIFTED:

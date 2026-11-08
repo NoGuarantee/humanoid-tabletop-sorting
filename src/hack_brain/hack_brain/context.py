@@ -29,6 +29,7 @@ class State(str, Enum):
     VERIFY_PLACE = 'VERIFY_PLACE'
     RETREAT = 'RETREAT'
     RECOVER = 'RECOVER'
+    BACK_OFF = 'BACK_OFF'
     CANCELLING = 'CANCELLING'
     DONE = 'DONE'
 
@@ -146,6 +147,9 @@ class Context:
     serial: int = 0
     recoveries: int = 0
     empty_observations: int = 0
+    # The arm may be down at the object (DESCEND was accepted and no LIFT or BACK_OFF since).
+    arm_low: bool = False
+    last_recovery: str = ''
     reason: str = ''
     blocked: bool = False
     cancel_wall: float = 0.0

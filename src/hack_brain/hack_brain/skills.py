@@ -35,7 +35,7 @@ class Skills:
         if phase == State.TRANSFER:
             container = next(x for x in scene.containers if x.id == effect.destination and x.kind == 'tray')
             self.place = plan_place(g.arm, container, self.db)
-        poses = {State.APPROACH: g.pre_grasp, State.DESCEND: g.grasp, State.LIFT: g.lift}
+        poses = {State.APPROACH: g.pre_grasp, State.DESCEND: g.grasp, State.LIFT: g.lift, State.BACK_OFF: g.pre_grasp}
         if self.place:
             poses.update({State.TRANSFER: self.place.approach, State.LOWER: self.place.release,
                           State.RETREAT: self.place.retreat})

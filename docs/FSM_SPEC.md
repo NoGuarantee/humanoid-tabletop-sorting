@@ -104,7 +104,8 @@ brain сохраняет блокировку и завершает миссию
 | RELEASE | у назначения | открыть, hand UNKNOWN | success → VERIFY_PLACE | recovery, не объявлять EMPTY |
 | VERIFY_PLACE | после раскрытия | запрос доказательства | EMPTY + placed + destination/slot → RETREAT | иначе DONE placement_unconfirmed |
 | RETREAT | подтверждённое размещение | отход | success → VERIFY_EMPTY | DONE retreat_failed, placement сохраняется |
-| RECOVER | терминальная ошибка навыка | проверить руку | EMPTY → новый осмотр; HOLDING+LIFTED → REORIENT для lying без upright, иначе новое назначение | UNKNOWN, лимит, анонимная цель после контакта → DONE |
+| RECOVER | терминальная ошибка навыка | проверить руку | EMPTY → BACK_OFF, если рука могла остаться у объекта (DESCEND принят, LIFT не прошёл), иначе новый осмотр; HOLDING+LIFTED → REORIENT для lying без upright, иначе новое назначение; UNKNOWN → повторный замер в пределах recovery budget | лимит, анонимная цель после контакта → DONE |
+| BACK_OFF | RECOVER: EMPTY и рука внизу | линейно вверх к pre_grasp, как на main | LOOK_TABLE при любом исходе | — |
 | CANCELLING | есть активная операция | один cancel | ACK+terminal+stopped → DONE | отказ/no ack/no stop → blocked DONE; 5 wall s |
 | DONE | reason отдельно от успеха | эффект publish done | поглощает всё | никаких движений |
 
@@ -158,7 +159,10 @@ brain сохраняет блокировку и завершает миссию
 | VERIFY_PLACE | RESULT | fresh EMPTY + placed + matching target | placed=True, hand=EMPTY | verify empty | VERIFY_EMPTY |
 | RETREAT | RESULT | success | нет | verify placement | VERIFY_PLACE |
 | навыки | RESULT / REJECTED | failure, retry | retries++, scene invalid | verify | RECOVER |
-| RECOVER | RESULT | fresh EMPTY, identity usable | hand=EMPTY | look | LOOK_TABLE |
+| RECOVER | RESULT | fresh EMPTY, identity usable, arm_low | hand=EMPTY, arm_low=False | move up | BACK_OFF |
+| RECOVER | RESULT | fresh EMPTY, identity usable, рука не внизу | hand=EMPTY | look | LOOK_TABLE |
+| RECOVER | RESULT | UNKNOWN, recoveries < max | retries++ | measure again | RECOVER |
+| BACK_OFF | RESULT / REJECTED | любой | нет | look | LOOK_TABLE |
 | RECOVER | RESULT | fresh HOLDING, history LIFTED, lying без подтверждения upright | hand=HOLDING | reorient | REORIENT |
 | RECOVER | RESULT | fresh HOLDING, history LIFTED, остальные | hand=HOLDING | perceive destination | DESTINATION |
 | проверки | RESULT | unknown/stale/invalid evidence | hand=UNKNOWN, reason | done | DONE |
@@ -202,6 +206,8 @@ stateDiagram-v2
     VERIFY_PLACE --> VERIFY_EMPTY
     RETREAT --> VERIFY_PLACE
     RECOVER --> LOOK_TABLE: EMPTY
+    RECOVER --> BACK_OFF: EMPTY, рука у объекта
+    BACK_OFF --> LOOK_TABLE
     RECOVER --> DESTINATION: HOLDING и LIFTED, upright если lying
     RECOVER --> REORIENT: lying без upright
     CANCELLING --> DONE: bounded

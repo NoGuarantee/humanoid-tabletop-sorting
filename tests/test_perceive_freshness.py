@@ -26,6 +26,7 @@ class PerceiveFreshnessTest(unittest.TestCase):
                 scene.table_z=.1  # Only test source selection, not geometry.
         self.node=InputContractNode()
         self.node.set_parameters([rclpy.parameter.Parameter('perceive_frame_wait_s',value=.2)])
+        self.node.names_ready.set()  # names are tested on their own below
 
     def tearDown(self):
         self.node.diagnostics.close()
@@ -73,6 +74,23 @@ class PerceiveFreshnessTest(unittest.TestCase):
         result=node.on_perceive(Perceive.Request(camera='head',region='table'),Perceive.Response())
         self.assertFalse(result.success)
         self.assertIn('no frames',result.message)
+
+    def test_perceive_waits_for_object_names(self):
+        from std_msgs.msg import String
+        node=self.node
+        node.names_ready.clear()
+        stamp=node.get_clock().now().nanoseconds-1_000_000
+        for kind in ('color','depth','color_info','depth_info'):node.store('head',kind,message(stamp))
+        def publish():
+            time.sleep(.1)
+            node.on_names(String(data='{"Ecoforms_Cup_B4_SAN": "dish"}'))
+        thread=threading.Thread(target=publish);thread.start()
+        started=time.monotonic()
+        result=node.on_perceive(Perceive.Request(camera='head',region='table'),Perceive.Response())
+        thread.join()
+        self.assertTrue(result.success,result.message)
+        self.assertGreaterEqual(time.monotonic()-started,.1)
+        self.assertEqual(node.names,{'Ecoforms_Cup_B4_SAN':'dish'})
 
     def test_mixed_camera_headers_are_not_a_snapshot(self):
         node=self.node

@@ -45,6 +45,7 @@ BASE = "pelvis"
 ARM_FRAMES = (("elbow_pitch_l_link", "wrist_pitch_l_link", "left_tcp_link"),
               ("elbow_pitch_r_link", "wrist_pitch_r_link", "right_tcp_link"))
 FINGERS = 0.21  # along -z of the TCP; keep equal to grasp_planner.FINGERTIP
+NAMES_WAIT_S = 3.0  # wall s: /sim/objects/names is latched and normally arrives within a second of start
 STILL_WINDOW = 0.5  # s: a frame at rest this long may take the latest transform (lookup_at)
 STILL_TOLERANCE = 0.002  # max change of any 4x4 entry over that window: 2 mm, about 0.1°
 
@@ -59,6 +60,7 @@ class PerceptionNode(Node):
         raw_images = self.declare_parameter('serialized_images', True, ParameterDescriptor(read_only=True)).value
         self.clear_baseline()
         self.names = {}  # object name -> category, from /sim/objects/names
+        self.names_ready = threading.Event()
         self.tray_of_color = dict(classify.DEFAULT_TRAY)  # replaced by /sim/task when it arrives
         cb = ReentrantCallbackGroup()
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
@@ -107,6 +109,7 @@ class PerceptionNode(Node):
         names = {str(name): str(category) for name, category in data.items()}
         with self.lock:
             self.names = names
+        self.names_ready.set()
         self.get_logger().info(f"object names: {len(names)}")
 
     def on_task(self, msg):
@@ -221,6 +224,13 @@ class PerceptionNode(Node):
 
     def _perceive(self, req, res, timing):
         cam = req.camera or "head"
+        # Without the latched names no object gets a category, and the brain finds nothing to sort: it once
+        # called Perceive 0.5 s after start, before the names arrived (eval 2026-11-08, layouts 2 and 3).
+        if not self.names_ready.is_set():
+            waited = monotonic()
+            if not self.names_ready.wait(timeout=NAMES_WAIT_S):
+                self.get_logger().warning(f"perceive: no /sim/objects/names after {NAMES_WAIT_S} s, objects unnamed")
+            timing['names_wait_s'] = monotonic()-waited
         requested_ns = self.get_clock().now().nanoseconds
         timing['request_stamp_ns'] = requested_ns
         start = monotonic()

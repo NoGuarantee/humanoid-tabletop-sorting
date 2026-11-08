@@ -13,7 +13,7 @@ default: {approach: top, preset: power, z_offset: -0.03, pre_height: 0.10, lift_
 by_category:
   box:         {preset: power, align: short_axis}
   dish:        {preset: pinch, z_offset: -0.01}   # up to FLAT_MAX_HEIGHT: leaned chord in grasp_planner; this offset is the upright fallback
-  figure:      {preset: pinch, force: 0.4}  # 1.0 squeezed the sink out between CLOSE and VERIFY_GRASP (eval 2026-11-08)
+  figure:      {preset: pinch}
   jar:         {preset: power}
   electronics: {preset: power}
 

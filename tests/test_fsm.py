@@ -73,6 +73,13 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(f.c.state, State.DONE)
         self.assertEqual(f.c.reason, 'physical_unknown')
 
+    def test_recovery_budget_is_per_attempt(self):
+        f = Fake(objects=[Object('a', 'figure', name='a')])
+        f.until(State.OBSERVE)
+        f.c.recoveries = f.c.config.max_recoveries
+        f.until(State.OPEN)
+        self.assertEqual(f.c.recoveries, 0)
+
     def test_unreachable_retries_are_bounded(self):
         f = Fake(objects=[Object('a', 'figure', name='a')])
         for _ in range(2):

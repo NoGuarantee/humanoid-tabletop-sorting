@@ -172,19 +172,25 @@ class PerceptionNode(Node):
         f = dict(color=view['color'], depth=view['depth'], info=view['color_info'])
         return f, (epoch, stamp_ns(f["depth"].header))
 
-    def lookup_at(self, frame, stamp, sim_wait, wall_cap=30.0):
+    def lookup_at(self, frame, stamp, sim_wait, wall_cap=None):
         """Transform frame -> pelvis at stamp, waiting up to sim_wait seconds of /clock for /tf to catch up.
 
         tf2's own timeout counts wall time, and the sim runs below real time. Even waiting on /clock, this node's
         buffer once stayed 1.07 s behind the depth frame while /tf on the wire kept within 30 ms of it
         (2026-11-07, tools/stamp_probe.py), and 1.1-1.2 s mid-task in eval (2026-11-08). Then the latest
         transform stands in, if the frame did not move over STILL_WINDOW before it: the brain looks with the
-        head and waist at rest. wall_cap bounds the wait if /clock stalls."""
+        head and waist at rest. wall_cap bounds the wait if /clock stalls: 30 s once held a Perceive call past the
+        brain's 6 s and the node past its shutdown (eval 2026-11-08), so it is a few times sim_wait."""
+        if wall_cap is None:
+            wall_cap = max(1.0, 3.0 * sim_wait)
         t = Time.from_msg(stamp)
         start, wall = self.get_clock().now(), monotonic()
         while not self.tf.can_transform(BASE, frame, t):
-            if ((self.get_clock().now() - start).nanoseconds > sim_wait * 1e9
-                    or monotonic() - wall > wall_cap):
+            if (self.get_clock().now() - start).nanoseconds > sim_wait * 1e9:
+                break
+            if monotonic() - wall > wall_cap:
+                self.get_logger().warning(f"{frame}: /clock here moved "
+                    f"{(self.get_clock().now() - start).nanoseconds * 1e-9:.2f} s in {wall_cap:.1f} s wall")
                 break
             sleep(0.02)
         try:
@@ -384,7 +390,9 @@ class PerceptionNode(Node):
 def main():
     rclpy.init()
     node = PerceptionNode()
-    executor = MultiThreadedExecutor(num_threads=4)
+    # Perceive, the RGB-D pump, the cameras, /tf and /clock each hold a thread at times. With 4, /clock and camera
+    # frames once stopped for over 10 s while a Perceive call waited on them (eval 2026-11-08).
+    executor = MultiThreadedExecutor(num_threads=8)
     executor.add_node(node)
     try:
         executor.spin()

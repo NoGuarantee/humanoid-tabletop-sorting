@@ -304,6 +304,10 @@ def _result(c, e, op, effects):
                 _done(c, effects, 'candidates_exhausted')
             else:
                 c.empty_observations = 0
+                # Recoveries are budgeted per attempt: five 'no /joint_states yet' rejections while motion started
+                # spent a mission-wide budget, and one empty grasp later ended the mission (eval 2026-11-08).
+                # Attempts per object and the sim deadline still bound the mission.
+                c.recoveries = 0
                 c.target = obj
                 c.reoriented = False
                 c.history.setdefault(obj.id, History()).attempts += 1

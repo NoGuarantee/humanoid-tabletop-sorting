@@ -21,3 +21,7 @@ CLAUDE.local.md
 # tools/remote.sh: personal settings and fetched files
 .remote.env
 .fetch/
+
+# Credentials must never enter server sync or git.
+.env
+.env.*

@@ -202,13 +202,16 @@ class CuroboPlanner:
         try:
             return self._plan_linear(arm, goal, state)
         except Unreachable:
-            inside = self._trays_at(q_by_name)
-            if not inside:
+            touching = self._touching(q_by_name)
+            trays = set(self._tray_names())
+            rising = float(target.position.z) >= self._tcp_z(arm, goal, state) + 0.01
+            if not touching or not (rising or set(touching) <= trays):
                 raise
-            # A hand that let go in a tray is inside a solid tray block here, and nothing plans from there. The
-            # trays are hollow in the scene, and a lift or a retreat leaves through the opening.
-            result = self._without_trays(lambda: self._plan_linear(arm, goal, state))
-            self.scene_note += f", planned without the trays (start in {', '.join(inside)})"
+            # cuRobo plans nothing from a start in collision. A hand that let go in a tray is inside a solid block
+            # here, the trays being hollow in the scene; a hand at a low grasp is within a centimetre of the table
+            # or of the object it holds. A move up, or out of a tray, goes away from them: plan it without them.
+            result = self._without(touching, lambda: self._plan_linear(arm, goal, state))
+            self.scene_note += f", planned without {', '.join(touching)} (the start touches them)"
             return result
 
     def _plan_direct(self, arm, target, q_by_name, pos_tol, rot_tol):
@@ -365,16 +368,19 @@ class CuroboPlanner:
         sph = self.mp.compute_kinematics(state).robot_spheres.detach().reshape(-1, 4)
         return [tuple(float(v) for v in row) for row in sph.cpu().tolist()]
 
-    def _trays_at(self, q_by_name):
-        """Trays of the world that a robot sphere is in or within NEAR_CUBOID of, at these joints."""
-        names = self._tray_names()
-        if not names or any(q_by_name.get(n) is None for n in self.joint_names):
+    def _touching(self, q_by_name):
+        """Cuboids of the world that a robot sphere is in or within NEAR_CUBOID of, at these joints."""
+        if not self._scene or any(q_by_name.get(n) is None for n in self.joint_names):
             return []
-        rows = self._sphere_rows(q_by_name)
-        cuboids = self._scene["cuboid"]
-        return [name for name in names
-                if any(r > 0.0 and sphere_cuboid_overlap((x, y, z), r, cuboids[name]["dims"], cuboids[name]["pose"])
-                       > -NEAR_CUBOID for x, y, z, r in rows)]
+        rows = [row for row in self._sphere_rows(q_by_name) if row[3] > 0.0]
+        return [name for name, cub in self._scene["cuboid"].items() if name != "no_table"
+                and any(sphere_cuboid_overlap((x, y, z), r, cub["dims"], cub["pose"]) > -NEAR_CUBOID
+                        for x, y, z, r in rows)]
+
+    def _tcp_z(self, arm, goal, state):
+        """Height of this arm's TCP in pelvis at `state`."""
+        i = goal.tool_frames.index(TCP_LINK[arm])
+        return float(self.mp.compute_kinematics(state).tool_poses.position[0, 0, i, 2].item())
 
     def start_report(self, q_by_name):
         """Why a start may not plan: self-collision overlap, and the nearest robot link to each cuboid. One line.
@@ -436,7 +442,7 @@ class CuroboPlanner:
         if (traj is None or not _flag(traj.success, any_ok=True)) and self._tray_names():
             # The trays are solid blocks here and hollow in the scene: a hand can rest inside one (the left hand
             # 0.8 cm into tray_center on 2026-11-07), and then no state of that robot is free. Leave without them.
-            traj = self._without_trays(lambda: self.mp.plan_cspace(goal_js, state))
+            traj = self._without(self._tray_names(), lambda: self.mp.plan_cspace(goal_js, state))
             if traj is not None and _flag(traj.success, any_ok=True):
                 self.ready_note = "planned without the trays"
         if traj is None or not _flag(traj.success, any_ok=True):
@@ -444,16 +450,16 @@ class CuroboPlanner:
             raise Unreachable(f"no collision-free joint path to the ready {arm} arm from {start}")
         return self._trajectory(traj)
 
-    def _without_trays(self, plan):
+    def _without(self, names, plan):
+        """Run `plan` with these cuboids switched off in the collision world."""
         checker = self.mp.scene_collision_checker
-        trays = self._tray_names()
         try:
-            for name in trays:
+            for name in names:
                 checker.enable_obstacle(name, False)
             self.mp.graph_planner.reset_buffer()  # it keeps node feasibility from the old scene
             return plan()
         finally:
-            for name in trays:
+            for name in names:
                 checker.enable_obstacle(name, True)
             self.mp.graph_planner.reset_buffer()
 

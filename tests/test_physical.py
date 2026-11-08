@@ -30,6 +30,18 @@ class MeasurementsTests(unittest.TestCase):
         m.update('left',msg(1.1,[float('nan')]*6))
         self.assertEqual(len(m.samples['left']),0)
 
+    def test_pinch_ready_reads_empty_without_a_target(self):
+        m=Measurements();fill(m,'left',positions=[.99,.99,.99,.99,.97,.1])
+        self.assertEqual(m.hand('left',1.4,1)[1],'EMPTY')
+
+    def test_still_report_names_the_moving_joint(self):
+        m=Measurements()
+        for i in range(5): m.update('joints',msg(1+i*.1,[1.,1.,1.+i*.01,1.,1.,1.]))
+        report=m.still_report('joints',1.4,1)
+        self.assertIn('3 0.0400',report)
+        self.assertNotIn('1 0.',report)
+        self.assertIn('no samples',Measurements().still_report('joints',1.4,1))
+
     def test_motion_missing_names_and_large_gaps_do_not_prove_stop(self):
         m=Measurements()
         for i in range(5): m.update('left',msg(1+i*.1,[i*.1]*6))

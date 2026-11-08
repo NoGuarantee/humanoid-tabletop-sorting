@@ -50,6 +50,23 @@ class Measurements:
             return None
         return rows[-1]
 
+    def still_report(self, key, now, since, names=None, duration=0.3, tolerance=0.004):
+        """Why window() finds no rest: for the log when a stop stays unconfirmed."""
+        with self.lock:
+            samples = list(self.samples[key])
+        rows = [row for row in samples if row[0] >= since and now - 0.6 <= row[0] <= now]
+        if not rows:
+            last = f"{now - samples[-1][0]:.2f} s old" if samples else "none"
+            return f"{key}: no samples in the window, last {last}"
+        rows = [row for row in rows if row[0] >= rows[-1][0] - duration - 0.1]
+        names = tuple(names or rows[-1][1])
+        gaps = max((b[0] - a[0] for a, b in zip(rows, rows[1:])), default=0.)
+        moving = sorted(((max(r[1][n] for r in rows) - min(r[1][n] for r in rows), n) for n in names
+                         if all(n in r[1] for r in rows)), reverse=True)
+        moving = [f"{n} {d:.4f}" for d, n in moving if d > tolerance][:6]
+        return (f"{key}: {len(rows)} rows over {rows[-1][0] - rows[0][0]:.2f} s, last {now - rows[-1][0]:.2f} s old, "
+                f"max gap {gaps:.2f} s, over {tolerance}: {', '.join(moving) or 'none'}")
+
     def hand(self, side, now, since, target=None):
         row = self.window(side, now, since, tuple(str(i) for i in range(1,7)), tolerance=0.015)
         if row is None:
@@ -61,7 +78,9 @@ class Measurements:
         if any(not -.1 <= p <= 1.5 for p in pos):
             return None
         pos = [min(max(p, 0.), 1.) for p in pos]
-        if all(p >= 0.95 for p in pos):
+        # Five closing fingers open hold nothing. Thumb rotation (6) is not one: pinch_ready keeps it at 0.1,
+        # and a hand left there by a failed approach read UNKNOWN until the mission ended (eval 2026-11-08).
+        if all(p >= 0.95 for p in pos[:5]):
             return t, 'EMPTY'
         if target is None:
             return None

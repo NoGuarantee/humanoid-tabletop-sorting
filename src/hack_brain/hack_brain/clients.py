@@ -19,6 +19,8 @@ from .transport import ActionTransport
 
 
 HAND_STILL = .015  # finger reading spread over 0.3 s that still counts as stopped, as sensors.hand
+SCENE_WAIT_S = 6.0  # sim s an OBSERVE or DESTINATION waits for a fresh scene: the first look after an arm
+                   # move took 4-6 s wall, 2.5-3.7 s sim, waiting for /tf (eval 2026-11-08)
 UNSURE_S = 1.5  # sim s without a HOLDING reading before a held object counts as lost
 
 
@@ -46,9 +48,14 @@ class Clients:
         self.tf_listener = TransformListener(self.tf,node)
         self.verifier = PhysicalVerifier(self.measurements,self.tcp)
         self.stop_resources = {}
+        self.stop_reported = None
         self.scene_pending = None
         self.scene_future = None
         self.next_scene_request = 0.0
+        # The last Perceive call and its (camera, region), kept when its phase ends. Perception serves calls on four
+        # threads: a phase that abandoned a slow call and sent another stacked them until /tf and /clock starved
+        # there and every call took 8-14 s (eval 2026-11-08). A new phase takes the call over instead.
+        self.perceive_inflight = None
         self.motion_wait = None
         self.verify_pending = None
         self.verify_scene = None
@@ -75,11 +82,11 @@ class Clients:
         if effect.phase in VERIFY:
             self.verify_pending = effect
             self.verify_scene = None
-            self.verify_future = None
+            self.verify_future = self.adopt_perceive(('head', 'table'))
             return
         if effect.phase in (State.OBSERVE, State.DESTINATION):
             self.scene_pending = effect
-            self.scene_future = None
+            self.scene_future = self.adopt_perceive(self.scene_request(effect.phase, context))
             self.next_scene_request = 0.0
             return
         try:
@@ -137,8 +144,13 @@ class Clients:
         # A hand squeezing an object at full effort jitters by about 0.01: the 0.004 joint tolerance never
         # saw it settle, and a close on the cartridge ended the mission as a stop it could not confirm.
         tolerance = HAND_STILL if resource and resource[0] in ('left', 'right') else .004
-        return bool(resource and self.measurements.window(resource[0],self.now(),since,resource[1],
-                                                           tolerance=tolerance))
+        now = self.now()
+        still = bool(resource and self.measurements.window(resource[0],now,since,resource[1],tolerance=tolerance))
+        if resource and not still and now - since >= 1.0 and self.stop_reported != op_id:
+            self.stop_reported = op_id
+            self.node.get_logger().warning(f"op {op_id}: no measured stop 1 s after the result. "
+                + self.measurements.still_report(resource[0],now,since,resource[1],tolerance=tolerance))
+        return still
 
     def poll(self, context):
         self.transport.poll()
@@ -184,7 +196,7 @@ class Clients:
                 self.verify_future = None
             if self.verify_scene is None or stamp(self.verify_scene) < context.active.sim_start:
                 if self.verify_future is None and self.perceive_cli.service_is_ready():
-                    self.verify_future = self.perceive_cli.call_async(Perceive.Request(camera='head',region='table'))
+                    self.verify_future = self.call_perceive(('head', 'table'))
                 if context.sim-context.active.sim_start < 3.0:
                     return
         ev = self.verifier.read(context,self.verify_scene)
@@ -194,6 +206,25 @@ class Clients:
         self.verify_pending = None
         self.emit(Event('RESULT',effect.op_id,ev or Evidence(context.sim,source='sensors_unconfirmed')))
 
+    @staticmethod
+    def scene_request(phase, context):
+        region = 'hood' if phase == State.DESTINATION and context.spec.kind == 'tubes' else 'table'
+        camera = 'torso' if context.spec.kind == 'tubes' and region == 'table' else 'head'
+        return camera, region
+
+    def call_perceive(self, key):
+        future = self.perceive_cli.call_async(Perceive.Request(camera=key[0], region=key[1]))
+        self.perceive_inflight = (key, future)
+        return future
+
+    def adopt_perceive(self, key):
+        """The call still in flight for the same camera and region, if any. Its scene passes the phase's
+        freshness check or is dropped, as any other response."""
+        if self.perceive_inflight is None:
+            return None
+        k, future = self.perceive_inflight
+        return future if k == key and not future.done() else None
+
     def poll_scene(self, context):
         effect = self.scene_pending
         if not effect:
@@ -201,7 +232,7 @@ class Clients:
         if not context.active or context.active.id != effect.op_id or context.state == State.CANCELLING:
             self.scene_pending = self.scene_future = None
             return
-        expired = context.sim-context.active.sim_start >= 3.0
+        expired = context.sim-context.active.sim_start >= SCENE_WAIT_S
         future = self.scene_future
         if future is not None and future.done():
             try:
@@ -227,9 +258,7 @@ class Clients:
             self.emit(Event('RESULT',effect.op_id,'fresh_scene_unavailable',ok=False,stopped=True))
             return
         if self.scene_future is None and context.sim >= self.next_scene_request and self.perceive_cli.service_is_ready():
-            region = 'hood' if effect.phase == State.DESTINATION and context.spec.kind == 'tubes' else 'table'
-            camera = 'torso' if context.spec.kind == 'tubes' and region == 'table' else 'head'
             try:
-                self.scene_future = self.perceive_cli.call_async(Perceive.Request(camera=camera,region=region))
+                self.scene_future = self.call_perceive(self.scene_request(effect.phase, context))
             except Exception:
                 self.next_scene_request = context.sim + .1

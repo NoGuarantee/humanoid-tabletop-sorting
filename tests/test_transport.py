@@ -1,7 +1,7 @@
 import unittest
 from concurrent.futures import Future
 from types import SimpleNamespace as NS
-from hack_brain.transport import ActionTransport
+from hack_brain.transport import ActionTransport, STOP_WAIT_S
 
 
 class Client:
@@ -124,7 +124,7 @@ class MeasuredTransportTests(unittest.TestCase):
 
     def test_success_also_requires_settling(self):
         self.h.result.set_result(NS(status=4,result=NS(success=True)))
-        self.time=13;self.t.poll()
+        self.time=10+STOP_WAIT_S+1;self.t.poll()
         self.assertFalse(self.events[-1].ok);self.assertFalse(self.events[-1].stopped)
         self.assertIsNotNone(self.t.pending)
 

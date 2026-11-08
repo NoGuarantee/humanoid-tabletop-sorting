@@ -54,6 +54,7 @@ class PerceptionNode(Node):
     def __init__(self):
         super().__init__("hack_perception")
         self.lock = threading.RLock()
+        self.perceive_calls = 0  # Perceive callbacks running now, in the timing record
         self.frame_arrived = threading.Condition(self.lock)
         self.diagnostics = DiagnosticSink(self.get_logger())
         self.declare_parameter("perceive_frame_wait_s", .75)
@@ -217,9 +218,14 @@ class PerceptionNode(Node):
     def on_perceive(self, req, res):
         started = perf_counter()
         timing = {}
+        with self.lock:
+            self.perceive_calls += 1
+            timing['concurrent_calls'] = self.perceive_calls
         try:
             return self._perceive(req, res, timing)
         finally:
+            with self.lock:
+                self.perceive_calls -= 1
             elapsed = perf_counter() - started
             self.diagnostics.submit(dict(event='perceive_timing', callback_wall_s=elapsed,
                 stages=timing, success=res.success, message=res.message))

@@ -6,6 +6,10 @@ import threading
 from dataclasses import dataclass
 from .context import Event
 
+# sim s after a result to measure the robot at rest. 2 s once missed it after a successful approach and ended the
+# mission (eval 2026-11-08); the cost is only paid when the stop is not seen.
+STOP_WAIT_S = 4.0
+
 
 @dataclass
 class Pending:
@@ -118,7 +122,7 @@ class ActionTransport:
             if p is None or p.response is None:
                 return
             stopped = self.stop_check(p.id, p.terminal_stamp)
-            if not stopped and self.now() - p.terminal_stamp < 2.0:
+            if not stopped and self.now() - p.terminal_stamp < STOP_WAIT_S:
                 return
             response = p.response
             p.response = None

@@ -262,9 +262,14 @@ def _result(c, e, op, effects):
             _done(c, effects, 'insufficient_time')
         else:
             obj = select(c, scene)
-            if obj is None:
+            if obj is None and c.empty_observations < c.config.max_empty_observations:
+                c.empty_observations += 1
+                c.scene = None
+                _enter(c, State.LOOK_TABLE, effects)
+            elif obj is None:
                 _done(c, effects, 'candidates_exhausted')
             else:
+                c.empty_observations = 0
                 c.target = obj
                 c.reoriented = False
                 c.history.setdefault(obj.id, History()).attempts += 1

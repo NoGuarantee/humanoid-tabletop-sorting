@@ -22,6 +22,21 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(f.run().reason, 'candidates_exhausted')
         self.assertFalse(any(e.phase == State.OPEN for e in f.commands))
 
+    def test_empty_observation_is_looked_at_again(self):
+        f = Fake(objects=[Object('a', 'figure', name='a')])
+        f.until(State.OBSERVE)
+        f.answer(Scene(f.sim, f.objects, ()))  # perception found no trays this time
+        self.assertEqual(f.c.state, State.LOOK_TABLE)
+        c = f.run()
+        self.assertEqual(c.reason, 'candidates_exhausted')
+        self.assertTrue(c.history['a'].placed)
+
+    def test_empty_observations_are_bounded(self):
+        f = Fake(objects=[])
+        c = f.run()
+        looks = [x for x in f.commands if x.phase == State.LOOK_TABLE]
+        self.assertEqual(len(looks), 1 + c.config.max_empty_observations)
+
     def test_unreachable_retries_are_bounded(self):
         f = Fake(objects=[Object('a', 'figure', name='a')])
         for _ in range(2):

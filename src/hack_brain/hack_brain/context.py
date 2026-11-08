@@ -115,6 +115,8 @@ class Config:
     reserve: float = 10.0
     max_attempts: int = 2
     max_recoveries: int = 6
+    # Perception finds 1-3 of the trays per call: an empty answer is looked at again before giving up.
+    max_empty_observations: int = 2
     min_confidence: float = 0.6
 
 
@@ -142,6 +144,7 @@ class Context:
     active: Optional[Operation] = None
     serial: int = 0
     recoveries: int = 0
+    empty_observations: int = 0
     reason: str = ''
     blocked: bool = False
     cancel_wall: float = 0.0

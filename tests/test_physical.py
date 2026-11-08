@@ -40,6 +40,18 @@ class MeasurementsTests(unittest.TestCase):
         m=Measurements();fill(m,'right',positions=[1.01,.94,-.13,1.12,.55,.1],efforts=[.01,.12,1.,1.,.51,1.])
         self.assertEqual(m.hand('right',1.4,1,[1,1,1,.3,.4,.1])[1],'HOLDING')
 
+    def test_pinching_thumb_oscillation_still_reads(self):
+        m=Measurements()
+        for i in range(5):
+            m.update('left',msg(1+i*.1,[1.03,1.03,1.04,.88,.36+(.08 if i%2 else 0),.11],[.66,.65,.63,1.,1.,1.]))
+        self.assertIsNotNone(m.hand('left',1.4,1,[1,1,1,.3,.4,.1]))
+
+    def test_closing_finger_is_not_at_rest(self):
+        m=Measurements()
+        for i in range(5):
+            m.update('left',msg(1+i*.1,[1.,1.,1.,1.-i*.1,1.-i*.1,.1],[.1]*6))
+        self.assertIsNone(m.hand('left',1.4,1,[1,1,1,.3,.4,.1]))
+
     def test_finger_pushed_past_open_still_reads(self):
         m=Measurements();fill(m,'left',positions=[1.02,1.02,1.01,.83,1.54,.11],efforts=[.67,.66,.68,1.,.61,.29])
         self.assertIsNotNone(m.hand('left',1.4,1,[1,1,1,.3,1,.1]))

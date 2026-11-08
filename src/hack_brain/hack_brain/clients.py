@@ -8,7 +8,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 
 from .context import Container, Event, Evidence, Object, Scene, State
 from .physical import PhysicalVerifier
-from .sensors import Measurements, stamp
+from .sensors import HAND_STILL, Measurements, stamp
 from sensor_msgs.msg import JointState
 from tf2_ros import Buffer, TransformListener
 from rclpy.time import Time
@@ -18,7 +18,6 @@ from .skills import Skills
 from .transport import ActionTransport
 
 
-HAND_STILL = .015  # finger reading spread over 0.3 s that still counts as stopped, as sensors.hand
 SCENE_WAIT_S = 6.0  # sim s an OBSERVE or DESTINATION waits for a fresh scene: the first look after an arm
                    # move took 4-6 s wall, 2.5-3.7 s sim, waiting for /tf (eval 2026-11-08)
 # sim s a TCP pose from /tf may lag /clock. 0.2 s left the grasp baseline empty: every lift of the held cartridge
@@ -161,8 +160,7 @@ class Clients:
 
     def stopped(self, op_id, since):
         resource = self.stop_resources.get(op_id)
-        # A hand squeezing an object at full effort jitters by about 0.01: the 0.004 joint tolerance never
-        # saw it settle, and a close on the cartridge ended the mission as a stop it could not confirm.
+        # A squeezing hand jitters (sensors.HAND_STILL); the 0.004 joint tolerance never saw it settle.
         tolerance = HAND_STILL if resource and resource[0] in ('left', 'right') else .004
         now = self.now()
         still = bool(resource and self.measurements.window(resource[0],now,since,resource[1],tolerance=tolerance))

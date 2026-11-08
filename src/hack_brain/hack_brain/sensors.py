@@ -3,6 +3,12 @@ from collections import deque
 import math
 import threading
 
+# Finger reading spread over 0.3 s that still counts as a hand at rest, for the hold reading and for the stop
+# after a hand op. A thumb squeezing at full effort jitters: 0.018 on the sink, 0.08 pinching the cartridge,
+# where 0.04 never saw the hand settle and the close ended the mission as an unconfirmed stop (eval 2026-11-08).
+# A closing finger crosses 0..1 in about a second, far more than this in 0.3 s.
+HAND_STILL = 0.12
+
 
 def stamp(msg):
     return msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
@@ -68,9 +74,7 @@ class Measurements:
                 f"max gap {gaps:.2f} s, over {tolerance}: {', '.join(moving) or 'none'}")
 
     def hand(self, side, now, since, target=None):
-        # A thumb squeezing the sink at full effort jitters 0.018 over 0.3 s: at 0.015 a held sink read as no
-        # hand, and the monitor took that for a lost hold mid-lift (eval 2026-11-08). Closing fingers move far more.
-        row = self.window(side, now, since, tuple(str(i) for i in range(1,7)), tolerance=0.04)
+        row = self.window(side, now, since, tuple(str(i) for i in range(1,7)), tolerance=HAND_STILL)
         if row is None:
             return None
         t, values, msg = row

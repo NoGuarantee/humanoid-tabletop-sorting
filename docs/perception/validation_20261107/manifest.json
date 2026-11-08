@@ -1,0 +1,112 @@
+{
+  "current_source_sha256": {
+    "hack_perception/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "hack_perception/classify.py": "19f72c029df248441e0340d82490d195694e80f425164c4c507ce69f7e1ee688",
+    "hack_perception/geometry.py": "ebf0317573b5182c074eb74a07fc3a2cecd065411665ea2c8681e1d8e081d4a4",
+    "hack_perception/perception_node.py": "6c65a9674b35f4f7474367a8021f7695320c352f3f7b569eb10133df15ed0d81",
+    "hack_perception/rgbd/__init__.py": "b731ca9ab9d45cc051e6eae76b8655462b956d9fac4cfb5741884d8980db29f5",
+    "hack_perception/rgbd/detection.py": "cdd8d52847e3da65a3d3cb3b97888e8e13f9df745fb6ee6642cd8a316b8bc3bf",
+    "hack_perception/rgbd/fit_rgbd_templates.py": "4579af555cdc3c81258cf661eb58d0e97e71ab7b17e4a8cd1104fd777fc7791e",
+    "hack_perception/rgbd/full_pose_nn.py": "4d7e43ff0fadc0b9537a2d965f0c628bf73b098316a3064dbecfe9c2d56f2750",
+    "hack_perception/rgbd/geometry.py": "c420c7db679a716fe190e4ae83d6e9d54cefe6163fb857c923b5785df6c82999",
+    "hack_perception/rgbd/multiview_association.py": "23c82dc987b8e2abed3f47585b8ed4664f8ae22168a316193d1620081c3ee630",
+    "hack_perception/rgbd/paired_box_identity.py": "a7b2745da6d454332c4f4f93e371e18604f595513464043401fde73583c08079",
+    "hack_perception/rgbd/pose_backend.py": "469cb48764c375a4a968d9458aff5cd9b45ccf50e5eba77f8f9603845ba89e72",
+    "hack_perception/rgbd/rgbd_free_space.py": "25cd988e92baa0ef3dae0d198beb87eaca8d5acee406e8af91e918a6754a9257",
+    "hack_perception/rgbd/rgbd_identity.py": "23a7a5e4816f883768987e8124bcababd90103b3d146f92e9c4e7c2ad8ebc7bd",
+    "hack_perception/rgbd/rgbd_template_refinement.py": "04dfcdec9b31e418341bb5504057ca77e8a295fa00838ffb3c6c6f2665fdeda5",
+    "hack_perception/rgbd/scene_geometry.py": "ebe463021c0f57deaeb12d4288f719cce578f1223de46b9468b44d28baf8c6f9",
+    "hack_perception/rgbd/seeded_icp.py": "b7057893f28229170f3880541c64ac6807dbc10e611da870fa23371983b2d132",
+    "hack_perception/rgbd/tube_end_ranker.py": "8ac96d26748b9482009d728e851fbf4b704245cd0d8a9b5db644fff32cb59422",
+    "hack_perception/rgbd/tube_nn_features.py": "6fbd0649c8d94b434feea64cd90117459d7aba15f1f1849a2199c918d648f521",
+    "hack_perception/rgbd/yolo_pose_head.py": "75a268f9646f70202f5b12a0f1b4cd79b7d87284a8ee4b1e463aa9b6f6db12f7",
+    "hack_perception/rgbd_frames.py": "c3508f6bfa3023e18b0c4cca90f56d4e250bb3d306c2f499d4597f56cb1e0746",
+    "hack_perception/rgbd_labels.py": "c2f770f247de66be751c4e457d533b1b256b13dffc71e7b53326a58868af1f16",
+    "hack_perception/rgbd_response.py": "d19c3f78d8f26400a6aa198ccb98ff0c042475255d4ab68ea0c11090f2df2108",
+    "hack_perception/rgbd_service.py": "57c33292ba9a9096ada49bf7dadb5d905e84bb21784c700627a6c2d9449fe3cf",
+    "hack_perception/rgbd_worker.py": "9724537aacdcd7bd31b4b4bcf68db0110408a3bd7cd4db60bae9a25b4f7dcf68",
+    "hack_perception/table_clusters.py": "91f2f6b909da2b5eb99aad6b8540820ac496fc724e3f6c57862a8da0c04c08a2",
+    "setup.py": "ba4c8612fc5cbc3847ba2d253b7bf26626dea1903fcdbbd10943a1450f4c8fe1"
+  },
+  "files_sha256": {
+    "benchmark-cpu.json": "21f2ac4232f8c643ce9a4cf816d3233c91f20c771f5856d003237a7ba0173304",
+    "benchmark-cuda-0.json": "f1cfa1aa80603359a7a6692ae31234eb63a233acc9ea6b7e4f70f4e046a22529",
+    "benchmark-filtered-cpu.json": "e41d75f9ff82831b7bd51b3e192c73dcf83d4363aec294e1dbf080b7cc0bad3f",
+    "build-final.log": "3ca74c6821373837a09a1bb088a42e6fceca6253c16ef3cde32d3d3942cbd242",
+    "ros-replay.json": "93da9e3a1c7ea274e2615a76bcf9eb3c8926a45a977206b4f7e498321b1468c9",
+    "ros_replay_probe.py": "c8e799820357a65332a3bdd4b93381388520caa1ea19d0136ce01ce32c8de454"
+  },
+  "cpu_cuda_pose_comparison": [
+    {
+      "capture_id": "native-pilot-20261105-sort2-p4-none-00-000000",
+      "deltas": [
+        {
+          "name": "Cole_Hardware_Bowl_Scirocco_YellowBlue",
+          "position_m": 0.0,
+          "rotation_rad": 0.0
+        },
+        {
+          "name": "Ecoforms_Cup_B4_SAN",
+          "position_m": 0.0,
+          "rotation_rad": 2.9802322387695312e-08
+        },
+        {
+          "name": "Schleich_African_Black_Rhino",
+          "position_m": 0.0,
+          "rotation_rad": 0.0
+        },
+        {
+          "name": "Threshold_Bamboo_Ceramic_Soap_Dish",
+          "position_m": 0.0,
+          "rotation_rad": 0.0
+        },
+        {
+          "name": "3D_Dollhouse_Sink",
+          "position_m": 0.0,
+          "rotation_rad": 2.9802322387695312e-08
+        }
+      ]
+    },
+    {
+      "capture_id": "sink-000082-000000",
+      "deltas": [
+        {
+          "name": "Schleich_African_Black_Rhino",
+          "position_m": 0.0,
+          "rotation_rad": 6.664001874625058e-08
+        },
+        {
+          "name": "Cole_Hardware_Bowl_Scirocco_YellowBlue",
+          "position_m": 0.0,
+          "rotation_rad": 0.0
+        },
+        {
+          "name": "Ecoforms_Cup_B4_SAN",
+          "position_m": 0.0,
+          "rotation_rad": 5.575503985246929e-08
+        }
+      ]
+    },
+    {
+      "capture_id": "mouse-000060-000000",
+      "deltas": [
+        {
+          "name": "Brother_Ink_Cartridge_Magenta_LC75M",
+          "position_m": 0.0,
+          "rotation_rad": 0.0
+        },
+        {
+          "name": "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g",
+          "position_m": 0.0,
+          "rotation_rad": 2.1073424255447017e-08
+        },
+        {
+          "name": "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g",
+          "position_m": 0.00011459764695250199,
+          "rotation_rad": 0.0017923111731480655
+        }
+      ]
+    }
+  ],
+  "note": "All production Python hashes match final CPU and filtered CPU replay. Ignore additional ._ AppleDouble metadata entries from initial macOS archive in raw receipts. CUDA snapshot precedes not_fitted label and restart-spawn guard only; numeric fitting path unchanged. Final CUDA rerun skipped because shared GPU lock was busy. ROS replay also precedes these two nonnumeric changes."
+}

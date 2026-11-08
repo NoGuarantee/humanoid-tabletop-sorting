@@ -1,12 +1,20 @@
 """Pick and place built from motion primitives. Owner: grasping.
 
+Two ways in. The mission FSM calls `command`: one action goal per phase, the FSM owns the sequence. `pick`, `place`
+and `ready` are blocking sequences with the fallbacks found on the bench (joint-space descent after a failed straight
+one, lift in two steps by the table edge, carry up and across). tools/pick_one.py runs them through
+blocking.BlockingClients; the FSM does not have them yet.
+
 Scoring (organisers' answer): only the final position counts. An object never lifted is 0 even if it was pushed or
 tipped over on the table, so a failed grasp before the lift costs nothing. Once lifted, the only good outcome is the
 right tray (+10); lifted and left on the table, still in the hand or in a wrong tray is -10, on the floor -10 always.
 So a skill must know whether it holds the object, and putting it back on the table after a lift does not help.
+
+Tube insertion/reorientation deliberately have no fabricated geometric implementation.
 """
 from geometry_msgs.msg import Pose
 
+from .context import State
 from .grasp_planner import FINGERTIP, flat_hold_point, plan_grasps, plan_place, pose, tcp_from_local
 
 # The joint loop accepts 0.01 rad. On a 0.7 m arm that is already about 1 cm at the TCP, and the default
@@ -16,11 +24,68 @@ from .grasp_planner import FINGERTIP, flat_hold_point, plan_grasps, plan_place, 
 GRASP_POS_TOL = 0.015
 
 
+def place_for(cand, container, db):
+    """plan_place for the hand as it holds the object.
+
+    Keep the grasp orientation: turning the wrist to yaw 0 on the way tips a pinched object out. plan_place aims
+    a vertical hand; a leaned (flat pinch) hand holds the object between the pads, not on the TCP axis.
+    """
+    plan = plan_place(cand.arm, container, db)
+    q = cand.grasp.orientation
+    if cand.leaned:
+        local = flat_hold_point(cand.arm)
+        for name in ("approach", "release", "retreat"):
+            p = getattr(plan, name)
+            target = (p.position.x, p.position.y, p.position.z - FINGERTIP)
+            setattr(plan, name, tcp_from_local(target, local, q))
+    else:
+        plan.approach.orientation = q
+        plan.release.orientation = q
+        plan.retreat.orientation = q
+    return plan
+
+
 class Skills:
-    def __init__(self, clients, db, log):
-        self.c = clients
+    def __init__(self, db, clients=None, log=None):
+        """`clients` and `log` only for the blocking pick/place/ready (blocking.BlockingClients)."""
         self.db = db
+        self.c = clients
         self.log = log
+        self.grasp = None
+        self.place_plan = None
+
+    def command(self, effect, scene, attempt=1):
+        from hack_interfaces.action import Hand, MoveJoints, MoveTcp
+        phase = effect.phase
+        if phase == State.LOOK_TABLE:
+            return 'joints', MoveJoints.Goal(
+                joints=['head_pitch_joint', 'head_yaw_joint', 'body_yaw_joint'],
+                positions=[0.4, 0.0, 0.0])
+        if phase == State.OPEN:
+            obj = next(o for o in scene.objects if (o.name or o.track_id) == effect.target.id)
+            candidates = plan_grasps(obj, scene, self.db)
+            if not candidates:
+                raise ValueError('no_grasp_candidates')
+            self.grasp = candidates[min(attempt - 1, len(candidates) - 1)]
+            return 'hand', Hand.Goal(hand=self.grasp.arm, preset='open')
+        if self.grasp is None:
+            raise ValueError('missing_grasp_plan')
+        g = self.grasp
+        if phase in (State.CLOSE, State.RELEASE):
+            return 'hand', Hand.Goal(hand=g.arm, preset=g.hand_preset if phase == State.CLOSE else 'open',
+                                     force=float(g.force if phase == State.CLOSE else 0.0))
+        if phase == State.TRANSFER:
+            container = next(x for x in scene.containers if x.id == effect.destination and x.kind == 'tray')
+            self.place_plan = place_for(g, container, self.db)
+        poses = {State.APPROACH: g.pre_grasp, State.DESCEND: g.grasp, State.LIFT: g.lift, State.BACK_OFF: g.pre_grasp}
+        if self.place_plan:
+            poses.update({State.TRANSFER: self.place_plan.approach, State.LOWER: self.place_plan.release,
+                          State.RETREAT: self.place_plan.retreat})
+        if phase not in poses:
+            raise NotImplementedError('skill unavailable: ' + phase.value)
+        return 'tcp', MoveTcp.Goal(arm=g.arm, target=poses[phase],
+                                  mode='direct' if phase in (State.APPROACH, State.TRANSFER) else 'linear',
+                                  pos_tol=GRASP_POS_TOL if phase == State.DESCEND else 0.0)
 
     def holding(self, arm, hand_result):
         # TODO(grasping): also check the weight on /arm_6dof_{arm} after lifting (force along gravity)
@@ -117,20 +182,7 @@ class Skills:
         return self.c.move_tcp(arm, up, "linear") and self.c.move_tcp(arm, over, "linear")
 
     def place(self, cand, container, put_back_pose=None):
-        plan = plan_place(cand.arm, container, self.db)
-        # Keep the grasp orientation. Turning the wrist to yaw 0 on the way tips a pinched object out.
-        q = cand.grasp.orientation
-        if cand.leaned:
-            # plan_place aimed a vertical hand. The object sits between the pads, not on the TCP axis.
-            local = flat_hold_point(cand.arm)
-            for name in ("approach", "release", "retreat"):
-                p = getattr(plan, name)
-                target = (p.position.x, p.position.y, p.position.z - FINGERTIP)
-                setattr(plan, name, tcp_from_local(target, local, q))
-        else:
-            plan.approach.orientation = q
-            plan.release.orientation = q
-            plan.retreat.orientation = q
+        plan = place_for(cand, container, self.db)
         if not self._carry(cand.arm, cand.lift, plan.approach) and not self._to_approach(cand.arm, plan.approach):
             # TODO(grasping): another approach or the other arm. Putting the object back gives the same -10
             # as dropping it, but frees the arm for a retry later.

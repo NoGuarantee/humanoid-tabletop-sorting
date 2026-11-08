@@ -36,7 +36,7 @@ import time
 
 import rclpy
 from geometry_msgs.msg import Point, Pose, Quaternion, Vector3
-from hack_brain.clients import Clients
+from hack_brain.blocking import BlockingClients as Clients
 from hack_brain.grasp_planner import FINGERTIP, load_db, plan_grasps, plan_place
 from hack_brain.skills import Skills
 from hack_interfaces.msg import Container, DetectedObject, SceneObjects
@@ -193,7 +193,7 @@ class PickOne(Node):
         super().__init__("pick_one", parameter_overrides=[
             Parameter("use_sim_time", Parameter.Type.BOOL, True)])
         self.api = Clients(self)
-        self.skills = Skills(self.api, load_db(DB), self.get_logger())
+        self.skills = Skills(load_db(DB), self.api, self.get_logger())
         self.waist = None
         self.create_subscription(JointState, "/joint_states", self.on_joints, 10)
 

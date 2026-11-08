@@ -34,13 +34,18 @@ class TaskSpec:
             return [rid for rid, r in hood.items() if r.get("tube") == tube_type]
         if self.rule == "by_cap_color":
             return [rid for rid, r in hood.items() if r.get("color") == cap]
-        return list(hood)  # any_slot
+        return list(hood) if self.rule == "any_slot" else []
 
 
 def parse_task(text):
     d = json.loads(text)
+    if not isinstance(d, dict):
+        raise ValueError("task must be an object")
     task = d.get("task", "")
     kind = "tubes" if task == "tubes" else "sort"
+    for key in ("categories", "trays", "objects", "tubes", "racks"):
+        if not isinstance(d.get(key, {}), dict):
+            raise ValueError(f"{key} must be an object")
     return TaskSpec(
         task=task, kind=kind, variant=d.get("variant", ""), rule=d.get("rule", ""),
         categories=d.get("categories", {}), trays=d.get("trays", {}), objects=d.get("objects", {}),

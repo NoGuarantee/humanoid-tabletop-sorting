@@ -1,0 +1,39 @@
+{
+  "task": {
+    "task": "sort3",
+    "ru": "\u0421\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u043a\u0430: 3 \u043a\u0430\u0442\u0435\u0433\u043e\u0440\u0438\u0438 \u043f\u043e 3 \u043e\u0431\u044a\u0435\u043a\u0442\u0430, 3 \u043b\u043e\u0442\u043a\u0430",
+    "objects_from": "pool 4",
+    "categories": {
+      "figure": "tray_left",
+      "dish": "tray_right",
+      "box": "tray_center"
+    },
+    "trays": {
+      "tray_left": "red",
+      "tray_right": "blue",
+      "tray_center": "green"
+    },
+    "objects": {
+      "Schleich_African_Black_Rhino": "figure",
+      "3D_Dollhouse_Sink": "figure",
+      "LADYBUG_BEAD": "figure",
+      "Threshold_Bamboo_Ceramic_Soap_Dish": "dish",
+      "Cole_Hardware_Bowl_Scirocco_YellowBlue": "dish",
+      "Ecoforms_Cup_B4_SAN": "dish",
+      "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g": "box",
+      "Brother_Ink_Cartridge_Magenta_LC75M": "box",
+      "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack": "box"
+    }
+  },
+  "names": {
+    "Schleich_African_Black_Rhino": "figure",
+    "3D_Dollhouse_Sink": "figure",
+    "LADYBUG_BEAD": "figure",
+    "Threshold_Bamboo_Ceramic_Soap_Dish": "dish",
+    "Cole_Hardware_Bowl_Scirocco_YellowBlue": "dish",
+    "Ecoforms_Cup_B4_SAN": "dish",
+    "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g": "box",
+    "Brother_Ink_Cartridge_Magenta_LC75M": "box",
+    "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack": "box"
+  }
+}

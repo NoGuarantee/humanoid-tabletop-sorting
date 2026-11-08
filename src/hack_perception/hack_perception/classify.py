@@ -304,3 +304,12 @@ def _swatch_rgb(rgb):
 
 if __name__ == "__main__":
     raise SystemExit(_check())
+
+
+def merge_trays(model_trays, rejected, rgb, tray_of_color):
+    """Prefer openings fitted from masks. Fill missing IDs from colour clusters."""
+    trays = {t.id: (t.id, t.color, t.center, t.yaw, t.size) for t in model_trays}
+    if set(tray_of_color.values()) - trays.keys():
+        for t in find_trays(rejected, rgb, tray_of_color):
+            trays.setdefault(t["id"], (t["id"], t["color"], t["center"], t["yaw"], t["size"]))
+    return list(trays.values())

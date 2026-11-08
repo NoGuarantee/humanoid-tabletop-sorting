@@ -17,7 +17,7 @@ import threading
 import time
 
 import rclpy
-from hack_brain.clients import Clients
+from hack_brain.blocking import BlockingClients as Clients
 from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node

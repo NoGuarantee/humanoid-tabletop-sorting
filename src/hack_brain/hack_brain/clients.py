@@ -63,7 +63,10 @@ class Clients:
             node.create_subscription(JointState, topic, lambda msg,k=key: self.measurements.update(k,msg),
                                      10, callback_group=cb)
         self.tf = Buffer()
-        self.tf_listener = TransformListener(self.tf,node)
+        # /tf on its own node and thread. On this node's executor every /tf message became a task in the shared
+        # thread pool (tf2_ros puts it in a reentrant group): /tf lagged 1.2 s, and under load /clock and the camera
+        # callbacks waited behind it for over 10 s (eval 2026-11-08).
+        self.tf_listener = TransformListener(self.tf, None, spin_thread=True)
         self.verifier = PhysicalVerifier(self.measurements,self.tcp)
         self.stop_resources = {}
         self.stop_reported = None

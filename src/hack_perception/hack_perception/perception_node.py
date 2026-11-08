@@ -69,7 +69,10 @@ class PerceptionNode(Node):
         self.create_subscription(String, "/sim/objects/names", self.on_names, latched, callback_group=cb)
         self.create_subscription(String, "/sim/task", self.on_task, latched, callback_group=cb)
         self.tf = Buffer()
-        self.tf_listener = TransformListener(self.tf, self, spin_thread=False)
+        # /tf on its own node and thread. On this node's executor every /tf message became a task in the shared
+        # thread pool (tf2_ros puts it in a reentrant group): /tf lagged 1.2 s, and under load /clock and the camera
+        # callbacks waited behind it for over 10 s (eval 2026-11-08).
+        self.tf_listener = TransformListener(self.tf, None, spin_thread=True)
         self.create_service(Perceive, "perception/perceive", self.on_perceive, callback_group=cb)
         self.model_poses = None
         model_dir = self.declare_parameter("rgbd_model_dir", os.environ.get("NSSR_RGBD_MODEL_DIR", "")).value

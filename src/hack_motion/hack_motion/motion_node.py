@@ -101,7 +101,10 @@ class MotionNode(Node):
                      cancel_callback=lambda _: CancelResponse.ACCEPT)
         self.declare_parameter("planner", "curobo")  # curobo | ik (ik is the unused fallback, see ik.py)
         self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
+        # /tf on its own node and thread. On this node's executor every /tf message became a task in the shared
+        # thread pool (tf2_ros puts it in a reentrant group): /tf lagged 1.2 s, and under load /clock and the camera
+        # callbacks waited behind it for over 10 s (eval 2026-11-08).
+        self.tf_listener = TransformListener(self.tf_buffer, None, spin_thread=True)
         self._planner = None
         self._tcp_lock = threading.Lock()
         if self.get_parameter("planner").value == "curobo":

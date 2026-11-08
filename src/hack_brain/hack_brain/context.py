@@ -153,6 +153,8 @@ class Context:
     # An arm may be over the table, in the head camera view (APPROACH was accepted and no CLEAR since).
     # An arm left at the tray or above an object hid three of nine objects and all three trays from the look.
     arm_out: bool = False
+    # RETREAT is done; the look that follows checks the placement (VERIFY_PLACE) instead of a new OBSERVE.
+    place_look: bool = False
     last_recovery: str = ''
     reason: str = ''
     blocked: bool = False

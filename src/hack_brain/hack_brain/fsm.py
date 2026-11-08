@@ -12,7 +12,7 @@ NEXT = {State.OPEN: State.APPROACH, State.APPROACH: State.DESCEND, State.DESCEND
         State.CLOSE: State.VERIFY_GRASP, State.LIFT: State.VERIFY_LIFT,
         State.REORIENT: State.VERIFY_REORIENT, State.TRANSFER: State.VERIFY_HOLD,
         State.LOWER: State.RELEASE, State.INSERT: State.RELEASE,
-        State.RELEASE: State.RETREAT, State.RETREAT: State.VERIFY_PLACE}
+        State.RELEASE: State.RETREAT}
 
 
 def _enter(c, state, effects):
@@ -27,7 +27,7 @@ def _enter(c, state, effects):
 
 def _may_have_moved(c, op):
     state = op.phase
-    if state == State.APPROACH:
+    if state in (State.APPROACH, State.TRANSFER):
         c.arm_out = True
     if state == State.DESCEND:
         c.arm_low = True
@@ -210,7 +210,14 @@ def _result(c, e, op, effects):
         return
     if state == State.LOOK_TABLE:
         c.scene_invalidated_at = c.sim
-        _enter(c, State.OBSERVE, effects)
+        _enter(c, State.VERIFY_PLACE if c.place_look else State.OBSERVE, effects)
+        c.place_look = False
+        return
+    if state == State.RETREAT:
+        # The arm above the tray hid it and the object from the head camera, so the placement went unconfirmed
+        # (eval 2026-11-08). Take the arm out of view first, then look at the placement.
+        c.place_look = True
+        _look(c, effects)
         return
     if state in VERIFY:
         ev = evidence(c, e.data, op.sim_start)

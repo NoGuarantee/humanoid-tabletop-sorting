@@ -149,10 +149,26 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(f.c.state, State.RETREAT)
         self.assertFalse(f.c.history['a'].placed)
         f.answer()
+        # The arm leaves the head camera view before the placement is looked at.
+        self.assertEqual(f.c.state, State.CLEAR)
+        f.answer()
+        self.assertEqual(f.c.state, State.LOOK_TABLE)
+        f.answer()
         self.assertEqual(f.c.state, State.VERIFY_PLACE)
         self.assertFalse(f.c.history['a'].placed)
         f.answer()
         self.assertTrue(f.c.history['a'].placed)
+        f.until(State.OBSERVE)
+        self.assertEqual(f.c.state, State.OBSERVE)
+
+    def test_failed_clear_still_checks_the_placement(self):
+        f = Fake()
+        f.until(State.RETREAT)
+        f.answer()
+        f.answer('unreachable', ok=False)
+        self.assertEqual(f.c.state, State.LOOK_TABLE)
+        f.answer()
+        self.assertEqual(f.c.state, State.VERIFY_PLACE)
 
     def test_motion_error_without_stop_does_not_recover(self):
         f = Fake()

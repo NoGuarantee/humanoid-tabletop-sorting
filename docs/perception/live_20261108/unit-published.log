@@ -1,0 +1,57 @@
+Starting >>> hack_interfaces
+Finished <<< hack_interfaces [0.71s]
+Starting >>> hack_brain
+Starting >>> hack_motion
+Finished <<< hack_brain [1.03s]
+Starting >>> hack_perception
+Finished <<< hack_motion [1.04s]
+Finished <<< hack_perception [0.82s]
+Starting >>> hack_bringup
+Finished <<< hack_bringup [0.83s]
+
+Summary: 5 packages finished [3.56s]
+...............[INFO] [1794085519.314305915] [hack_perception]: perception ready
+.[INFO] [1794085519.365862939] [hack_perception]: perception ready
+.[INFO] [1794085519.373289489] [hack_perception]: perception ready
+................................
+----------------------------------------------------------------------
+Ran 49 tests in 2.778s
+
+OK
+Arguments (pass arguments as '<name>:=<value>'):
+
+    'serialized_images':
+        no description given
+        (default: 'true')
+
+    'perceive_frame_wait_s':
+        no description given
+        (default: '0.75')
+
+    'rgbd_model_dir':
+        no description given
+        (default: EnvVar('NSSR_RGBD_MODEL_DIR'))
+
+    'rgbd_enable_model_poses':
+        no description given
+        (default: EnvVar('NSSR_RGBD_ENABLE_MODEL_POSES'))
+
+    'rgbd_device':
+        no description given
+        (default: EnvVar('NSSR_RGBD_DEVICE'))
+
+    'rgbd_on_demand':
+        no description given
+        (default: EnvVar('NSSR_RGBD_ON_DEMAND'))
+
+    'rgbd_model_names':
+        no description given
+        (default: EnvVar('NSSR_RGBD_MODEL_NAMES'))
+
+    'rgbd_torch_threads':
+        no description given
+        (default: EnvVar('NSSR_RGBD_TORCH_THREADS'))
+
+    'rgbd_pool':
+        no description given
+        (default: '0')

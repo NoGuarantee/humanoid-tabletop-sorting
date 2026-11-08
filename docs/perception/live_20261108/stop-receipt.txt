@@ -1,0 +1,6 @@
+sim running=false pid=0 exit=0
+solution running=false pid=0 exit=0
+    PID ELAPSED CMD
+4023942 1740003 /home/patratsky/vla/Isaac-GR00T/.venv/bin/python -u groot_server.py --model-path /home/patratsky/vla/models/GR00T-N1.7-3B-qwencfg --port 8624 --arms right --no-height --no-waist
+pid, process_name, used_gpu_memory [MiB]
+4023942, /home/patratsky/vla/Isaac-GR00T/.venv/bin/python, 6942 MiB

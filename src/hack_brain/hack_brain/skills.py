@@ -71,6 +71,8 @@ class Skills:
         if self.grasp is None:
             raise ValueError('missing_grasp_plan')
         g = self.grasp
+        if phase == State.CLEAR:  # the arm of the last grasp, to the side and out of the head camera view
+            return 'tcp', MoveTcp.Goal(arm=g.arm, target=Pose(), mode='ready')
         if phase in (State.CLOSE, State.RELEASE):
             return 'hand', Hand.Goal(hand=g.arm, preset=g.hand_preset if phase == State.CLOSE else 'open',
                                      force=float(g.force if phase == State.CLOSE else 0.0))

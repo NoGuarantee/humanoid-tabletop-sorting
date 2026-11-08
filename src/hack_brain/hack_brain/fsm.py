@@ -8,7 +8,7 @@ from .verification import evidence, fresh, placement
 
 VERIFY = {State.VERIFY_EMPTY, State.VERIFY_GRASP, State.VERIFY_LIFT, State.VERIFY_REORIENT,
           State.VERIFY_HOLD, State.VERIFY_TRANSFER, State.VERIFY_PLACE, State.RECOVER}
-NEXT = {State.OPEN: State.APPROACH, State.DESCEND: State.CLOSE,
+NEXT = {State.OPEN: State.APPROACH, State.APPROACH: State.DESCEND, State.DESCEND: State.CLOSE,
         State.CLOSE: State.VERIFY_GRASP, State.LIFT: State.VERIFY_LIFT,
         State.REORIENT: State.VERIFY_REORIENT, State.TRANSFER: State.VERIFY_HOLD,
         State.LOWER: State.RELEASE, State.INSERT: State.RELEASE,
@@ -27,6 +27,8 @@ def _enter(c, state, effects):
 
 def _may_have_moved(c, op):
     state = op.phase
+    if state == State.APPROACH:
+        c.arm_out = True
     if state == State.DESCEND:
         c.arm_low = True
     if state in (State.DESCEND, State.RELEASE):
@@ -36,6 +38,11 @@ def _may_have_moved(c, op):
         c.history[c.target.id].contacted = True
     if state == State.LIFT and c.history[c.target.id].lift != Lift.LIFTED:
         c.history[c.target.id].lift = Lift.UNKNOWN
+
+
+def _look(c, effects):
+    """Look at the table, after taking the last arm out of the camera view."""
+    _enter(c, State.CLEAR if c.arm_out else State.LOOK_TABLE, effects)
 
 
 def _done(c, effects, reason=None):
@@ -63,7 +70,7 @@ def _recover(c, effects, reason):
     if c.recoveries > c.config.max_recoveries:
         _done(c, effects, 'retries_exhausted:' + reason)
     elif c.target is None:
-        _enter(c, State.LOOK_TABLE, effects)
+        _look(c, effects)
     else:
         _enter(c, State.RECOVER, effects)
 
@@ -160,7 +167,7 @@ def transition(context: Context, event: Event):
             if e.kind == 'RESULT':
                 _may_have_moved(c, op)
             if (e.kind == 'RESULT' and not e.ok and not e.stopped
-                    and c.state not in VERIFY | {State.OBSERVE, State.DESTINATION, State.REFRESH_TARGET}):
+                    and c.state not in VERIFY | {State.OBSERVE, State.DESTINATION}):
                 _stop(c, effects, 'execution_failed_stop_unconfirmed')
             else:
                 c.active = None
@@ -174,6 +181,13 @@ def _result(c, e, op, effects):
         # Up or not, look again: a plan from a low arm fails on its own and spends the recovery budget.
         if e.kind == 'REJECTED' or not e.ok:
             c.last_recovery = 'back_off_failed'
+        _look(c, effects)
+        return
+    if state == State.CLEAR:
+        # Once per look: an arm that cannot reach the side pose may still leave the view clear enough.
+        c.arm_out = False
+        if e.kind == 'REJECTED' or not e.ok:
+            c.last_recovery = 'clear_failed'
         _enter(c, State.LOOK_TABLE, effects)
         return
     if state == State.LIFT and e.kind == 'RESULT' and e.ok:
@@ -209,7 +223,7 @@ def _result(c, e, op, effects):
                 _done(c, effects, 'hand_not_empty')
             else:
                 c.target = None
-                _enter(c, State.LOOK_TABLE, effects)
+                _look(c, effects)
         elif state == State.VERIFY_PLACE:
             if not placement(c, ev):
                 _done(c, effects, 'placement_unconfirmed')
@@ -229,7 +243,7 @@ def _result(c, e, op, effects):
                     c.arm_low = False
                     _enter(c, State.BACK_OFF, effects)
                 else:
-                    _enter(c, State.LOOK_TABLE, effects)
+                    _look(c, effects)
             elif h.lift == Lift.LIFTED:
                 _enter(c, State.REORIENT if c.spec.variant == 'lying' and not c.reoriented
                        else State.DESTINATION, effects)
@@ -285,7 +299,7 @@ def _result(c, e, op, effects):
             if obj is None and c.empty_observations < c.config.max_empty_observations:
                 c.empty_observations += 1
                 c.scene = None
-                _enter(c, State.LOOK_TABLE, effects)
+                _look(c, effects)
             elif obj is None:
                 _done(c, effects, 'candidates_exhausted')
             else:
@@ -295,21 +309,5 @@ def _result(c, e, op, effects):
                 c.history.setdefault(obj.id, History()).attempts += 1
                 c.destination, c.slot = destination_in_scene(c, scene, obj) or ('', None)
                 _enter(c, State.OPEN, effects)
-    elif state == State.APPROACH:
-        c.scene_invalidated_at = c.sim
-        _enter(c, State.REFRESH_TARGET, effects)
-    elif state == State.REFRESH_TARGET:
-        scene = e.data
-        if (not isinstance(scene, Scene) or scene.frame != 'pelvis'
-                or not fresh(scene.stamp, c.sim, c.config.freshness, c.scene_invalidated_at)
-                or not any(o.id == c.target.id and o.category == c.target.category and not o.partial
-                           and math.isfinite(o.confidence) and o.confidence >= c.config.min_confidence
-                           for o in scene.objects)):
-            _recover(c, effects, 'target_not_reobserved')
-        elif c.deadline - c.sim <= c.config.reserve:
-            _done(c, effects, 'insufficient_time')
-        else:
-            c.scene = scene
-            _enter(c, State.DESCEND, effects)
     elif state in NEXT:
         _enter(c, NEXT[state], effects)

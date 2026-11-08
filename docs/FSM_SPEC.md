@@ -82,7 +82,7 @@ brain сохраняет блокировку и завершает миссию
 |---|---|---|---|---|
 | WAIT | задача и clock; рука UNKNOWN | нет команды | START сохраняет задачу; tick → CHECK | startup watchdog → DONE |
 | CHECK | известная задача, лимит, capabilities | локальная проверка | необходимые навыки есть → VERIFY_EMPTY | unsupported/unavailable → DONE |
-| VERIFY_EMPTY | перед новой попыткой | запрос доказательства | свежий EMPTY → LOOK_TABLE | UNKNOWN/HOLDING → DONE |
+| VERIFY_EMPTY | перед новой попыткой | запрос доказательства | свежий EMPTY → CLEAR, если рука выходила к столу, иначе LOOK_TABLE | UNKNOWN/HOLDING → DONE |
 | LOOK_TABLE | рука EMPTY | MoveJoints головы/корпуса к столу | успех → OBSERVE | ошибка → bounded recovery / stop |
 | OBSERVE | рука EMPTY | perception table | свежая сцена pelvis → выбор | ошибки/устаревание: ограниченный повтор, затем DONE |
 | SELECT (локально) | назначение, уверенность, свободное гнездо, бюджет | выбор + счётчик попыток | цель → OPEN | нет кандидатов/времени → DONE |
@@ -105,7 +105,8 @@ brain сохраняет блокировку и завершает миссию
 | VERIFY_PLACE | после раскрытия | запрос доказательства | EMPTY + placed + destination/slot → RETREAT | иначе DONE placement_unconfirmed |
 | RETREAT | подтверждённое размещение | отход | success → VERIFY_EMPTY | DONE retreat_failed, placement сохраняется |
 | RECOVER | терминальная ошибка навыка | проверить руку | EMPTY → BACK_OFF, если рука могла остаться у объекта (DESCEND принят, LIFT не прошёл), иначе новый осмотр; HOLDING+LIFTED → REORIENT для lying без upright, иначе новое назначение; UNKNOWN → повторный замер в пределах recovery budget | лимит, анонимная цель после контакта → DONE |
-| BACK_OFF | RECOVER: EMPTY и рука внизу | линейно вверх к pre_grasp, как на main | LOOK_TABLE при любом исходе | — |
+| BACK_OFF | RECOVER: EMPTY и рука внизу | линейно вверх к pre_grasp, как на main | CLEAR при любом исходе | — |
+| CLEAR | перед осмотром, arm_out (APPROACH был принят) | MoveTcp `ready` руки последнего захвата: в сторону, из кадра головной камеры | LOOK_TABLE при любом исходе, arm_out=False | — |
 | CANCELLING | есть активная операция | один cancel | ACK+terminal+stopped → DONE | отказ/no ack/no stop → blocked DONE; 5 wall s |
 | DONE | reason отдельно от успеха | эффект publish done | поглощает всё | никаких движений |
 
@@ -134,14 +135,14 @@ brain сохраняет блокировку и завершает миссию
 | CANCELLING | CANCEL_ACK | id=current, отказ | blocked=True | done | DONE |
 | CANCELLING | RESULT / REJECTED | id=current | terminal=True, stop_confirmed | нет / done при ack | CANCELLING / DONE |
 | CANCELLING | TICK | cancel wall timeout | blocked=True | done | DONE |
-| VERIFY_EMPTY | RESULT | fresh EMPTY | hand=EMPTY | look | LOOK_TABLE |
+| VERIFY_EMPTY | RESULT | fresh EMPTY | hand=EMPTY | clear / look | CLEAR / LOOK_TABLE |
+| CLEAR | RESULT / REJECTED | любой | arm_out=False | look | LOOK_TABLE |
 | LOOK_TABLE | RESULT | success | нижняя граница времени кадра | perceive | OBSERVE |
 | OBSERVE | RESULT | fresh scene, кандидат, время | target, attempts++, destination | open | OPEN |
 | OBSERVE | RESULT | пусто/лимит попыток/мало времени | reason | done | DONE |
-| OBSERVE | RESULT | failure/stale, retry | retries++ | look | LOOK_TABLE |
+| OBSERVE | RESULT | failure/stale, retry | retries++ | clear / look | CLEAR / LOOK_TABLE |
 | OPEN | RESULT | success | нет | approach | APPROACH |
-| APPROACH | RESULT | success | инвалидировать старый кадр | perceive target | REFRESH_TARGET |
-| REFRESH_TARGET | RESULT | свежий прежний target, смещение ≤2 cm | новая сцена | descend | DESCEND |
+| APPROACH | ACCEPTED / RESULT | команда могла исполниться | arm_out=True | обработка исхода | DESCEND / RECOVER |
 | DESCEND | ACCEPTED / SEND_ERROR / RESULT | команда могла исполниться | invalidate scene, hand UNKNOWN, contacted | обработка исхода | DESCEND / CANCELLING / CLOSE |
 | CLOSE | RESULT | success | нет | verify | VERIFY_GRASP |
 | VERIFY_GRASP | RESULT | fresh HOLDING | hand=HOLDING | lift; history UNKNOWN после принятия/неопределённой отправки | LIFT |
@@ -160,9 +161,9 @@ brain сохраняет блокировку и завершает миссию
 | RETREAT | RESULT | success | нет | verify placement | VERIFY_PLACE |
 | навыки | RESULT / REJECTED | failure, retry | retries++, scene invalid | verify | RECOVER |
 | RECOVER | RESULT | fresh EMPTY, identity usable, arm_low | hand=EMPTY, arm_low=False | move up | BACK_OFF |
-| RECOVER | RESULT | fresh EMPTY, identity usable, рука не внизу | hand=EMPTY | look | LOOK_TABLE |
+| RECOVER | RESULT | fresh EMPTY, identity usable, рука не внизу | hand=EMPTY | clear / look | CLEAR / LOOK_TABLE |
 | RECOVER | RESULT | UNKNOWN, recoveries < max | retries++ | measure again | RECOVER |
-| BACK_OFF | RESULT / REJECTED | любой | нет | look | LOOK_TABLE |
+| BACK_OFF | RESULT / REJECTED | любой | нет | clear | CLEAR |
 | RECOVER | RESULT | fresh HOLDING, history LIFTED, lying без подтверждения upright | hand=HOLDING | reorient | REORIENT |
 | RECOVER | RESULT | fresh HOLDING, history LIFTED, остальные | hand=HOLDING | perceive destination | DESTINATION |
 | проверки | RESULT | unknown/stale/invalid evidence | hand=UNKNOWN, reason | done | DONE |
@@ -181,12 +182,13 @@ Lying добавляет REORIENT и VERIFY_REORIENT. Навыки вставк�
 stateDiagram-v2
     [*] --> WAIT
     WAIT --> VERIFY_EMPTY: задача, clock, capabilities
-    VERIFY_EMPTY --> LOOK_TABLE
+    VERIFY_EMPTY --> LOOK_TABLE: первый осмотр
+    VERIFY_EMPTY --> CLEAR: рука выходила к столу
+    CLEAR --> LOOK_TABLE
     LOOK_TABLE --> OBSERVE
     OBSERVE --> OPEN: цель и бюджет
     OPEN --> APPROACH
-    APPROACH --> REFRESH_TARGET
-    REFRESH_TARGET --> DESCEND
+    APPROACH --> DESCEND
     DESCEND --> CLOSE
     CLOSE --> VERIFY_GRASP
     VERIFY_GRASP --> LIFT
@@ -205,9 +207,9 @@ stateDiagram-v2
     RELEASE --> RETREAT
     VERIFY_PLACE --> VERIFY_EMPTY
     RETREAT --> VERIFY_PLACE
-    RECOVER --> LOOK_TABLE: EMPTY
+    RECOVER --> CLEAR: EMPTY
     RECOVER --> BACK_OFF: EMPTY, рука у объекта
-    BACK_OFF --> LOOK_TABLE
+    BACK_OFF --> CLEAR
     RECOVER --> DESTINATION: HOLDING и LIFTED, upright если lying
     RECOVER --> REORIENT: lying без upright
     CANCELLING --> DONE: bounded
@@ -239,7 +241,10 @@ VERIFY_TRANSFER добавлен, чтобы осмотр назначения �
 разрешает RECOVER, отсутствие подтверждения — только отмену/завершение. Motion принимает отмену,
 прекращает выдачу траектории и заменяет цели измеренным удержанием без раскрытия кисти.
 При HOLDING и неподтверждённом подъёме разрешены максимум max_attempts команд LIFT.
-REFRESH_TARGET повторно наблюдает цель после подхода, проверяя прежнюю идентичность и смещение.
+После APPROACH цель не наблюдается повторно: кисть над объектом закрывает его и соседей от головной камеры
+(на sort3 seed 1 повторный кадр видел 6 объектов из 9, и REFRESH_TARGET уводил в RECOVER). Спуск идёт по сцене
+из OBSERVE. Перед каждым осмотром после выхода руки к столу CLEAR отводит её в `ready`: оставленная у лотка или
+над столом рука закрывала лотки, и три осмотра подряд не находили ни одного.
 RELEASE → RETREAT → VERIFY_PLACE позволяет убрать кисть из кадра до подтверждения размещения.
 Только после VERIFY_PLACE история помечается placed; неудачный отход не объявляет укладку.
 Done: 3×0.2 s при штатном завершении, 10×0.5 s только в fallback.

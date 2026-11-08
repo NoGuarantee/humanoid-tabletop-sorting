@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 from .curobo_robot import load_robot_cfg
 from .robot import (
-    ARM_JOINTS, CUBOID_CACHE, JOINTS, TCP_LINK, TRAYS, clearance_z, fingertip, on_the_way, plan_limits, ready_pose,
+    ARM_JOINTS, CUBOID_CACHE, JOINTS, TCP_LINK, clearance_z, fingertip, on_the_way, plan_limits, ready_pose,
     spheres_hit, world_scene)
 
 
@@ -77,8 +77,8 @@ class CuroboPlanner:
         self.mp = None
         self.joint_names = []
         self.locks = {}  # lock_joints the current planner was built with
-        self.trays = ()  # trays of this task for the next build (motion_node, from /sim/task)
-        self.world_trays = ()  # trays the current planner was built with
+        self.table = None  # table plane (a, b, c, d) in pelvis. motion_node, from perception
+        self.trays = ()  # tray tuples (robot.TRAY_SIZE) of this task that perception has seen. motion_node
         self.objects = ()  # detected neighbours, (id, x, y, z, yaw, sx, sy, sz, top_z). motion_node, from perception
         self.left_out = ()  # ids the last sync_world kept out of the world, the object under the fingertips
         self._scene = None  # cuboid dict the collision world currently holds
@@ -101,14 +101,14 @@ class CuroboPlanner:
             moved = [name for name, value in self.locks.items()
                      if lock_positions and lock_positions.get(name) is not None
                      and abs(lock_positions[name] - value) > LOCK_TOL]
-            if not moved and self.world_trays == self.trays:
+            if not moved:
                 return "curobo already loaded"
             self.mp = None
             import gc
             import torch
             gc.collect()  # the old solvers hold CUDA graphs and buffers
             torch.cuda.empty_cache()
-            reason = f"locked joints moved: {moved}; trays {list(self.trays)}; "
+            reason = f"locked joints moved: {moved}; "
         else:
             reason = ""
         import curobo.runtime as runtime  # torch_util reads this copy, not curobo._src.runtime
@@ -120,10 +120,9 @@ class CuroboPlanner:
         self.locks = {name: float(v) for name, v in (cfg["kinematics"].get("lock_joints") or {}).items()}
         self._build_self_check(cfg["kinematics"])
         t0 = time.perf_counter()
-        self.world_trays = self.trays
         # The cache is allocated here and never grown: update_world writes poses into it, and the CUDA graph keeps
         # those buffers. More cuboids than the cache raises inside cuRobo instead of rebuilding the planner.
-        scene, _ = world_scene(self.trays, self.objects)
+        scene, _ = world_scene(self.table, self.trays, self.objects)
         self._scene = scene
         self.mp = MotionPlanner(MotionPlannerCfg.create(
             robot=copy.deepcopy(cfg), scene_model=scene, collision_cache={"cuboid": CUBOID_CACHE},
@@ -294,10 +293,11 @@ class CuroboPlanner:
             orientation = target.orientation
             near = fingertip((position.x, position.y, position.z),
                              (orientation.x, orientation.y, orientation.z, orientation.w))
-        scene, left_out = world_scene(self.trays, self.objects if objects else (), near)
+        scene, left_out = world_scene(self.table, self.trays, self.objects if objects else (), near)
         self.left_out = tuple(left_out)
         n = len(scene["cuboid"]) - 1 - len(self.trays)
-        note = f"{n} objects" + (f", left out {list(left_out)}" if left_out else "")
+        note = ("" if self.table else "no table, ") + f"trays {[t[0] for t in self.trays]}, {n} objects"
+        note += f", left out {list(left_out)}" if left_out else ""
         if scene == self._scene:
             self.scene_note = note
             return
@@ -336,8 +336,12 @@ class CuroboPlanner:
         """Objects only. The table and the trays are what the joint raise was built to stay clear of."""
         if not self._scene:
             return {}
-        skip = {"table"} | set(TRAYS)
+        skip = {"table", "no_table"} | set(self._tray_names())
         return {name: cub for name, cub in self._scene["cuboid"].items() if name not in skip}
+
+    def _tray_names(self):
+        """Trays the collision world holds now."""
+        return [t[0] for t in self.trays if self._scene and t[0] in self._scene["cuboid"]]
 
     def _joints_tensor(self, q_by_name):
         import torch
@@ -378,7 +382,7 @@ class CuroboPlanner:
             torch.tensor([[want[n] for n in self.joint_names]], device=q.device, dtype=q.dtype),
             joint_names=self.joint_names)
         traj = self.mp.plan_cspace(goal_js, state)
-        if (traj is None or not _flag(traj.success, any_ok=True)) and self.world_trays:
+        if (traj is None or not _flag(traj.success, any_ok=True)) and self._tray_names():
             # The trays are solid blocks here and hollow in the scene: a hand can rest inside one (the left hand
             # 0.8 cm into tray_center on 2026-11-07), and then no state of that robot is free. Leave without them.
             traj = self._without_trays(lambda: self.mp.plan_cspace(goal_js, state))
@@ -391,13 +395,14 @@ class CuroboPlanner:
 
     def _without_trays(self, plan):
         checker = self.mp.scene_collision_checker
+        trays = self._tray_names()
         try:
-            for name in self.world_trays:
+            for name in trays:
                 checker.enable_obstacle(name, False)
             self.mp.graph_planner.reset_buffer()  # it keeps node feasibility from the old scene
             return plan()
         finally:
-            for name in self.world_trays:
+            for name in trays:
                 checker.enable_obstacle(name, True)
             self.mp.graph_planner.reset_buffer()
 

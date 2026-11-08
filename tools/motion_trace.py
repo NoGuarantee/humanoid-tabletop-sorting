@@ -30,7 +30,7 @@ from pathlib import Path
 
 from trajectory_self_check import MESHES, URDF, Robot
 
-TABLE_Z = -0.18  # top of the table in pelvis, robot.TABLE_SCENE
+TABLE_Z = -0.18  # top of the table in pelvis, tools/scene_measured.py
 TILTED = (-0.1792, 0.0700)  # z = a + b x: the table top fitted to depth from the center camera, not measured by touch
 TABLE_X = (0.22, 0.98)
 TRAYS = {"left": (0.34, 0.69), "right": (0.34, -0.69), "center": (0.53, 0.0)}  # scene.yaml, centre in pelvis

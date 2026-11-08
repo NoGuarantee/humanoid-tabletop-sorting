@@ -29,7 +29,7 @@ from std_msgs.msg import String
 from tf2_ros import Buffer, TransformListener
 
 from .curobo_planner import Unreachable
-from .robot import ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, TCP_LINK, TRAYS, clip, raise_steps
+from .robot import ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, TCP_LINK, TRAY_IDS, clip, raise_steps
 
 PERIOD = 0.05  # s, real time between control checks
 # Inspire actuator 6, thumb rotation. It turns across before the other fingers close.
@@ -65,7 +65,6 @@ HELD_TOL = 0.05  # rad, the arm MoveTcp did not ask for: it only holds its pose
 # Joint step of one follow segment. 0.3 rad left the 10 cm grasp descent (21 planned waypoints, no joint
 # past 0.3) as a single joint-space chord, so the hand did not travel the straight line cuRobo had planned.
 PATH_STEP = 0.1
-TASK_WAIT = 5.0  # s, real time the preload waits for /sim/task, so that it does not build the planner twice
 
 
 class MotionNode(Node):
@@ -79,6 +78,8 @@ class MotionNode(Node):
         self.hand_state = {"left": None, "right": None}
         self.task_trays = None  # trays of the task from /sim/task, None until it arrives
         self.scene_objects = ()  # neighbours from the latest perception/scene, tuples for the cuRobo world
+        self.table_plane = None  # (a, b, c, d) of the table in pelvis, the latest perception/scene that had one
+        self.seen_trays = {}  # tray id -> tray tuple (robot.TRAY_SIZE), the last pose perception measured
         cb = ReentrantCallbackGroup()
         self.create_subscription(JointState, "/joint_states", self.on_joints, 10, callback_group=cb)
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
@@ -118,9 +119,6 @@ class MotionNode(Node):
         if not self._wait_joints(timeout=60.0):
             return
         self._startup("first /joint_states")
-        t0 = time.perf_counter()
-        while self.task_trays is None and time.perf_counter() - t0 < TASK_WAIT:
-            time.sleep(PERIOD)
         with self._tcp_lock:
             try:
                 with self.lock:
@@ -136,14 +134,14 @@ class MotionNode(Node):
 
     # ---------------------------------------------------------------- state
     def on_task(self, msg):
-        """The trays of this task go into the cuRobo world (sort2 has no tray_center, objects may lie there)."""
+        """Which trays this task has (sort2 has no tray_center, objects may lie there). Their poses come from perception."""
         try:
             trays = json.loads(msg.data).get("trays", {})
         except (ValueError, AttributeError) as e:
             self.get_logger().error(f"cannot read /sim/task: {e!r}")
             trays = {}
-        self.task_trays = tuple(sorted(name for name in trays if name in TRAYS))
-        self.get_logger().info(f"trays in the world: {list(self.task_trays)}")
+        self.task_trays = tuple(sorted(name for name in trays if name in TRAY_IDS))
+        self.get_logger().info(f"trays of the task: {list(self.task_trays)}")
 
     def on_scene(self, msg):
         """The latest objects, as cuboids for the next plan. The one under the goal is left out there, not here."""
@@ -151,9 +149,31 @@ class MotionNode(Node):
             (o.track_id or f"obj{i}", float(o.center.x), float(o.center.y), float(o.center.z), float(o.yaw),
              float(o.size.x), float(o.size.y), float(o.size.z), float(o.top_z))
             for i, o in enumerate(msg.objects))
+        plane = tuple(float(v) for v in msg.table_plane)
+        seen = {}
+        for c in msg.containers:
+            if c.kind != "tray" or c.id not in TRAY_IDS:
+                continue
+            q = c.pose.orientation
+            yaw = 2.0 * math.atan2(q.z, q.w)  # perception writes the yaw alone, about the pelvis z
+            seen[c.id] = (c.id, float(c.pose.position.x), float(c.pose.position.y), float(c.pose.position.z), yaw,
+                          float(c.size.x), float(c.size.y), float(c.size.z))
+        found = len(plane) == 4 and plane[2] > 0.0
         with self.lock:
             self.scene_objects = objs
-        self.get_logger().info(f"perception scene: {len(objs)} objects")
+            if found:
+                self.table_plane = plane
+            # A tray the arm hides keeps the pose it was last seen at: trays are not moved during the task.
+            self.seen_trays.update(seen)
+        table = f"z = {-plane[3] / plane[2]:.4f} + {-plane[0] / plane[2]:.4f} x" if found else "none"
+        self.get_logger().info(f"perception scene: {len(objs)} objects, trays {sorted(seen)}, table {table}")
+
+    def _world(self):
+        """(table plane, trays) for the cuRobo world: what perception measured, limited to the trays of the task."""
+        with self.lock:
+            trays = [t for name, t in sorted(self.seen_trays.items())
+                     if self.task_trays is None or name in self.task_trays]
+            return self.table_plane, tuple(trays)
 
     def on_joints(self, msg):
         with self.lock:
@@ -464,7 +484,7 @@ class MotionNode(Node):
             self._planner = CuroboPlanner(
                 os.path.join(share, "tiangong2pro_with_hands.urdf"),
                 os.path.join(share, "tienkung_curobo.yml"))
-        self._planner.trays = self.task_trays or ()  # load() rebuilds the planner if the set changed
+        self._planner.table, self._planner.trays = self._world()
         return self._planner
 
     def _wait_joints(self, timeout=5.0):
@@ -540,6 +560,9 @@ class MotionNode(Node):
                 if not self._wait_joints():
                     return MoveTcp.Result(success=False, message="no /joint_states")
                 planner = self._planner_obj()
+                if planner.table is None:
+                    # Without it the world has no table, and a plan goes through it. brain looks before it moves.
+                    return MoveTcp.Result(success=False, message="no table plane from perception yet")
                 with self.lock:
                     snapshot = dict(self.q)
                     planner.objects = self.scene_objects
@@ -549,6 +572,7 @@ class MotionNode(Node):
                 # Every object, including the one this goal will grasp. The raise is not aimed at it yet.
                 planner.sync_world(None)
                 self._leave_colliding_home(planner)
+                planner.table, planner.trays = self._world()
                 with self.lock:
                     snapshot = dict(self.q)
                     planner.objects = self.scene_objects

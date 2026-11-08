@@ -18,7 +18,8 @@ sys.path.insert(0, str(ROOT / "src" / "hack_motion"))
 sys.path.insert(0, str(ROOT / "tools"))
 
 from hack_motion.curobo_planner import CuroboPlanner, Unreachable  # noqa: E402
-from hack_motion.robot import ARM_JOINTS, TCP_LINK, TRAYS, ready_pose, table_scene  # noqa: E402
+from hack_motion.robot import ARM_JOINTS, TCP_LINK, ready_pose  # noqa: E402
+import scene_measured  # noqa: E402
 from linear_tray_probe import overlaps, raised, self_margin, spheres, target  # noqa: E402
 
 ROBOT = ROOT / "src" / "hack_motion" / "robot"
@@ -152,9 +153,9 @@ def main():
     ap.add_argument("--sweep", action="store_true", help="pre-grasps over the spawn area from both arms at ready_pose")
     args = ap.parse_args()
     p = CuroboPlanner(str(ROBOT / "tiangong2pro_with_hands.urdf"), str(ROBOT / "tienkung_curobo.yml"))
-    p.trays = tuple(sorted(TRAYS))
+    scene_measured.use(p)
     print(p.load(None), flush=True)
-    scene = table_scene(p.trays)
+    scene = scene_measured.table_scene(scene_measured.TRAYS)
     if args.sweep:
         return sweep(p, scene)
     if args.chain:

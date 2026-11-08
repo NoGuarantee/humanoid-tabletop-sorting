@@ -6,6 +6,8 @@ The other objects are parked through `/sim/objects/set` (a debug topic: this scr
 The default dish uses its placed pose: the head's detector drops it, its height sits in the tray band.
 Anything else uses the head camera unless `--known` is given, and the difference from the placed pose
 is printed. The placed pose in the pelvis frame comes from `on_table`, the same 4° pitch the trays use.
+motion builds its world from perception/scene, so the script publishes the measured table and trays there
+(tools/scene_measured.py) before the first move; a perceive replaces them with what the camera saw.
 The tray is chosen by the arm (`y > 0` -> left), not by the task rule.
 Open fingers meet the table at TCP z = 0.039 + 0.070 x (tools/table_touch.py); the script refuses a
 vertical hand whose TCP is within 5 mm of that. A leaned pinch is checked in grasp_planner.
@@ -40,12 +42,13 @@ from hack_brain.blocking import BlockingClients as Clients
 from hack_brain.grasp_planner import FINGERTIP, load_db, plan_grasps, plan_place
 from hack_brain.skills import Skills
 from hack_interfaces.msg import Container, DetectedObject, SceneObjects
-from hack_motion.robot import TRAY_SIZE, TRAYS, on_table, table_z, tray_rim
+from hack_motion.robot import TRAY_SIZE
 from hack_perception.classify import CATALOG
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.qos import DurabilityPolicy, QoSProfile
+from scene_measured import TABLE, TRAYS, on_table, table_z, tray_rim, trays
 from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 
@@ -73,6 +76,28 @@ def wait_sim(node, seconds):
 
 def touch_z(x):
     return TOUCH_Z[0] + TOUCH_Z[1] * x
+
+
+def measured_scene():
+    """SceneObjects with the measured table plane and the three trays, the way perception reports them."""
+    scene = SceneObjects(table_z=float(table_z(0.0)), table_plane=[float(v) for v in TABLE])
+    scene.header.frame_id = "pelvis"
+    for ident, x, y, z, yaw, sx, sy, sz in trays():
+        scene.containers.append(Container(
+            id=ident, kind="tray", size=Vector3(x=sx, y=sy, z=sz),
+            pose=Pose(position=Point(x=x, y=y, z=z),
+                      orientation=Quaternion(z=math.sin(yaw / 2), w=math.cos(yaw / 2)))))
+    return scene
+
+
+def publish_measured_scene(node):
+    """Give motion a table before the first move. Latched, as perception publishes it."""
+    pub = node.create_publisher(
+        SceneObjects, "perception/scene", QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+    scene = measured_scene()
+    scene.header.stamp = node.get_clock().now().to_msg()
+    pub.publish(scene)
+    node.scene_pub = pub  # keep it alive: a latched message lives as long as its publisher
 
 
 def place_object(node, name, at):
@@ -224,6 +249,7 @@ def run(node, name, at, use_camera, watching=False):
     if not node.api.wait_ready(timeout=120.0):
         print("FAIL perception or motion is not up", flush=True)
         return 1
+    publish_measured_scene(node)
     if not node.api.move_joints(list(LOOK), list(LOOK.values())):
         print("FAIL head did not look at the table", flush=True)
         return 1

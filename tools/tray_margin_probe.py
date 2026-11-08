@@ -16,7 +16,8 @@ sys.path.insert(0, str(ROOT / "src" / "hack_motion"))
 
 from hack_motion import robot  # noqa: E402
 from hack_motion.curobo_planner import CuroboPlanner, Unreachable  # noqa: E402
-from hack_motion.robot import ARM_JOINTS, raise_steps, tray_rim  # noqa: E402
+from hack_motion.robot import ARM_JOINTS, raise_steps  # noqa: E402
+from scene_measured import tray_rim, use  # noqa: E402
 
 ROBOT = ROOT / "src" / "hack_motion" / "robot"
 CFG = ROBOT / "tienkung_curobo.yml"
@@ -132,7 +133,7 @@ def plan_to(planner, arm, target, q, mode, label=None):
 
 def main():
     planner = CuroboPlanner(ROBOT / "tiangong2pro_with_hands.urdf", CFG)
-    planner.trays = tuple(robot.TRAYS)
+    use(planner)
     print(planner.load(None), flush=True)
     q = start_q(planner)
     for arm, tray in (("left", "tray_left"), ("right", "tray_right")):

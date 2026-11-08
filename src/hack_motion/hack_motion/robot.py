@@ -33,58 +33,87 @@ ARM_JOINTS = {
 
 TCP_LINK = {"left": "left_tcp_link", "right": "right_tcp_link"}
 
-# Temporary collision world only. Measured table and tray poses must not ship in the solution: the table, trays, racks
-# and the cabinet are found by the cameras, like the objects (docs/ANALYSIS.md, section 8 item 9). Search bounds, sizes
-# from the docs, which trays exist (/sim/task) and the robot's own geometry may stay. Replace TABLE_PLANE / TRAYS with
-# the plane and containers from perceive.
-# The table in pelvis, as a cuRobo scene. There is one scene and the robot does not walk (hackathon/docs/TASKS.md): near
-# edge at x +0.22, 0.76 deep, 2.44 wide (hackathon/config/scene.yaml, and the simulator log prints the same). The top is
-# not level in pelvis: z = -0.1792 + 0.0700 x, 4 degrees. Fitted to depth, and the open fingers touch it there at x 0.28,
-# 0.38 and 0.50 (tools/table_touch.py, tools/motion_trace.py gaps), where a level top at -0.18 is 2.4-4.0 cm off.
-# The real top is 3 cm thick; 8 cm here so that a coarse path does not step through it. It cannot go down to the
-# floor: the locked knees stand under the table at x 0.20, so a solid block puts every pose in collision (0/32 IK seeds).
-TABLE_SCENE = {"cuboid": {"table": {"dims": [0.76, 2.44, 0.08],
-                                   "pose": [0.6028, 0.0, -0.1771, 0.99939, 0.0, -0.03494, 0.0]}}}
+# The collision world is what perception measured: the table plane and the trays it saw (perception/scene). Measured
+# scene poses must not ship in the solution (docs/ANALYSIS.md, section 8 item 9); search bounds, sizes, which trays
+# exist (/sim/task) and the robot's own geometry may. The poses measured in the simulator for the probes in tools/ are in
+# tools/scene_measured.py.
+#
+# `table` everywhere below is the plane (a, b, c, d) from SceneObjects.table_plane: a x + b y + c z + d = 0 in pelvis,
+# (a, b, c) unit with c > 0. In the sim it is z = -0.179 + 0.070 x, 4 degrees: the top is not level in pelvis.
+# The table cuboid covers TABLE_X x TABLE_Y on that plane, perception's search bounds for the table (table_clusters):
+# the cameras see the top from x 0.24 to 0.98. The real top is 3 cm thick; 8 cm here so that a coarse path does not
+# step through it. It cannot go down to the floor: the locked knees stand under the table at x 0.20, so a solid block
+# puts every pose in collision (0/32 IK seeds).
+TABLE_X = (0.21, 1.0)
+TABLE_Y = (-1.25, 1.25)
+TABLE_THICKNESS = 0.08
 
-# The table top in pelvis is z = a + b x (fit on depth frames, pose from /tf, rms 0.3 mm): 4 deg, cause not established.
-TABLE_PLANE = (-0.1792, 0.0700)
-_TILT = math.atan(TABLE_PLANE[1])
-_ABOVE_PELVIS = -TABLE_PLANE[0] * math.cos(_TILT)  # m, pelvis origin over the table top along the table normal
-
-# The trays on the table (hackathon/config/scene.yaml: x, y from the pelvis along the table, 0.22 x 0.32 x 0.07, 1 mm over
-# the top). The place does not depend on the layout seed, the set depends on the task (/sim/task): sort2 has no tray_center,
-# and objects may lie where it would stand. Depth frames of layout 1 agree within 3 mm: rims x 0.237..0.456, y 0.530..0.850
-# on the left, x 0.238..0.457, y -0.848..-0.529 on the right, x 0.426..0.643, y -0.158..0.160 in the centre, 71 mm above
-# the plane. Solid blocks: hands stay above the rim, and an 8 mm wall is thinner than a step of a coarse path.
-TRAYS = {"tray_left": (0.34, 0.69), "tray_right": (0.34, -0.69), "tray_center": (0.53, 0.0)}
-TRAY_SIZE = (0.22, 0.32, 0.071)  # to the rim, from the table top
+# The sorting trays (hackathon/docs/TASKS.md); /sim/task says which of them the task has. 0.22 x 0.32, 0.071 from the top
+# to the rim. A tray is (id, x, y, z, yaw, size_x, size_y, size_z) from perception: the middle of the opening in pelvis,
+# yaw of the 0.22 side in the table plane. Solid blocks: hands stay above the rim, and an 8 mm wall is thinner than a
+# step of a coarse path.
+TRAY_IDS = ("tray_left", "tray_right", "tray_center")
+TRAY_SIZE = (0.22, 0.32, 0.071)
 
 
-def table_z(x):
-    """z of the table top in pelvis at this x."""
-    return TABLE_PLANE[0] + TABLE_PLANE[1] * x
+def table_normal(table):
+    """Unit normal of the table plane, up. Level when there is no table."""
+    if not table:
+        return (0.0, 0.0, 1.0)
+    return tuple(float(v) for v in table[:3])
 
 
-def on_table(along, y, height):
-    """Pelvis (x, y, z) of a point `along` m out on the table axis from the pelvis, `height` m above the top."""
-    c, s = math.cos(_TILT), math.sin(_TILT)
-    z_level = height - _ABOVE_PELVIS
-    return along * c - z_level * s, y, along * s + z_level * c
+def table_z(table, x, y=0.0):
+    """z of the table top in pelvis at (x, y)."""
+    a, b, c, d = table
+    return -(d + a * x + b * y) / c
 
 
-def tray_rim(name):
-    """Pelvis (x, y, z) of the middle of the opening of a tray."""
-    return on_table(*TRAYS[name], TRAY_SIZE[2])
+def table_axes(table, yaw=0.0):
+    """Unit axes in pelvis: along `yaw`, across it, and the table normal.
+
+    `yaw` is measured in the table plane from pelvis +x projected onto it, as perception reports it.
+    """
+    nx, ny, nz = table_normal(table)
+    ex = (1.0 - nx * nx, -nx * ny, -nx * nz)  # pelvis +x minus its normal part
+    norm = math.sqrt(sum(v * v for v in ex))
+    e1 = tuple(v / norm for v in ex)
+    e2 = (ny * e1[2] - nz * e1[1], nz * e1[0] - nx * e1[2], nx * e1[1] - ny * e1[0])  # normal x e1
+    yc, ys = math.cos(yaw), math.sin(yaw)
+    long = tuple(yc * u + ys * v for u, v in zip(e1, e2))
+    across = tuple(-ys * u + yc * v for u, v in zip(e1, e2))
+    return long, across, (nx, ny, nz)
 
 
-def table_scene(trays=()):
-    """TABLE_SCENE with these trays on the table, tilted with it."""
-    scene = {"cuboid": dict(TABLE_SCENE["cuboid"])}
-    for name in trays:
-        x, y, z = on_table(*TRAYS[name], TRAY_SIZE[2] / 2)
-        scene["cuboid"][name] = {"dims": list(TRAY_SIZE),
-                                 "pose": [x, y, z, math.cos(_TILT / 2), 0.0, -math.sin(_TILT / 2), 0.0]}
-    return scene
+def _box(center, dims, axes):
+    """A cuRobo cuboid: {dims, pose [x, y, z, w, x, y, z]} with these axes as its x, y, z."""
+    long, across, normal = axes
+    quat = _quat_wxyz((
+        (long[0], across[0], normal[0]),
+        (long[1], across[1], normal[1]),
+        (long[2], across[2], normal[2]),
+    ))
+    return {"dims": [float(v) for v in dims], "pose": [float(v) for v in center] + list(quat)}
+
+
+def table_cuboid(table):
+    """The table slab under the plane, over the search bounds."""
+    axes = table_axes(table)
+    x, y = sum(TABLE_X) / 2, sum(TABLE_Y) / 2
+    top = (x, y, table_z(table, x, y))
+    normal = axes[2]
+    center = tuple(t - n * TABLE_THICKNESS / 2 for t, n in zip(top, normal))
+    length = (TABLE_X[1] - TABLE_X[0]) / axes[0][0]  # along the plane, over the x bounds
+    return _box(center, (length, TABLE_Y[1] - TABLE_Y[0], TABLE_THICKNESS), axes)
+
+
+def tray_cuboid(tray, table):
+    """The solid block of one tray: from the opening down to the table along its normal."""
+    _, x, y, z, yaw, sx, sy, sz = tray
+    axes = table_axes(table, yaw)
+    normal = axes[2]
+    center = (x - normal[0] * sz / 2, y - normal[1] * sz / 2, z - normal[2] * sz / 2)
+    return _box(center, (sx, sy, sz), axes)
 
 
 # Neighbours on the table. Without them the arm plans through whatever is standing there and pushes it; a pushed
@@ -97,7 +126,7 @@ FINGERTIP = 0.21  # m from the TCP to the fingertips along -z. The same number a
 VIA_CLEAR = 0.04  # m, fingertips above a neighbour the straight plan could not pass
 HAND_PAD = 0.12  # m, the open hand past an object's bounding circle when deciding what the approach must clear
 CUBOID_CACHE = 16  # table + the three trays + the objects below, allocated once so a later update stays in place
-MAX_OBJECTS = CUBOID_CACHE - 1 - len(TRAYS)
+MAX_OBJECTS = CUBOID_CACHE - 1 - len(TRAY_IDS)
 
 
 def fingertip(position, xyzw):
@@ -107,16 +136,6 @@ def fingertip(position, xyzw):
     zy = 2 * (y * z - w * x)
     zz = 1 - 2 * (x * x + y * y)
     return (position[0] - FINGERTIP * zx, position[1] - FINGERTIP * zy, position[2] - FINGERTIP * zz)
-
-
-def _object_axes(yaw):
-    """Unit axes of an object in pelvis: long, across, table normal. `yaw` is in the table plane, as perception reports it."""
-    c, s = math.cos(_TILT), math.sin(_TILT)
-    yc, ys = math.cos(yaw), math.sin(yaw)
-    e1 = (c, 0.0, s)  # pelvis +x projected onto the table, perception's e1 for this tilt
-    long = (yc * e1[0], ys, yc * e1[2])
-    across = (-ys * e1[0], yc, -ys * e1[2])
-    return long, across, (-s, 0.0, c)
 
 
 def _quat_wxyz(rows):
@@ -136,55 +155,57 @@ def _quat_wxyz(rows):
     return (r10 - r01) / scale, (r02 + r20) / scale, (r12 + r21) / scale, 0.25 * scale
 
 
-def _in_footprint(obj, point):
+def _in_footprint(obj, point, table=None):
     """True when `point` is over this object's measured footprint, EXCLUDE_PAD past the half-size."""
     _, ox, oy, oz, yaw, sx, sy, _, _ = obj
-    long, across, _ = _object_axes(yaw)
+    long, across, _ = table_axes(table, yaw)
     dx, dy, dz = point[0] - ox, point[1] - oy, point[2] - oz
     along = dx * long[0] + dy * long[1] + dz * long[2]
     cross = dx * across[0] + dy * across[1] + dz * across[2]
     return abs(along) <= sx / 2 + EXCLUDE_PAD and abs(cross) <= sy / 2 + EXCLUDE_PAD
 
 
-def _cuboid(obj, names):
+def _cuboid(obj, names, table=None):
     """(name, {dims, pose}) of one object. `names` are cuboids already in the scene, so a repeated id gets a suffix."""
     ident, ox, oy, oz, yaw, sx, sy, sz, _ = obj
-    long, across, normal = _object_axes(yaw)
-    quat = _quat_wxyz((
-        (long[0], across[0], normal[0]),
-        (long[1], across[1], normal[1]),
-        (long[2], across[2], normal[2]),
-    ))
     name = ident or "object"
     suffix = 2
     while name in names:
         name = f"{ident or 'object'}_{suffix}"
         suffix += 1
     dims = [sx + 2 * OBJECT_MARGIN, sy + 2 * OBJECT_MARGIN, max(sz, 0.005) + 2 * OBJECT_MARGIN]
-    return name, {"dims": dims, "pose": [ox, oy, oz, *quat]}
+    return name, _box((ox, oy, oz), dims, table_axes(table, yaw))
 
 
-def world_scene(trays=(), objects=(), near=None):
-    """Table, the trays of the task, and the detected objects around the one being reached.
+# Holds the cuboid cache in place before perception has found the table (setup.sh warms the planner with no scene).
+NO_TABLE = {"dims": [0.01, 0.01, 0.01], "pose": [0.0, 0.0, -10.0, 1.0, 0.0, 0.0, 0.0]}
 
+
+def world_scene(table=None, trays=(), objects=(), near=None):
+    """Table, the trays perception has seen, and the detected objects around the one being reached.
+
+    `table` is the plane (a, b, c, d), None before perception found it. `trays` are tray tuples (see TRAY_SIZE),
     `objects` are `(id, x, y, z, yaw, size_x, size_y, size_z, top_z)` in pelvis, metres and radians.
     `near` is the fingertips of the goal. The object under them is left out: the fingers have to go into it,
     and a cuboid there makes every grasp unreachable. Returns `(scene, [ids left out])`.
     """
-    scene = table_scene(trays)
+    cuboids = {"table": table_cuboid(table)} if table else {"no_table": dict(NO_TABLE)}
+    for tray in trays:
+        cuboids[tray[0]] = tray_cuboid(tray, table)
+    scene = {"cuboid": cuboids}
     left_out = []
     kept = []
     for obj in objects:
         if obj[5] <= 0.0 or obj[6] <= 0.0:
             continue
-        if near is not None and _in_footprint(obj, near):
+        if near is not None and _in_footprint(obj, near, table):
             left_out.append(obj[0])
             continue
         kept.append(obj)
     if near is not None and len(kept) > MAX_OBJECTS:
         kept.sort(key=lambda obj: (obj[1] - near[0]) ** 2 + (obj[2] - near[1]) ** 2)
     for obj in kept[:MAX_OBJECTS]:
-        name, cub = _cuboid(obj, scene["cuboid"])
+        name, cub = _cuboid(obj, scene["cuboid"], table)
         scene["cuboid"][name] = cub
     return scene, left_out
 

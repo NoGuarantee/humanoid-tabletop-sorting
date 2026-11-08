@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """IK error of a top-down hand over a side tray, from the raised-arm pose.
 
-The place aim is the tray opening (robot.tray_rim). Heights are fingertip heights above that opening;
+The place aim is the tray opening (scene_measured.tray_rim). Heights are fingertip heights above that opening;
 the TCP is 0.21 m higher, as grasp_planner.tcp_at does for top_down. The other hand stays put, as MoveTcp
 plans. A feasible seed is preferred; otherwise the closest seed is shown with the joints on a stop.
 
@@ -18,7 +18,8 @@ sys.path.insert(0, str(ROOT / "src" / "hack_motion"))
 from curobo._src.cost.tool_pose_criteria import ToolPoseCriteria  # noqa: E402
 from hack_motion import robot  # noqa: E402
 from hack_motion.curobo_planner import CuroboPlanner  # noqa: E402
-from hack_motion.robot import ARM_JOINTS, plan_limits, raise_steps, tray_rim  # noqa: E402
+from hack_motion.robot import ARM_JOINTS, plan_limits, raise_steps  # noqa: E402
+from scene_measured import tray_rim, use  # noqa: E402
 
 ROBOT = ROOT / "src" / "hack_motion" / "robot"
 
@@ -124,7 +125,7 @@ def show(planner, arm, target, q, label):
 
 def main():
     planner = CuroboPlanner(ROBOT / "tiangong2pro_with_hands.urdf", ROBOT / "tienkung_curobo.yml")
-    planner.trays = tuple(robot.TRAYS)
+    use(planner)
     print(planner.load(None), flush=True)
     q = {n: planner.ready.get(n, 0.0) for n in planner.joint_names}
     for arm in ARM_JOINTS:
@@ -151,7 +152,7 @@ def main():
     for limit in (1.45, 1.55):
         robot.PLAN_ROLL_LIMIT = limit
         planner = CuroboPlanner(ROBOT / "tiangong2pro_with_hands.urdf", ROBOT / "tienkung_curobo.yml")
-        planner.trays = tuple(robot.TRAYS)
+        use(planner)
         print(f"roll limit {limit:.2f}: {planner.load(None)}", flush=True)
         q = {n: planner.ready.get(n, 0.0) for n in planner.joint_names}
         for arm in ARM_JOINTS:

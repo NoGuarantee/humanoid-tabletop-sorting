@@ -335,6 +335,13 @@ class PerceptionNode(Node):
         if result is None and plane is None:
             raise RuntimeError("table plane not found")
         scene.table_z = table_z_at(plane, *tc.TABLE_REF_XY) if plane is not None else result.table_z
+        if plane is not None:
+            normal, offset = plane
+        else:
+            normal, offset = result.plane.normal, -float(result.plane.normal @ result.plane.point)
+        normal = np.asarray(normal, dtype=float)
+        scale = float(np.linalg.norm(normal)) * (1.0 if normal[2] > 0 else -1.0)
+        scene.table_plane = [*(float(v) / scale for v in normal), float(offset) / scale]  # motion's collision world
         rgb = geo.rgb_to_np(f["color"])
         depth = f["depth"]
         if rgb.shape[0] != depth.height or rgb.shape[1] != depth.width:

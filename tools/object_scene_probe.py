@@ -20,8 +20,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src" / "hack_motion"))
 
 from hack_motion.robot import (  # noqa: E402
-    FINGERTIP, HAND_PAD, MAX_OBJECTS, OBJECT_MARGIN, TRAYS, VIA_CLEAR, _object_axes, clearance_z, fingertip,
-    on_the_way, sphere_cuboid_overlap, spheres_hit, table_z, world_scene)
+    FINGERTIP, HAND_PAD, MAX_OBJECTS, OBJECT_MARGIN, VIA_CLEAR, clearance_z, fingertip, on_the_way,
+    sphere_cuboid_overlap, spheres_hit, table_axes, world_scene)
+from scene_measured import TABLE, TRAYS, table_z, trays, use  # noqa: E402
 
 ROBOT = ROOT / "src" / "hack_motion" / "robot"
 
@@ -33,7 +34,7 @@ def obj(ident, x, y, z, yaw, sx, sy, sz):
 def check_geometry():
     tilt = math.atan(0.07)
     want = (math.cos(tilt / 2), 0.0, -math.sin(tilt / 2), 0.0)
-    scene, left = world_scene((), [obj("flat", 0.40, -0.30, 0.0, 0.0, 0.10, 0.04, 0.06)])
+    scene, left = world_scene(TABLE, (), [obj("flat", 0.40, -0.30, 0.0, 0.0, 0.10, 0.04, 0.06)])
     pose = scene["cuboid"]["flat"]["pose"]
     dot = abs(sum(a * b for a, b in zip(pose[3:], want)))
     if dot < 1 - 1e-6:
@@ -45,8 +46,8 @@ def check_geometry():
                                                     0.06 + 2 * OBJECT_MARGIN))):
         raise SystemExit(f"margin not applied: {dims}")
 
-    long, _, _ = _object_axes(math.pi / 2)
-    turned, _ = world_scene((), [obj("long", 0.40, 0.0, 0.0, math.pi / 2, 0.12, 0.03, 0.05)])
+    long, _, _ = table_axes(TABLE, math.pi / 2)
+    turned, _ = world_scene(TABLE, (), [obj("long", 0.40, 0.0, 0.0, math.pi / 2, 0.12, 0.03, 0.05)])
     got = _column(turned["cuboid"]["long"]["pose"])
     if abs(abs(sum(a * b for a, b in zip(got, long))) - 1) > 1e-6:
         raise SystemExit(f"yaw pi/2 long axis {got}, want {long}")
@@ -54,14 +55,14 @@ def check_geometry():
     here = obj("here", 0.42, -0.20, -0.05, 0.4, 0.08, 0.05, 0.07)
     there = obj("there", 0.42, 0.25, -0.05, 0.0, 0.08, 0.05, 0.07)
     goal = fingertip((0.42, -0.20, -0.05 + 0.21), (0.0, 0.0, 0.0, 1.0))
-    scene, left = world_scene(tuple(sorted(TRAYS)), [here, there], goal)
+    scene, left = world_scene(TABLE, trays(), [here, there], goal)
     if left != ["here"] or "there" not in scene["cuboid"] or "here" in scene["cuboid"]:
         raise SystemExit(f"exclusion: left out {left}, cuboids {list(scene['cuboid'])}")
     if not all(name in scene["cuboid"] for name in ("table",) + tuple(sorted(TRAYS))):
         raise SystemExit(f"table or a tray missing: {list(scene['cuboid'])}")
 
     many = [obj(f"o{i}", 0.3, -0.4 + 0.05 * i, 0.0, 0.0, 0.02, 0.02, 0.04) for i in range(MAX_OBJECTS + 3)]
-    scene, left = world_scene((), many, (0.3, -2.0, 0.0))
+    scene, left = world_scene(TABLE, (), many, (0.3, -2.0, 0.0))
     far = f"o{MAX_OBJECTS + 2}"
     if left or len(scene["cuboid"]) != 1 + MAX_OBJECTS or "o0" not in scene["cuboid"] or far in scene["cuboid"]:
         raise SystemExit(f"kept {sorted(scene['cuboid'])}, left out {left}")
@@ -288,7 +289,7 @@ def check_plan():
     from hack_motion.curobo_planner import CuroboPlanner
 
     planner = CuroboPlanner(str(ROBOT / "tiangong2pro_with_hands.urdf"), str(ROBOT / "tienkung_curobo.yml"))
-    planner.trays = tuple(sorted(TRAYS))
+    use(planner)
     print(planner.load(None), flush=True)
     check_raise(planner)
     q = raised(planner)
@@ -301,7 +302,7 @@ def check_plan():
     if box is None:
         raise SystemExit("no mid-path sphere clear of the start and the goal")
     print(f"box at {[round(v, 3) for v in box[1:4]]} size {box[5]:.3f}", flush=True)
-    bare = world_scene((), [box])[0]["cuboid"]["block"]
+    bare = world_scene(TABLE, (), [box])[0]["cuboid"]["block"]
     before = path_overlap(planner, q, names, way, bare)
     print(f"  empty path inside that box by {before * 100:.1f} cm", flush=True)
     if before <= 0.0:

@@ -204,7 +204,11 @@ def _result(c, e, op, effects):
             c.hand = Hand.UNKNOWN
             _done(c, effects, 'verification_unavailable')
         elif state == State.RETREAT:
-            _done(c, effects, 'retreat_failed')
+            # The hand is open and placed is never set without the camera: CLEAR plans its own way out of the
+            # tray, and the look decides. Ending here lost 8 objects after a sorted cartridge (eval 2026-11-08).
+            c.last_recovery = 'retreat_failed: ' + str(e.data or '')
+            c.place_look = True
+            _look(c, effects)
         else:
             _recover(c, effects, str(e.data or 'operation_failed'))
         return

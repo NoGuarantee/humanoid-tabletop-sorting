@@ -405,9 +405,16 @@ class MissionTests(unittest.TestCase):
     def test_retreat_failure_does_not_claim_unobserved_place(self):
         f = Fake()
         f.until(State.RETREAT)
-        f.answer('retreat_failed', ok=False)
+        f.answer('unreachable', ok=False)
         self.assertFalse(f.c.history['a'].placed)
-        self.assertEqual(f.c.reason, 'retreat_failed')
+        self.assertEqual(f.c.state, State.CLEAR)
+        self.assertIn('unreachable', f.c.last_recovery)
+        f.answer()
+        f.answer()
+        self.assertEqual(f.c.state, State.VERIFY_PLACE)
+        f.answer(replace(f.default(), placed=False))
+        self.assertFalse(f.c.history['a'].placed)
+        self.assertTrue(f.c.history['a'].released)
 
     def test_unknown_task_and_rule(self):
         f = Fake(parse_task('{"task":"other"}'))

@@ -67,7 +67,10 @@ class Skills:
             if not candidates:
                 raise ValueError('no_grasp_candidates')
             self.grasp = candidates[min(attempt - 1, len(candidates) - 1)]
-            return 'hand', Hand.Goal(hand=self.grasp.arm, preset='open')
+            # The pinch turns the thumb across before the descent (pinch_ready), as pick() does. Turned at the
+            # grasp instead, the thumb pushed the cartridge aside and it slipped out on the lift (sort3 seed 1).
+            return 'hand', Hand.Goal(hand=self.grasp.arm, preset=self.grasp.approach_preset,
+                                     force=float(self.grasp.force if self.grasp.approach_preset != 'open' else 0.0))
         if self.grasp is None:
             raise ValueError('missing_grasp_plan')
         g = self.grasp

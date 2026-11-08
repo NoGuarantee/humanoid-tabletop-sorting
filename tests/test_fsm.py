@@ -390,6 +390,27 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(f.c.hand, Hand.EMPTY)
         self.assertEqual(f.effects[-1].kind, 'CANCEL')
 
+    def test_hold_lost_and_stopped_recovers_instead_of_ending(self):
+        f = Fake()
+        f.until(State.TRANSFER)
+        op = f.c.active.id
+        f.send(Event('SENSOR', data=Evidence(1, Hand.EMPTY, source='fake')))
+        f.send(Event('CANCEL_ACK', op))
+        f.send(Event('RESULT', op, None, ok=False, stopped=True))
+        self.assertEqual(f.c.state, State.RECOVER)
+        self.assertEqual(f.c.last_recovery, 'object_lost')
+        self.assertEqual(f.c.active.phase, State.RECOVER)
+
+    def test_hold_lost_without_a_measured_stop_still_ends(self):
+        f = Fake()
+        f.until(State.TRANSFER)
+        op = f.c.active.id
+        f.send(Event('SENSOR', data=Evidence(1, Hand.EMPTY, source='fake')))
+        f.send(Event('CANCEL_ACK', op))
+        f.send(Event('RESULT', op, None, ok=False, stopped=False))
+        self.assertEqual(f.c.state, State.DONE)
+        self.assertEqual(f.c.reason, 'holding_lost_or_unknown:stop_unconfirmed')
+
     def test_destination_requires_fresh_hold(self):
         f = Fake()
         f.until(State.VERIFY_TRANSFER)

@@ -159,7 +159,14 @@ def transition(context: Context, event: Event):
                 c.blocked = not op.stopped
                 if op.stopped:
                     c.active = None
-                _done(c, effects, c.reason + (':cancelled' if op.stopped else ':stop_unconfirmed'))
+                if op.stopped and c.reason == 'holding_lost_or_unknown' and c.target is not None:
+                    # A hold lost mid-move, with the arm measured at rest, leaves the rest of the table to sort:
+                    # the sink slipping on the lift ended a mission with 400 s and 8 objects left (eval 2026-11-08).
+                    # RECOVER measures the hand again before anything moves.
+                    c.reason = ''
+                    _recover(c, effects, 'object_lost')
+                else:
+                    _done(c, effects, c.reason + (':cancelled' if op.stopped else ':stop_unconfirmed'))
         elif e.kind == 'SEND_ERROR':
             _may_have_moved(c, op)
             _stop(c, effects, 'send_error')

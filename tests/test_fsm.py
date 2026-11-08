@@ -103,8 +103,10 @@ class MissionTests(unittest.TestCase):
                 f.until(state)
                 n = len(f.commands)
                 f.answer(Evidence(f.sim, source='fake'))
-                self.assertEqual(f.c.state, State.DONE)
-                self.assertEqual(len(f.commands), n)
+                # Before the lift an unknown hand is measured again in RECOVER, still without motion.
+                self.assertEqual(f.c.state, State.RECOVER if state == State.VERIFY_GRASP else State.DONE)
+                self.assertEqual([e.phase for e in f.commands[n:]],
+                                 [State.RECOVER] if state == State.VERIFY_GRASP else [])
                 self.assertEqual(f.c.hand, Hand.UNKNOWN)
 
     def test_loss_after_lift_keeps_history_and_reobserves(self):
@@ -362,7 +364,9 @@ class MissionTests(unittest.TestCase):
             f = Fake()
             f.until(State.VERIFY_GRASP)
             f.answer(ev)
-            self.assertEqual(f.c.reason, 'physical_unknown')
+            self.assertEqual(f.c.state, State.RECOVER)
+            self.assertEqual(f.c.last_recovery, 'hand_unknown')
+            self.assertFalse(f.c.history['a'].placed)
 
     def test_contact_invalidates_scene_and_anonymous_identity(self):
         f = Fake(objects=[Object('track', 'figure')])

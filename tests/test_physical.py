@@ -52,6 +52,10 @@ class MeasurementsTests(unittest.TestCase):
             m.update('left',msg(1+i*.1,[1.,1.,1.,1.-i*.1,1.-i*.1,.1],[.1]*6))
         self.assertIsNone(m.hand('left',1.4,1,[1,1,1,.3,.4,.1]))
 
+    def test_finger_pushed_far_past_open_still_reads(self):
+        m=Measurements();fill(m,'right',positions=[.2,2.19,2.2,.19,.52,.2],efforts=[.17,1.,1.,.31,.08,.04])
+        self.assertIsNotNone(m.hand('right',1.4,1,[.2,.2,.2,.2,.5,.2]))
+
     def test_finger_pushed_past_open_still_reads(self):
         m=Measurements();fill(m,'left',positions=[1.02,1.02,1.01,.83,1.54,.11],efforts=[.67,.66,.68,1.,.61,.29])
         self.assertIsNotNone(m.hand('left',1.4,1,[1,1,1,.3,1,.1]))

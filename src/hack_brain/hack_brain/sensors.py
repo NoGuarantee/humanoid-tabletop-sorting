@@ -79,13 +79,10 @@ class Measurements:
             return None
         t, values, msg = row
         pos = [values[str(i)] for i in range(1,7)]
-        # A finger pressed against an object or the table reads a little past open (1.03 on a held cartridge,
-        # 1.34 with a pad on the table, 1.54 on the little finger with pinch_flat on the bowl rim), and a finger
-        # curled hard past an edge a little below closed (-0.13 on the middle finger pinching the cartridge).
-        # Both once read as no hand: physical_unknown ended the mission (eval 2026-11-08). Clamp that;
-        # a reading far outside 0..1 is not a hand.
-        if any(not -.3 <= p <= 1.8 for p in pos):
-            return None
+        # A finger pushed back by an object reads past open (1.34 with a pad on the table, 1.54 pinching the bowl
+        # rim, 2.2 with power on the bulb box), and one curled hard past an edge below closed (-0.13 on the
+        # cartridge). Each range limit tried read such a hand as no hand and ended the mission (eval 2026-11-08),
+        # so clamp instead; non-finite rows never get here (update drops them).
         pos = [min(max(p, 0.), 1.) for p in pos]
         # Five closing fingers open hold nothing. Thumb rotation (6) is not one: pinch_ready keeps it at 0.1,
         # and a hand left there by a failed approach read UNKNOWN until the mission ended (eval 2026-11-08).

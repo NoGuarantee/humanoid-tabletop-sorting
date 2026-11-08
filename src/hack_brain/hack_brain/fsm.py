@@ -221,6 +221,10 @@ def _result(c, e, op, effects):
                 c.recoveries += 1
                 c.last_recovery = 'hand_unknown'
                 _enter(c, State.RECOVER, effects)
+            elif state == State.VERIFY_GRASP and c.recoveries < c.config.max_recoveries:
+                # Nothing is lifted yet; RECOVER measures the hand again and backs off. Ending here cost the
+                # rest of the mission twice over a finger pushed past its range (eval 2026-11-08).
+                _recover(c, effects, 'hand_unknown')
             else:
                 _done(c, effects, 'physical_unknown')
             return

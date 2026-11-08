@@ -13,8 +13,8 @@ from types import SimpleNamespace
 
 from .curobo_robot import load_robot_cfg
 from .robot import (
-    ARM_JOINTS, CUBOID_CACHE, JOINTS, TCP_LINK, clearance_z, fingertip, on_the_way, plan_limits, ready_pose,
-    sphere_cuboid_overlap, spheres_hit, world_scene)
+    ARM_JOINTS, CUBOID_CACHE, JOINTS, TCP_LINK, clearance_z, fingertip, footprint_gap, on_the_way, plan_limits,
+    ready_pose, sphere_cuboid_overlap, spheres_hit, world_scene)
 
 
 LOCK_TOL = 0.02  # rad
@@ -31,6 +31,9 @@ START_CLEAR_MAX = 0.08  # rad: a farther jump is a different pose, and a held ob
 # lift of the soap dish reports the start or the end in collision, while 0.12 m still plans.
 LEAN_STEP = 0.12
 NEAR_CUBOID = 0.01  # m: a sphere this close to a tray counts as in it, about cuRobo's collision activation distance
+UNDER_FINGERS = 0.05  # m: a straight descent that fails may go into objects whose footprint is this close to the
+#                       goal fingertips. The grasped one can be measured off its true footprint, or a rim grasp sits
+#                       past it; on the bench such descents failed with the start free.
 
 
 class Unreachable(Exception):
@@ -201,10 +204,13 @@ class CuroboPlanner:
         goal, state = self._goal(arm, target, q_by_name)
         try:
             return self._plan_linear(arm, goal, state)
-        except Unreachable:
+        except Unreachable as failed:
             touching = self._touching(q_by_name)
             trays = set(self._tray_names())
-            rising = float(target.position.z) >= self._tcp_z(arm, goal, state) + 0.01
+            tcp_z = self._tcp_z(arm, goal, state)
+            rising = float(target.position.z) >= tcp_z + 0.01
+            if not touching and float(target.position.z) <= tcp_z - 0.01:
+                return self._descend_past_objects(arm, goal, state, target, failed)
             if not touching or not (rising or set(touching) <= trays):
                 raise
             # cuRobo plans nothing from a start in collision. A hand that let go in a tray is inside a solid block
@@ -376,6 +382,26 @@ class CuroboPlanner:
         return [name for name, cub in self._scene["cuboid"].items() if name != "no_table"
                 and any(sphere_cuboid_overlap((x, y, z), r, cub["dims"], cub["pose"]) > -NEAR_CUBOID
                         for x, y, z, r in rows)]
+
+    def _under_fingers(self, target):
+        """[(gap m, name)] of the objects in the world by the goal fingertips, nearest first."""
+        p, o = target.position, target.orientation
+        tip = fingertip((p.x, p.y, p.z), (o.x, o.y, o.z, o.w))
+        in_world = self._scene["cuboid"] if self._scene else {}
+        return sorted((footprint_gap(obj, tip, self.table), obj[0]) for obj in self.objects
+                      if obj[0] in in_world and obj[0] not in self.left_out)
+
+    def _descend_past_objects(self, arm, goal, state, target, failed):
+        """A straight descent from a free start failed: try it without the objects right under the fingertips."""
+        near = self._under_fingers(target)
+        self.scene_note += ", by the fingertips: " + (
+            ", ".join(f"{name} {gap * 1000:+.0f} mm" for gap, name in near[:3]) or "no objects")
+        names = [name for gap, name in near if gap <= UNDER_FINGERS]
+        if not names:
+            raise failed
+        result = self._without(names, lambda: self._plan_linear(arm, goal, state))
+        self.scene_note += f", descended without {', '.join(names)}"
+        return result
 
     def _tcp_z(self, arm, goal, state):
         """Height of this arm's TCP in pelvis at `state`."""

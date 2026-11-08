@@ -155,6 +155,19 @@ def _quat_wxyz(rows):
     return (r10 - r01) / scale, (r02 + r20) / scale, (r12 + r21) / scale, 0.25 * scale
 
 
+def footprint_gap(obj, point, table=None):
+    """Metres from `point` to this object's measured footprint in the table plane, negative over it."""
+    _, ox, oy, oz, yaw, sx, sy, _, _ = obj
+    long, across, _ = table_axes(table, yaw)
+    dx, dy, dz = point[0] - ox, point[1] - oy, point[2] - oz
+    along = dx * long[0] + dy * long[1] + dz * long[2]
+    cross = dx * across[0] + dy * across[1] + dz * across[2]
+    out_along, out_cross = abs(along) - sx / 2, abs(cross) - sy / 2
+    if out_along > 0.0 and out_cross > 0.0:
+        return math.hypot(out_along, out_cross)
+    return max(out_along, out_cross)
+
+
 def _in_footprint(obj, point, table=None):
     """True when `point` is over this object's measured footprint, EXCLUDE_PAD past the half-size."""
     _, ox, oy, oz, yaw, sx, sy, _, _ = obj

@@ -108,7 +108,8 @@ class Operation:
 @dataclass(frozen=True)
 class Config:
     freshness: float = 2.0
-    operation_timeout: float = 20.0
+    # The first MoveTcp loads cuRobo and raises the other arm first: 15 wall s were not enough on the bench.
+    operation_timeout: float = 60.0
     watchdog: float = 15.0
     cancel_timeout: float = 5.0
     cycle_estimate: float = 40.0

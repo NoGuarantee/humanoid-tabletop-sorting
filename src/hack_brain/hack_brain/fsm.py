@@ -105,8 +105,8 @@ def _tick(c, e, effects):
         return
     if c.sim is not None and c.sim >= c.deadline - c.config.reserve:
         _stop(c, effects, 'deadline')
-    elif c.active and (c.sim - c.active.sim_start >= c.config.operation_timeout
-                       or wall - c.active.wall_start >= c.config.watchdog):
+    elif c.active and c.sim - c.active.sim_start >= c.config.operation_timeout:
+        # Sim seconds only: a stalled clock is caught above, and the sim runs slower than the wall clock.
         _stop(c, effects, 'operation_timeout')
 
 

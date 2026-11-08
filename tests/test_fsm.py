@@ -138,7 +138,7 @@ class MissionTests(unittest.TestCase):
         f = Fake()
         f.until(State.APPROACH)
         op_id = f.c.active.id
-        f.tick(sim=22, wall=101)
+        f.tick(sim=f.c.active.sim_start + f.c.config.operation_timeout + 1, wall=f.wall + 1)
         self.assertEqual(f.c.state, State.CANCELLING)
         f.send(Event('CANCEL_ACK', op_id))
         self.assertEqual(f.c.state, State.CANCELLING)
@@ -146,6 +146,14 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(f.c.state, State.DONE)
         self.assertFalse(f.c.blocked)
         self.assertIsNone(f.c.active)
+
+    def test_slow_sim_does_not_time_out_on_wall_clock(self):
+        f = Fake()
+        f.until(State.APPROACH)
+        start_sim, start_wall = f.c.active.sim_start, f.wall
+        for i in range(1, 11):  # the sim at 0.3x realtime: 3 wall s per sim s
+            f.tick(sim=start_sim + i, wall=start_wall + 3 * i)
+        self.assertEqual(f.c.state, State.APPROACH)
 
     def test_cancel_result_before_ack(self):
         f = Fake()

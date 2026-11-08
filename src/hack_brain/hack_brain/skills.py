@@ -22,6 +22,9 @@ from .grasp_planner import FINGERTIP, flat_hold_point, plan_grasps, plan_place, 
 # 2 cm was too far: a later descent timed out 1.86 cm short, still against the object, and the fingers
 # closed on nothing. 1.5 cm keeps the arrived attempt and rejects that one.
 GRASP_POS_TOL = 0.015
+# Pre-grasp and above-tray poses are in free air, and the linear move after them plans from the measured pose.
+# An approach that stopped 1.01 cm off was rejected at the 1 cm default and cost the attempt (eval 2026-11-08).
+FREE_POS_TOL = 0.02
 
 
 def place_for(cand, container, db):
@@ -90,7 +93,8 @@ class Skills:
             raise NotImplementedError('skill unavailable: ' + phase.value)
         return 'tcp', MoveTcp.Goal(arm=g.arm, target=poses[phase],
                                   mode='direct' if phase in (State.APPROACH, State.TRANSFER) else 'linear',
-                                  pos_tol=GRASP_POS_TOL if phase == State.DESCEND else 0.0)
+                                  pos_tol={State.DESCEND: GRASP_POS_TOL, State.APPROACH: FREE_POS_TOL,
+                                           State.TRANSFER: FREE_POS_TOL}.get(phase, 0.0))
 
     def holding(self, arm, hand_result):
         # TODO(grasping): also check the weight on /arm_6dof_{arm} after lifting (force along gravity)

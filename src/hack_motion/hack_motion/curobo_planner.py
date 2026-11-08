@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from .curobo_robot import load_robot_cfg
 from .robot import (
     ARM_JOINTS, CUBOID_CACHE, JOINTS, TCP_LINK, clearance_z, fingertip, on_the_way, plan_limits, ready_pose,
-    spheres_hit, world_scene)
+    sphere_cuboid_overlap, spheres_hit, world_scene)
 
 
 LOCK_TOL = 0.02  # rad
@@ -30,6 +30,7 @@ START_CLEAR_MAX = 0.08  # rad: a farther jump is a different pose, and a held ob
 # A 45° hand rises as two TCP-axis steps. Past 0.14 m that pair has no plan: the 0.15 m
 # lift of the soap dish reports the start or the end in collision, while 0.12 m still plans.
 LEAN_STEP = 0.12
+NEAR_CUBOID = 0.01  # m: a sphere this close to a tray counts as in it, about cuRobo's collision activation distance
 
 
 class Unreachable(Exception):
@@ -198,7 +199,17 @@ class CuroboPlanner:
                     raise
                 return detour
         goal, state = self._goal(arm, target, q_by_name)
-        return self._plan_linear(arm, goal, state)
+        try:
+            return self._plan_linear(arm, goal, state)
+        except Unreachable:
+            inside = self._trays_at(q_by_name)
+            if not inside:
+                raise
+            # A hand that let go in a tray is inside a solid tray block here, and nothing plans from there. The
+            # trays are hollow in the scene, and a lift or a retreat leaves through the opening.
+            result = self._without_trays(lambda: self._plan_linear(arm, goal, state))
+            self.scene_note += f", planned without the trays (start in {', '.join(inside)})"
+            return result
 
     def _plan_direct(self, arm, target, q_by_name, pos_tol, rot_tol):
         """One collision-free path to `target`. No second attempt above the neighbours."""
@@ -353,6 +364,46 @@ class CuroboPlanner:
         state = JointState.from_position(self._joints_tensor(q_by_name), joint_names=self.joint_names)
         sph = self.mp.compute_kinematics(state).robot_spheres.detach().reshape(-1, 4)
         return [tuple(float(v) for v in row) for row in sph.cpu().tolist()]
+
+    def _trays_at(self, q_by_name):
+        """Trays of the world that a robot sphere is in or within NEAR_CUBOID of, at these joints."""
+        names = self._tray_names()
+        if not names or any(q_by_name.get(n) is None for n in self.joint_names):
+            return []
+        rows = self._sphere_rows(q_by_name)
+        cuboids = self._scene["cuboid"]
+        return [name for name in names
+                if any(r > 0.0 and sphere_cuboid_overlap((x, y, z), r, cuboids[name]["dims"], cuboids[name]["pose"])
+                       > -NEAR_CUBOID for x, y, z, r in rows)]
+
+    def start_report(self, q_by_name):
+        """Why a start may not plan: self-collision overlap, and the nearest robot link to each cuboid. One line.
+
+        Overlaps are in mm, positive inside. cuRobo already counts a sphere within about a centimetre as touching.
+        """
+        if self.mp is None or not self._scene or any(q_by_name.get(n) is None for n in self.joint_names):
+            return "no report: planner or joints missing"
+        q = self._joints_tensor(q_by_name)
+        own = float(self._self_overlap(q)[0].item()) - START_CLEARANCE  # the plain cuRobo self-collision overlap
+        rows = self._sphere_rows(q_by_name)
+        kin = self._self_kin.config.kinematics_config
+        index = kin.link_sphere_idx_map.tolist()
+        links = {i: name for name, i in kin.link_name_to_idx_map.items()}
+        near = []
+        for name, cub in self._scene["cuboid"].items():
+            if name == "no_table":
+                continue
+            best, link = -math.inf, "?"
+            for i, (x, y, z, r) in enumerate(rows):
+                if r <= 0.0:
+                    continue
+                d = sphere_cuboid_overlap((x, y, z), r, cub["dims"], cub["pose"])
+                if d > best:
+                    best, link = d, links.get(index[i], "?") if i < len(index) else "?"
+            near.append((best, name, link))
+        near.sort(reverse=True)
+        parts = [f"{name} {best * 1e3:+.0f} mm ({link})" for best, name, link in near[:3]]
+        return f"self {own * 1e3:+.1f} mm; nearest: " + (", ".join(parts) if parts else "empty world")
 
     def _plan_ready(self, arm, q_by_name):
         """A collision-free joint path that puts `arm` and body_yaw back to robot.ready_pose.

@@ -544,6 +544,14 @@ class MotionNode(Node):
         dot = min(1.0, abs(r.x * o.x + r.y * o.y + r.z * o.z + r.w * o.w))
         return pos, 2.0 * math.acos(dot)
 
+    def _refused(self, g, mode, message, detail=""):
+        """A failed MoveTcp before any motion, logged with its goal: brain only sees the message."""
+        p, o = g.target.position, g.target.orientation
+        self.get_logger().warn(
+            f"move_tcp {g.arm} {mode} failed: {message}; goal ({p.x:.3f}, {p.y:.3f}, {p.z:.3f}) "
+            f"xyzw ({o.x:.3f}, {o.y:.3f}, {o.z:.3f}, {o.w:.3f})" + (f"; {detail}" if detail else ""))
+        return MoveTcp.Result(success=False, message=message)
+
     def move_tcp(self, g):
         if g.arm not in ARM_JOINTS:
             return MoveTcp.Result(success=False, message=f"unknown arm {g.arm}")
@@ -558,11 +566,11 @@ class MotionNode(Node):
         with self._tcp_lock:
             try:
                 if not self._wait_joints():
-                    return MoveTcp.Result(success=False, message="no /joint_states")
+                    return self._refused(g, mode, "no /joint_states")
                 planner = self._planner_obj()
                 if planner.table is None:
                     # Without it the world has no table, and a plan goes through it. brain looks before it moves.
-                    return MoveTcp.Result(success=False, message="no table plane from perception yet")
+                    return self._refused(g, mode, "no table plane from perception yet")
                 with self.lock:
                     snapshot = dict(self.q)
                     planner.objects = self.scene_objects
@@ -579,10 +587,14 @@ class MotionNode(Node):
                 names, waypoints, dt = planner.plan(
                     g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol)
             except Unreachable as e:
-                return MoveTcp.Result(success=False, message=f"unreachable: {e}")
+                try:
+                    report = planner.start_report(snapshot)
+                except Exception as err:  # the report must not hide the failure it explains
+                    report = f"no report: {err!r}"
+                return self._refused(g, mode, f"unreachable: {e}", f"start {report}; {planner.scene_note}")
             except Exception as e:
                 self.get_logger().error(traceback.format_exc())
-                return MoveTcp.Result(success=False, message=f"planner: {e}")
+                return self._refused(g, mode, f"planner: {e}")
             if self.cancelled():
                 return MoveTcp.Result(success=False, message='cancelled')
             known = [(n, i) for i, n in enumerate(names) if n in JOINTS]

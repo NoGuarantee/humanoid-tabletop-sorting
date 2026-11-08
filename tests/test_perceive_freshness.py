@@ -54,14 +54,25 @@ class PerceiveFreshnessTest(unittest.TestCase):
         self.assertEqual(stamp,emitted[0])
         self.assertGreaterEqual(stamp,requested)
 
-    def test_pre_request_exposure_is_not_returned_even_if_under_old_ttl(self):
+    def test_without_a_fresh_exposure_the_last_complete_one_is_returned_as_stale(self):
         node=self.node
-        old=node.get_clock().now().nanoseconds-1_000_000
+        old=node.get_clock().now().nanoseconds-3_000_000_000  # older than any source TTL
         for kind in ('color','depth','color_info','depth_info'):node.store('head',kind,message(old))
+        node.store('head','color',message(old+1))  # incomplete newer exposure is skipped
         started=time.monotonic()
         result=node.on_perceive(Perceive.Request(camera='head',region='table'),Perceive.Response())
-        self.assertFalse(result.success)
+        self.assertTrue(result.success,result.message)
+        self.assertTrue(result.message.startswith('stale frame'),result.message)
+        stamp=result.scene.header.stamp.sec*10**9+result.scene.header.stamp.nanosec
+        self.assertEqual(stamp,old)
         self.assertLess(time.monotonic()-started,.5)
+
+    def test_no_complete_exposure_is_an_error(self):
+        node=self.node
+        for kind in ('color','depth','color_info'):node.store('head',kind,message(node.get_clock().now().nanoseconds))
+        result=node.on_perceive(Perceive.Request(camera='head',region='table'),Perceive.Response())
+        self.assertFalse(result.success)
+        self.assertIn('no frames',result.message)
 
     def test_mixed_camera_headers_are_not_a_snapshot(self):
         node=self.node

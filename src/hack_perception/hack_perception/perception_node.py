@@ -154,10 +154,10 @@ class PerceptionNode(Node):
                 return
         self.store(cam, kind, msg)
 
-    def snapshot(self, cam, *, now_ns=None, after_ns=0):
+    def snapshot(self, cam, *, now_ns=None, after_ns=0, max_age_ns=1_000_000_000):
         now = self.get_clock().now().nanoseconds if now_ns is None else now_ns
         with self.lock:
-            view = self.camera_buffer.latest_for(CAMERAS[cam], now, 1_000_000_000, after_ns=after_ns)
+            view = self.camera_buffer.latest_for(CAMERAS[cam], now, max_age_ns, after_ns=after_ns)
             epoch = self.model_poses.generation if self.model_poses is not None else None
         if view is None:
             return None, None
@@ -194,7 +194,7 @@ class PerceptionNode(Node):
         timing['request_stamp_ns'] = requested_ns
         start = monotonic()
         deadline = start + max(0., min(1., self.get_parameter('perceive_frame_wait_s').value))
-        f, key, model = None, None, None
+        f, key, model, stale = None, None, None, False
         # A service called after LOOK_TABLE must not return a pre-motion frame.
         # Condition.wait releases the input lock so camera and TF callbacks run.
         while cam in CAMERAS:
@@ -212,7 +212,11 @@ class PerceptionNode(Node):
                     break
                 remaining = deadline - monotonic()
                 if remaining <= 0:
-                    f, key = None, None
+                    # No exposure after the request: the last complete one, of any age,
+                    # beats an empty answer that stops the mission. The buffer is
+                    # cleared on a clock reset, and the cloud uses TF at its own stamp.
+                    f, key = self.snapshot(cam, now_ns=now, max_age_ns=2**63)
+                    stale = f is not None
                     break
                 # /clock can catch up without another camera callback. Retain
                 # older complete exposures instead of overwriting with a future one.
@@ -228,19 +232,23 @@ class PerceptionNode(Node):
             res.success, res.message = False, f"no frames from camera '{cam}'"
             return res
         header = f["depth"].header
-        if self.model_poses is not None and not self.model_poses.valid_scene(key):
+        if self.model_poses is not None and not stale and not self.model_poses.valid_scene(key):
             res.success, res.message = False, "no fresh RGB-D exposure"
             return res
         res.scene.header.stamp = header.stamp
         try:
             self.detect(f, req.region or "table", res.scene, geometry, key[0], timing)
-            if self.model_poses is not None and not self.model_poses.valid_scene(key):
+            if self.model_poses is not None and not stale and not self.model_poses.valid_scene(key):
                 res.scene = SceneObjects()
                 res.scene.header.frame_id = BASE
                 res.success, res.message = False, "RGB-D worker exposure expired"
                 return res
-            timing['response_age_sim_s'] = (self.get_clock().now().nanoseconds-key[1])*1e-9
-            res.success, res.message = True, "ok"
+            age = (self.get_clock().now().nanoseconds-key[1])*1e-9
+            timing['response_age_sim_s'], timing['stale_frame'] = age, stale
+            res.success = True
+            res.message = f"stale frame: none after the request, using one {age:.2f} s old" if stale else "ok"
+            if stale:
+                self.get_logger().warn(f"perceive({cam}): {res.message}")
         except NotImplementedError as e:
             res.success, res.message = False, f"not_implemented: {e}"
         except Exception as e:  # never kill the service: the brain decides what to do

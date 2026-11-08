@@ -86,7 +86,9 @@ class Measurements:
         pos = [min(max(p, 0.), 1.) for p in pos]
         # Five closing fingers open hold nothing. Thumb rotation (6) is not one: pinch_ready keeps it at 0.1,
         # and a hand left there by a failed approach read UNKNOWN until the mission ended (eval 2026-11-08).
-        if all(p >= 0.95 for p in pos[:5]):
+        # The open right hand reads 0.94 on the thumb and ended a mission the same way; a held object keeps
+        # some finger well below 0.9 (thumb 0.36..0.72 on the cartridge, 0.83 on the bowl rim).
+        if all(p >= 0.9 for p in pos[:5]):
             return t, 'EMPTY'
         if target is None:
             return None

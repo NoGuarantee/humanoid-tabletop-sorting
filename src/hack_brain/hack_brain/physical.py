@@ -1,6 +1,6 @@
 """Sensor-based sorting evidence. Thresholds are tunable, not ground-truth labels.
 
-Holding requires opposed finger contact. Lift additionally requires measured TCP
+Holding requires a closing finger held short of its target with effort (sensors.hand). Lift additionally requires measured TCP
 rise with uninterrupted contact. Placement requires a unique named RGB-D detection
 inside the observed tray after release and retreat. Occlusion stays UNKNOWN.
 """
@@ -35,11 +35,13 @@ class PhysicalVerifier:
         self.contact_seen = False
         self.lifted = False
         self.contact_lost = False
+        self.unsure_since = None  # sim time the hand monitor stopped reading HOLDING (Clients.poll)
 
     def closing(self, target, arm, closure, now):
         self.target_id, self.arm, self.closure = target.id, arm, tuple(closure)
         self.baseline = self.tcp(arm, now)
         self.contact_seen = self.lifted = self.contact_lost = False
+        self.unsure_since = None
 
     def read(self, c, scene=None):
         since = c.active.sim_start

@@ -51,8 +51,18 @@ class MeasurementsTests(unittest.TestCase):
         self.assertIsNone(m.hand('left',1.4,1,target))
         m=Measurements();fill(m,'left',positions=blocked,efforts=[.3]*6)
         self.assertEqual(m.hand('left',1.4,1,target)[1],'HOLDING')
-        m=Measurements();fill(m,'left',positions=blocked,efforts=[.3]*4+[0,0])
-        self.assertIsNone(m.hand('left',1.4,1,target))
+        m=Measurements();fill(m,'left',positions=blocked,efforts=[0.]*6)
+        self.assertIsNone(m.hand('left',1.4,1,target))  # stopped short without pushing proves nothing
+
+    def test_bench_pinch_reads_holding(self):
+        pinch=[1.,1.,1.,.3,.4,.1]
+        m=Measurements();fill(m,'right',positions=[1.,1.,1.,1.03,.25,.1],efforts=[0,0,0,.4,.3,0])
+        self.assertEqual(m.hand('right',1.4,1,pinch)[1],'HOLDING')
+        # The thumb overshoots its target on an empty close too: that is still an empty hand.
+        m=Measurements();fill(m,'right',positions=[1.,1.,1.,.3,.25,.1],efforts=[0,0,0,.05,.05,0])
+        self.assertEqual(m.hand('right',1.4,1,pinch)[1],'EMPTY')
+        m=Measurements();fill(m,'right',positions=[1.,1.,1.,2.,.25,.1])
+        self.assertIsNone(m.hand('right',1.4,1,pinch))
 
 
 class EvidenceTests(unittest.TestCase):

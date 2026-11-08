@@ -18,6 +18,10 @@ from .skills import Skills
 from .transport import ActionTransport
 
 
+HAND_STILL = .015  # finger reading spread over 0.3 s that still counts as stopped, as sensors.hand
+UNSURE_S = 1.5  # sim s without a HOLDING reading before a held object counts as lost
+
+
 class Clients:
     # Sorting evidence is produced by PhysicalVerifier, never by action success.
     # Tube skills and rack verification remain unavailable.
@@ -60,7 +64,7 @@ class Clients:
                 self.emit(Event('CANCEL_ACK',effect.op_id))
                 self.emit(Event('RESULT',effect.op_id,ok=False,stopped=True))
                 return
-            if context.active.phase in VERIFY or context.active.phase in (State.OBSERVE, State.DESTINATION, State.REFRESH_TARGET):
+            if context.active.phase in VERIFY or context.active.phase in (State.OBSERVE, State.DESTINATION):
                 # Read-only operations can be abandoned. Late responses retain old IDs.
                 self.verify_pending = None
                 self.emit(Event('CANCEL_ACK', effect.op_id))
@@ -73,8 +77,7 @@ class Clients:
             self.verify_scene = None
             self.verify_future = None
             return
-        if effect.phase in (State.OBSERVE, State.DESTINATION, State.REFRESH_TARGET):
-            self.refresh_target = effect.target.id if effect.target else ''
+        if effect.phase in (State.OBSERVE, State.DESTINATION):
             self.scene_pending = effect
             self.scene_future = None
             self.next_scene_request = 0.0
@@ -93,6 +96,7 @@ class Clients:
                     self.verifier.closure = None
                     self.verifier.baseline = None
                     self.verifier.contact_seen = self.verifier.lifted = self.verifier.contact_lost = False
+                    self.verifier.unsure_since = None
                 if effect.phase == State.CLOSE:
                     self.verifier.closing(effect.target,goal.hand,HAND_PRESETS[goal.preset],context.sim)
                 self.stop_resources = {effect.op_id: (goal.hand if name == 'hand' else 'joints',
@@ -106,18 +110,7 @@ class Clients:
         if not response.success:
             return Event('RESULT', event.op_id, response.message, ok=False, stopped=True)
         s = response.scene
-        if phase == State.REFRESH_TARGET:
-            old = self.scenes.get('table')
-            target = self.refresh_target
-            before = [o for o in old.objects if (o.name or o.track_id)==target] if old else []
-            after = [o for o in s.objects if (o.name or o.track_id)==target]
-            if len(before)!=1 or len(after)!=1:
-                return Event('RESULT',event.op_id,'target_ambiguous',ok=False,stopped=True)
-            a,b = before[0].center,after[0].center
-            if (not all(math.isfinite(v) for v in (a.x,a.y,a.z,b.x,b.y,b.z))
-                    or (a.x-b.x)**2+(a.y-b.y)**2+(a.z-b.z)**2 > .02**2):
-                return Event('RESULT',event.op_id,'target_moved',ok=False,stopped=True)
-        self.scenes['table' if phase in (State.OBSERVE, State.REFRESH_TARGET) else 'destination'] = s
+        self.scenes['table' if phase == State.OBSERVE else 'destination'] = s
         stamp = s.header.stamp.sec + s.header.stamp.nanosec * 1e-9
         objects = tuple(Object(o.name or o.track_id, o.category, o.name, o.cap_color,
                                o.confidence, o.partially_visible, o.lying) for o in s.objects)
@@ -141,7 +134,11 @@ class Clients:
 
     def stopped(self, op_id, since):
         resource = self.stop_resources.get(op_id)
-        return bool(resource and self.measurements.window(resource[0],self.now(),since,resource[1]))
+        # A hand squeezing an object at full effort jitters by about 0.01: the 0.004 joint tolerance never
+        # saw it settle, and a close on the cartridge ended the mission as a stop it could not confirm.
+        tolerance = HAND_STILL if resource and resource[0] in ('left', 'right') else .004
+        return bool(resource and self.measurements.window(resource[0],self.now(),since,resource[1],
+                                                           tolerance=tolerance))
 
     def poll(self, context):
         self.transport.poll()
@@ -158,8 +155,20 @@ class Clients:
         if (v.contact_seen and context.target and context.hand.value == 'HOLDING'
                 and context.state not in (State.RELEASE,State.RETREAT,State.VERIFY_PLACE,State.CANCELLING,State.DONE)):
             sample = self.measurements.hand(v.arm,context.sim,context.sim-.6,v.closure)
-            if sample is None or sample[1] != 'HOLDING':
+            if sample is not None and sample[1] == 'HOLDING':
+                v.unsure_since = None
+            elif v.unsure_since is None and (sample is None or sample[1] != 'EMPTY'):
+                # Fingers shift under the load while the arm lifts or carries: a reading that is not still
+                # for 0.3 s is not a loss. A hand closed to its target is, and so is no HOLDING for UNSURE_S.
+                v.unsure_since = context.sim
+            elif (sample is not None and sample[1] == 'EMPTY') or context.sim-v.unsure_since >= UNSURE_S:
                 v.contact_lost = True
+                rows = list(self.measurements.samples[v.arm])[-4:]
+                self.node.get_logger().warn(
+                    f"hold lost on {v.arm}: {'closed to target' if sample else 'no HOLDING for %.1f s' % UNSURE_S}, "
+                    f"target {v.closure}, last readings "
+                    + '; '.join(f"{t:.2f}: " + ' '.join(f"{values.get(str(i), -1):.2f}" for i in range(1, 7))
+                                + ' effort ' + ' '.join(f"{e:.2f}" for e in msg.effort) for t, values, msg in rows))
                 self.emit(Event('SENSOR',data=Evidence(context.sim,source='contact_lost_or_stale')))
         effect = self.verify_pending
         if not effect or not context.active or context.active.id != effect.op_id:

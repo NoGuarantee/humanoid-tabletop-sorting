@@ -361,8 +361,12 @@ class MotionNode(Node):
             # a closing finger stopped well short of its target with noticeable effort -> something is in the hand
             res.object_detected = any(
                 res.position[i] > target[i] + 0.05 and (not res.effort or res.effort[i] > 0.1) for i in closing)
+            self.get_logger().info(
+                f"hand {g.hand} {g.preset}: position {' '.join(f'{p:.2f}' for p in res.position)}, effort "
+                f"{' '.join(f'{e:.2f}' for e in res.effort)}, object {res.object_detected}")
+        # The hand state and /clock come on different topics: the state may be a step ahead of our clock.
         res.success = (st is not None and len(st.position) >= 6 and
-                       0 <= self.now()-(st.header.stamp.sec+st.header.stamp.nanosec*1e-9) <= .2)
+                       abs(self.now()-(st.header.stamp.sec+st.header.stamp.nanosec*1e-9)) <= .5)
         return res
 
     def _finger_pos(self, side):

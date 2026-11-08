@@ -56,15 +56,22 @@ class Measurements:
             return None
         t, values, msg = row
         pos = [values[str(i)] for i in range(1,7)]
-        if any(not 0 <= p <= 1 for p in pos):
+        # A finger pressed against an object or the table reads a little past open (1.03 on a held cartridge,
+        # 1.34 with a pad on the table). Clamp that; a reading far outside 0..1 is not a hand.
+        if any(not -.1 <= p <= 1.5 for p in pos):
             return None
+        pos = [min(max(p, 0.), 1.) for p in pos]
         if all(p >= 0.95 for p in pos):
             return t, 'EMPTY'
         if target is None:
             return None
         if len(msg.effort) != len(msg.name) or not all(math.isfinite(x) for x in msg.effort):
             return None
-        # Require sustained opposed contact, not a one-frame force spike.
+        # Require sustained contact, not a one-frame force spike: a closing finger stopped short of its
+        # target and pushing. One finger is enough. The pinch that carried the cartridge on the bench read
+        # (1.00 1.00 1.00 1.03 0.25 0.10) for target (1 1 1 0.3 0.4 0.1): the index stopped at the object
+        # and the thumb went past its target, so "thumb and another finger both stopped" never held.
+        # VERIFY_LIFT still needs the TCP risen with the contact unbroken, so a finger on the table fails there.
         with self.lock:
             rows = [row for row in self.samples[side] if t-.3 <= row[0] <= t]
         contact = set(range(5))
@@ -73,10 +80,11 @@ class Measurements:
                 return None
             effort = dict(zip(frame.name, frame.effort))
             contact &= {i for i in range(5) if target[i] < .9
-                        and positions.get(str(i+1), -1) > target[i]+.05
+                        and min(positions.get(str(i+1), -1), 1.) > target[i]+.05
                         and effort.get(str(i+1), 0) > .1}
-        if len(rows) >= 3 and 4 in contact and any(i < 4 for i in contact):
+        if len(rows) >= 3 and contact:
             return t, 'HOLDING'
-        if all(abs(p-g) < .04 for p,g in zip(pos,target)):
+        # Closed to the target or past it (the thumb overshoots) with nothing in the way.
+        if all(p <= g + .05 for p, g in zip(pos, target) if g < .9):
             return t, 'EMPTY'
         return None

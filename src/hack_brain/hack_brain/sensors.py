@@ -68,7 +68,9 @@ class Measurements:
                 f"max gap {gaps:.2f} s, over {tolerance}: {', '.join(moving) or 'none'}")
 
     def hand(self, side, now, since, target=None):
-        row = self.window(side, now, since, tuple(str(i) for i in range(1,7)), tolerance=0.015)
+        # A thumb squeezing the sink at full effort jitters 0.018 over 0.3 s: at 0.015 a held sink read as no
+        # hand, and the monitor took that for a lost hold mid-lift (eval 2026-11-08). Closing fingers move far more.
+        row = self.window(side, now, since, tuple(str(i) for i in range(1,7)), tolerance=0.04)
         if row is None:
             return None
         t, values, msg = row

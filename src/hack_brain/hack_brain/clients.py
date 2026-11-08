@@ -8,7 +8,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 
 from .context import Container, Event, Evidence, Object, Scene, State
 from .physical import PhysicalVerifier
-from .sensors import HAND_STILL, Measurements, stamp
+from .sensors import HAND_STILL, Measurements, stamp, with_known_trays
 
 # Joint spread over 0.3 s that still counts as the arm at rest after a move. The drives sway 0.005..0.016 rad
 # while they settle; at 0.004 one sway outlasted the 4 s wait after a CLEAR that had arrived and ended the mission
@@ -88,6 +88,7 @@ class Clients:
         self.transport = ActionTransport(emit,self.stopped,self.now)
         self.skills = Skills(db)
         self.scenes = {}
+        self.trays = {}  # tray id -> the last hack_interfaces Container seen, see with_known_trays
 
     def execute(self, effect, context):
         if effect.kind == 'CANCEL':
@@ -140,7 +141,7 @@ class Clients:
         phase, response = event.data
         if not response.success:
             return Event('RESULT', event.op_id, response.message, ok=False, stopped=True)
-        s = response.scene
+        s = with_known_trays(response.scene, self.trays)
         self.scenes['table' if phase == State.OBSERVE else 'destination'] = s
         stamp = s.header.stamp.sec + s.header.stamp.nanosec * 1e-9
         objects = tuple(Object(o.name or o.track_id, o.category, o.name, o.cap_color,
@@ -213,7 +214,7 @@ class Clients:
                 try:
                     response = self.verify_future.result()
                     if response.success:
-                        self.verify_scene = response.scene
+                        self.verify_scene = with_known_trays(response.scene, self.trays)
                 except Exception:
                     pass
                 self.verify_future = None

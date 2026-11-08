@@ -14,6 +14,20 @@ def stamp(msg):
     return msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
 
 
+def with_known_trays(scene, known):
+    """Adds to `scene` the trays it misses, as last measured; remembers the trays it shows. Returns `scene`.
+
+    The trays stay where they are and the pelvis frame does not move, while a lifted arm hides the tray beside it
+    from the head camera: the cup held in the left hand never saw tray_left, and six looks from the same pose ended
+    the mission as destination_missing (eval 2026-11-08). Racks are not remembered: their slots fill up."""
+    seen = {x.id for x in scene.containers}
+    for x in scene.containers:
+        if x.kind == 'tray' and x.id:
+            known[x.id] = x
+    scene.containers.extend(x for tray_id, x in sorted(known.items()) if tray_id not in seen)
+    return scene
+
+
 def joint_values(msg):
     if len(msg.name) != len(msg.position) or len(set(msg.name)) != len(msg.name):
         return None

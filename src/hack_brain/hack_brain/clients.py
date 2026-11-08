@@ -9,6 +9,11 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from .context import Container, Event, Evidence, Object, Scene, State
 from .physical import PhysicalVerifier
 from .sensors import HAND_STILL, Measurements, stamp
+
+# Joint spread over 0.3 s that still counts as the arm at rest after a move. The drives sway 0.005..0.016 rad
+# while they settle; at 0.004 one sway outlasted the 4 s wait after a CLEAR that had arrived and ended the mission
+# after the first sorted object (eval 2026-11-08). A driven joint at a tenth of the 0.8 rad/s limit moves 0.024.
+JOINT_STILL = 0.02
 from sensor_msgs.msg import JointState
 from tf2_ros import Buffer, TransformListener
 from rclpy.time import Time
@@ -160,8 +165,8 @@ class Clients:
 
     def stopped(self, op_id, since):
         resource = self.stop_resources.get(op_id)
-        # A squeezing hand jitters (sensors.HAND_STILL); the 0.004 joint tolerance never saw it settle.
-        tolerance = HAND_STILL if resource and resource[0] in ('left', 'right') else .004
+        # A squeezing hand jitters (sensors.HAND_STILL); the joint tolerance never saw it settle.
+        tolerance = HAND_STILL if resource and resource[0] in ('left', 'right') else JOINT_STILL
         now = self.now()
         still = bool(resource and self.measurements.window(resource[0],now,since,resource[1],tolerance=tolerance))
         if resource and not still and now - since >= 1.0 and self.stop_reported != op_id:

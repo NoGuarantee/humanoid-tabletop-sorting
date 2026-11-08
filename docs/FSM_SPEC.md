@@ -90,7 +90,7 @@ brain сохраняет блокировку и завершает миссию
 | APPROACH | актуальная сцена | предзахват | success → DESCEND | unreachable/rejected → recovery |
 | DESCEND | актуальная сцена до начала контакта | спуск, инвалидировать сцену | success → CLOSE | рука UNKNOWN → recovery |
 | CLOSE | цель и контактный план | закрытие | success → VERIFY_GRASP | UNKNOWN → recovery |
-| VERIFY_GRASP | после закрытия | запрос доказательства | HOLDING → LIFT | EMPTY → recovery; UNKNOWN → DONE |
+| VERIFY_GRASP | после закрытия | запрос доказательства | HOLDING → LIFT | EMPTY или UNKNOWN → recovery (в пределах бюджета попытки), затем DONE |
 | LIFT | подтверждённый HOLDING | подъём; lift history UNKNOWN до проверки | success → VERIFY_LIFT | recovery с проверкой удержания |
 | VERIFY_LIFT | после подъёма | запрос доказательства | HOLDING + lifted → DESTINATION или REORIENT | EMPTY → recovery; UNKNOWN → DONE |
 | REORIENT | tubes lying, подтверждённый подъём | составной навык upright | success → VERIFY_REORIENT | recovery; навык недоступен → пропуск до захвата |
@@ -102,7 +102,7 @@ brain сохраняет блокировку и завершает миссию
 | LOWER | sort, HOLDING | спуск в ящик | success → RELEASE | recovery |
 | INSERT | tubes, HOLDING, свободный слот | составной навык вставки | success → RELEASE | recovery |
 | RELEASE | у назначения | открыть, hand UNKNOWN | success → VERIFY_PLACE | recovery, не объявлять EMPTY |
-| VERIFY_PLACE | после раскрытия | запрос доказательства | EMPTY + placed + destination/slot → RETREAT | иначе DONE placement_unconfirmed |
+| VERIFY_PLACE | после раскрытия | запрос доказательства | EMPTY + placed + destination/slot → RETREAT | EMPTY без подтверждения → released, VERIFY_EMPTY; иначе DONE placement_unconfirmed |
 | RETREAT | подтверждённое размещение | отход | success → VERIFY_EMPTY | DONE retreat_failed, placement сохраняется |
 | RECOVER | терминальная ошибка навыка | проверить руку | EMPTY → BACK_OFF, если рука могла остаться у объекта (DESCEND принят, LIFT не прошёл), иначе новый осмотр; HOLDING+LIFTED → REORIENT для lying без upright, иначе новое назначение; UNKNOWN → повторный замер в пределах recovery budget | лимит, анонимная цель после контакта → DONE |
 | BACK_OFF | RECOVER: EMPTY и рука внизу | линейно вверх к pre_grasp, как на main | CLEAR при любом исходе | — |
@@ -158,6 +158,7 @@ brain сохраняет блокировку и завершает миссию
 | LOWER / INSERT | RESULT | success | hand=UNKNOWN | release | RELEASE |
 | RELEASE | RESULT | success | нет | retreat | RETREAT |
 | VERIFY_PLACE | RESULT | fresh EMPTY + placed + matching target | placed=True, hand=EMPTY | verify empty | VERIFY_EMPTY |
+| VERIFY_PLACE | RESULT | fresh EMPTY, укладка не видна | released=True, hand=EMPTY | verify empty | VERIFY_EMPTY |
 | RETREAT | RESULT | success | нет | verify placement | VERIFY_PLACE |
 | навыки | RESULT / REJECTED | failure, retry | retries++, scene invalid | verify | RECOVER |
 | RECOVER | RESULT | fresh EMPTY, identity usable, arm_low | hand=EMPTY, arm_low=False | move up | BACK_OFF |
@@ -247,6 +248,8 @@ VERIFY_TRANSFER добавлен, чтобы осмотр назначения �
 над столом рука закрывала лотки, и три осмотра подряд не находили ни одного.
 RELEASE → RETREAT → VERIFY_PLACE позволяет убрать кисть из кадра до подтверждения размещения.
 Только после VERIFY_PLACE история помечается placed; неудачный отход не объявляет укладку.
+Если кисть пуста, а камера укладку не подтвердила (лоток за рукой), объект помечается released: миссия идёт
+дальше, но этот объект больше не выбирается, чтобы не вынуть его из лотка.
 Done: 3×0.2 s при штатном завершении, 10×0.5 s только в fallback.
 
 PR остаётся draft до физического прогона: middleware-тесты не подтверждают успешный захват,

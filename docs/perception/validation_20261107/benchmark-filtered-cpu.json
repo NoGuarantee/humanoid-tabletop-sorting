@@ -1,0 +1,1532 @@
+{
+  "scope": "saved sensor replay; excludes ROS/DDS and live freshness; not accuracy or robot success",
+  "torch": "2.8.0+cu126",
+  "threads": 2,
+  "names": "Schleich_African_Black_Rhino,Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g",
+  "source_sha256": {
+    "._setup.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/.___init__.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/._classify.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/._geometry.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/._perception_node.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/._rgbd_frames.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/._rgbd_labels.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/._rgbd_response.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/._rgbd_service.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/._rgbd_worker.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/._table_clusters.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "hack_perception/classify.py": "19f72c029df248441e0340d82490d195694e80f425164c4c507ce69f7e1ee688",
+    "hack_perception/geometry.py": "ebf0317573b5182c074eb74a07fc3a2cecd065411665ea2c8681e1d8e081d4a4",
+    "hack_perception/perception_node.py": "6c65a9674b35f4f7474367a8021f7695320c352f3f7b569eb10133df15ed0d81",
+    "hack_perception/rgbd/.___init__.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/rgbd/._detection.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/rgbd/._fit_rgbd_templates.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/rgbd/._full_pose_nn.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/rgbd/._geometry.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/rgbd/._multiview_association.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/rgbd/._paired_box_identity.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/rgbd/._pose_backend.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/rgbd/._rgbd_free_space.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/rgbd/._rgbd_identity.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/rgbd/._rgbd_template_refinement.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/rgbd/._scene_geometry.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/rgbd/._seeded_icp.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/rgbd/._tube_end_ranker.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/rgbd/._tube_nn_features.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/rgbd/._yolo_pose_head.py": "0cf2ca8a3bfc3c21ffe2af06c98fa9468383bfc6f0fde70ad90e76d734514195",
+    "hack_perception/rgbd/__init__.py": "b731ca9ab9d45cc051e6eae76b8655462b956d9fac4cfb5741884d8980db29f5",
+    "hack_perception/rgbd/detection.py": "cdd8d52847e3da65a3d3cb3b97888e8e13f9df745fb6ee6642cd8a316b8bc3bf",
+    "hack_perception/rgbd/fit_rgbd_templates.py": "4579af555cdc3c81258cf661eb58d0e97e71ab7b17e4a8cd1104fd777fc7791e",
+    "hack_perception/rgbd/full_pose_nn.py": "4d7e43ff0fadc0b9537a2d965f0c628bf73b098316a3064dbecfe9c2d56f2750",
+    "hack_perception/rgbd/geometry.py": "c420c7db679a716fe190e4ae83d6e9d54cefe6163fb857c923b5785df6c82999",
+    "hack_perception/rgbd/multiview_association.py": "23c82dc987b8e2abed3f47585b8ed4664f8ae22168a316193d1620081c3ee630",
+    "hack_perception/rgbd/paired_box_identity.py": "a7b2745da6d454332c4f4f93e371e18604f595513464043401fde73583c08079",
+    "hack_perception/rgbd/pose_backend.py": "469cb48764c375a4a968d9458aff5cd9b45ccf50e5eba77f8f9603845ba89e72",
+    "hack_perception/rgbd/rgbd_free_space.py": "25cd988e92baa0ef3dae0d198beb87eaca8d5acee406e8af91e918a6754a9257",
+    "hack_perception/rgbd/rgbd_identity.py": "23a7a5e4816f883768987e8124bcababd90103b3d146f92e9c4e7c2ad8ebc7bd",
+    "hack_perception/rgbd/rgbd_template_refinement.py": "04dfcdec9b31e418341bb5504057ca77e8a295fa00838ffb3c6c6f2665fdeda5",
+    "hack_perception/rgbd/scene_geometry.py": "ebe463021c0f57deaeb12d4288f719cce578f1223de46b9468b44d28baf8c6f9",
+    "hack_perception/rgbd/seeded_icp.py": "b7057893f28229170f3880541c64ac6807dbc10e611da870fa23371983b2d132",
+    "hack_perception/rgbd/tube_end_ranker.py": "8ac96d26748b9482009d728e851fbf4b704245cd0d8a9b5db644fff32cb59422",
+    "hack_perception/rgbd/tube_nn_features.py": "6fbd0649c8d94b434feea64cd90117459d7aba15f1f1849a2199c918d648f521",
+    "hack_perception/rgbd/yolo_pose_head.py": "75a268f9646f70202f5b12a0f1b4cd79b7d87284a8ee4b1e463aa9b6f6db12f7",
+    "hack_perception/rgbd_frames.py": "c3508f6bfa3023e18b0c4cca90f56d4e250bb3d306c2f499d4597f56cb1e0746",
+    "hack_perception/rgbd_labels.py": "c2f770f247de66be751c4e457d533b1b256b13dffc71e7b53326a58868af1f16",
+    "hack_perception/rgbd_response.py": "d19c3f78d8f26400a6aa198ccb98ff0c042475255d4ab68ea0c11090f2df2108",
+    "hack_perception/rgbd_service.py": "57c33292ba9a9096ada49bf7dadb5d905e84bb21784c700627a6c2d9449fe3cf",
+    "hack_perception/rgbd_worker.py": "9724537aacdcd7bd31b4b4bcf68db0110408a3bd7cd4db60bae9a25b4f7dcf68",
+    "hack_perception/table_clusters.py": "91f2f6b909da2b5eb99aad6b8540820ac496fc724e3f6c57862a8da0c04c08a2",
+    "setup.py": "ba4c8612fc5cbc3847ba2d253b7bf26626dea1903fcdbbd10943a1450f4c8fe1"
+  },
+  "input_sha256": {
+    "inputs.json": "7943b34bbe661b264380bc194c3a232a1946ea64d7eb399663a361a74b9fab85",
+    "0_cam_head_rgb.png": "024d546b99d7251a1835774a512ea885acdd7ae7988eaa3baa5e7cab69fe7fbb",
+    "0_cam_head_depth_mm.png": "9fab0870bc1af69492438f03497b92494ee9f7fd1738cd221e55dae2e95d25e2",
+    "0_cam_torso_rgb.png": "8c8c20a9de78b69b853c70471cc84a2ef91e90ea8f8b6d045f63ae24190857cc",
+    "0_cam_torso_depth_mm.png": "e8e5c256340513951c188eddc3418ab1b8c5eea12b6c018e0500c4f2f2e64032",
+    "1_cam_head_rgb.png": "4beb39222e2f3b31bc3c0a4eb66d573ed0902c34e45b229aae1529ba4815af90",
+    "1_cam_head_depth_mm.png": "bb958787a92fe7925fe7600957e9571fb7d0de37cf8fc7837b811bca18abe743",
+    "1_cam_torso_rgb.png": "b9bc3c0e490b5656c7db665b5b66b016c60c1739979d20b82ec043cb98aafe2b",
+    "1_cam_torso_depth_mm.png": "55f71746d2a36006b42d9d89919eb8237924bbd310d31448e39a93bca4d9c29f",
+    "2_cam_head_rgb.png": "7bf84f7164df2a023eaeec5029d66c59690ed366e750dc23b322498be13d4606",
+    "2_cam_head_depth_mm.png": "01e4b0b2ec0ba453098318cc2f807f692cba5e7efd55737f4cd8b17cfcb51dc6",
+    "2_cam_torso_rgb.png": "6bb2d7479be483069bde54a6d45627524edbad2e15fe1c72ed9a27a3fde3cdcb",
+    "2_cam_torso_depth_mm.png": "fb9364ca2af177489b66f267b70a38a69ec808c778a0a68f7c11cdceeca971c2"
+  },
+  "bundle_manifest_sha256": "5ddafc31b4f97b71ed17d21efab509e84fe72f9cbdd4140b440516c60d12571c",
+  "results": [
+    {
+      "device": "cpu",
+      "capture_id": "native-pilot-20261105-sort2-p4-none-00-000000",
+      "trials": [
+        {
+          "segmentation_s": 1.0785130891017616,
+          "geometry_s": 0.033979673869907856,
+          "pose_and_regions_s": 0.535884409211576,
+          "total_s": 1.6483771721832454
+        },
+        {
+          "segmentation_s": 0.11836964590474963,
+          "geometry_s": 0.032714633736759424,
+          "pose_and_regions_s": 0.532651249319315,
+          "total_s": 0.683735528960824
+        },
+        {
+          "segmentation_s": 0.10764757124707103,
+          "geometry_s": 0.03328478196635842,
+          "pose_and_regions_s": 0.5363623956218362,
+          "total_s": 0.6772947488352656
+        },
+        {
+          "segmentation_s": 0.10996432276442647,
+          "geometry_s": 0.03238988388329744,
+          "pose_and_regions_s": 0.5352025800384581,
+          "total_s": 0.677556786686182
+        }
+      ],
+      "warm_median_s": {
+        "segmentation_s": 0.10996432276442647,
+        "geometry_s": 0.032714633736759424,
+        "pose_and_regions_s": 0.5352025800384581,
+        "total_s": 0.677556786686182
+      },
+      "result": {
+        "schema": "hack_perception.model_poses/v1",
+        "status": "ok",
+        "stamp_ns": 1,
+        "frame_id": "pelvis",
+        "pool": 4,
+        "table_z_m": -0.18030472090362035,
+        "objects": [
+          {
+            "name": "Schleich_African_Black_Rhino",
+            "category": "figure",
+            "pose_status": "ok",
+            "T_pelvis_object": [
+              [
+                0.9974266974297503,
+                0.03491203344534935,
+                -0.06261895220372807,
+                0.4639447562107509
+              ],
+              [
+                -0.03504976952446604,
+                0.9993849603375909,
+                -0.0011021376108719288,
+                0.2827723322840291
+              ],
+              [
+                0.06254196119937198,
+                0.0032940813199294726,
+                0.9980368991763753,
+                -0.1479078736079072
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "center_pelvis_m": [
+              0.46243825510988323,
+              0.2848147945094023,
+              -0.11831170907340743
+            ],
+            "size_model_m": [
+              0.03978482324630022,
+              0.1286103242635727,
+              0.05932414312301262
+            ],
+            "orientation_mode": "full",
+            "detector_score": 0.9596338868141174,
+            "depth_points": 1300,
+            "fit_rmse_m": 0.0005673983506064309,
+            "depth_supported_views": 2,
+            "instances": {
+              "cam_head": 5,
+              "cam_torso": 5
+            }
+          },
+          {
+            "name": null,
+            "category": "dish",
+            "pose_status": "not_fitted",
+            "T_pelvis_object": null,
+            "center_pelvis_m": null,
+            "size_model_m": null,
+            "orientation_mode": null,
+            "detector_score": 0.9702842235565186,
+            "depth_points": null,
+            "fit_rmse_m": null,
+            "depth_supported_views": 0,
+            "instances": {
+              "cam_head": 2
+            }
+          },
+          {
+            "name": null,
+            "category": "dish",
+            "pose_status": "not_fitted",
+            "T_pelvis_object": null,
+            "center_pelvis_m": null,
+            "size_model_m": null,
+            "orientation_mode": null,
+            "detector_score": 0.9695264101028442,
+            "depth_points": null,
+            "fit_rmse_m": null,
+            "depth_supported_views": 0,
+            "instances": {
+              "cam_head": 3
+            }
+          },
+          {
+            "name": null,
+            "category": "figure",
+            "pose_status": "not_fitted",
+            "T_pelvis_object": null,
+            "center_pelvis_m": null,
+            "size_model_m": null,
+            "orientation_mode": null,
+            "detector_score": 0.9530655741691589,
+            "depth_points": null,
+            "fit_rmse_m": null,
+            "depth_supported_views": 0,
+            "instances": {
+              "cam_head": 4
+            }
+          },
+          {
+            "name": null,
+            "category": "dish",
+            "pose_status": "not_fitted",
+            "T_pelvis_object": null,
+            "center_pelvis_m": null,
+            "size_model_m": null,
+            "orientation_mode": null,
+            "detector_score": 0.9337877035140991,
+            "depth_points": null,
+            "fit_rmse_m": null,
+            "depth_supported_views": 0,
+            "instances": {
+              "cam_head": 6
+            }
+          },
+          {
+            "name": null,
+            "category": "dish",
+            "pose_status": "not_fitted",
+            "T_pelvis_object": null,
+            "center_pelvis_m": null,
+            "size_model_m": null,
+            "orientation_mode": null,
+            "detector_score": 0.9718471765518188,
+            "depth_points": null,
+            "fit_rmse_m": null,
+            "depth_supported_views": 0,
+            "instances": {
+              "cam_torso": 1
+            }
+          },
+          {
+            "name": null,
+            "category": "dish",
+            "pose_status": "not_fitted",
+            "T_pelvis_object": null,
+            "center_pelvis_m": null,
+            "size_model_m": null,
+            "orientation_mode": null,
+            "detector_score": 0.9717417359352112,
+            "depth_points": null,
+            "fit_rmse_m": null,
+            "depth_supported_views": 0,
+            "instances": {
+              "cam_torso": 2
+            }
+          },
+          {
+            "name": null,
+            "category": "figure",
+            "pose_status": "not_fitted",
+            "T_pelvis_object": null,
+            "center_pelvis_m": null,
+            "size_model_m": null,
+            "orientation_mode": null,
+            "detector_score": 0.9653862714767456,
+            "depth_points": null,
+            "fit_rmse_m": null,
+            "depth_supported_views": 0,
+            "instances": {
+              "cam_torso": 3
+            }
+          },
+          {
+            "name": null,
+            "category": "dish",
+            "pose_status": "not_fitted",
+            "T_pelvis_object": null,
+            "center_pelvis_m": null,
+            "size_model_m": null,
+            "orientation_mode": null,
+            "detector_score": 0.9637976884841919,
+            "depth_points": null,
+            "fit_rmse_m": null,
+            "depth_supported_views": 0,
+            "instances": {
+              "cam_torso": 4
+            }
+          }
+        ],
+        "containers": [
+          {
+            "id": "tray_right",
+            "kind": "tray",
+            "color": "blue",
+            "center_pelvis_m": [
+              0.3473243671044673,
+              -0.6881425244713573,
+              -0.08360301171215458
+            ],
+            "yaw_rad": 3.599685121091767e-07,
+            "size_m": [
+              0.22,
+              0.32,
+              0.07
+            ],
+            "T_pelvis_opening": [
+              [
+                0.9975708413352021,
+                -3.5996851208989705e-07,
+                -0.06965928881095153,
+                0.3473243671044673
+              ],
+              [
+                1.0799076655183234e-06,
+                0.9999999999463978,
+                1.0297490810329267e-05,
+                -0.6881425244713573
+              ],
+              [
+                0.06965928880351087,
+                -1.034770217126318e-05,
+                0.9975708412821187,
+                -0.08360301171215458
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            ]
+          }
+        ],
+        "table_normal_pelvis": [
+          -0.06965928881095153,
+          1.0297490810329267e-05,
+          0.9975708412821187
+        ],
+        "observed_regions": [
+          {
+            "low_pelvis_m": [
+              0.3304324867398104,
+              -0.3309470650816487,
+              -0.14063793642231526
+            ],
+            "high_pelvis_m": [
+              0.4431566551253147,
+              -0.21818842997876514,
+              -0.08639186159865953
+            ],
+            "category": "dish",
+            "instances": {
+              "cam_head": 2
+            },
+            "depth_points": 2120
+          },
+          {
+            "low_pelvis_m": [
+              0.31228132366708833,
+              -0.11327452462726685,
+              -0.15030303752216523
+            ],
+            "high_pelvis_m": [
+              0.4110652947130543,
+              -0.013847403969411781,
+              -0.07951162722661032
+            ],
+            "category": "dish",
+            "instances": {
+              "cam_head": 3
+            },
+            "depth_points": 1734
+          },
+          {
+            "low_pelvis_m": [
+              0.3954757166699537,
+              -0.4784858891916803,
+              -0.14519081677814183
+            ],
+            "high_pelvis_m": [
+              0.4832523474622517,
+              -0.3865248294931165,
+              -0.02035792313480056
+            ],
+            "category": "figure",
+            "instances": {
+              "cam_head": 4
+            },
+            "depth_points": 1938
+          },
+          {
+            "low_pelvis_m": [
+              0.4556444073078283,
+              -0.5289654198746692,
+              -0.13912094690015375
+            ],
+            "high_pelvis_m": [
+              0.4606800445112839,
+              -0.52852237556257,
+              -0.13139147146742702
+            ],
+            "category": "unknown",
+            "instances": {
+              "cam_head": -1
+            },
+            "depth_points": 4,
+            "source_instances": {
+              "cam_head": 4
+            }
+          },
+          {
+            "low_pelvis_m": [
+              0.44331735917348086,
+              0.2159746528233631,
+              -0.12514261955691097
+            ],
+            "high_pelvis_m": [
+              0.4827071138749465,
+              0.3426584614984511,
+              -0.08686785642300832
+            ],
+            "category": "figure",
+            "instances": {
+              "cam_head": 5
+            },
+            "depth_points": 1077
+          },
+          {
+            "low_pelvis_m": [
+              0.44950476896997177,
+              0.2804605294899016,
+              -0.1428772139892539
+            ],
+            "high_pelvis_m": [
+              0.45935583377651723,
+              0.34710663672510084,
+              -0.13168856685481023
+            ],
+            "category": "unknown",
+            "instances": {
+              "cam_head": -2
+            },
+            "depth_points": 29,
+            "source_instances": {
+              "cam_head": 5
+            }
+          },
+          {
+            "low_pelvis_m": [
+              0.3475819162436501,
+              0.05865383029150528,
+              -0.1307018759918479
+            ],
+            "high_pelvis_m": [
+              0.42993439215163487,
+              0.1557640506548411,
+              -0.10022091433984981
+            ],
+            "category": "dish",
+            "instances": {
+              "cam_head": 6
+            },
+            "depth_points": 1680
+          },
+          {
+            "low_pelvis_m": [
+              0.33446091956488244,
+              -0.31728984185683823,
+              -0.1483892799103
+            ],
+            "high_pelvis_m": [
+              0.43999092633625636,
+              -0.21781583328358706,
+              -0.08719510227579853
+            ],
+            "category": "dish",
+            "instances": {
+              "cam_torso": 1
+            },
+            "depth_points": 6244
+          },
+          {
+            "low_pelvis_m": [
+              0.3027169874100559,
+              0.05818028528502177,
+              -0.1514912008896519
+            ],
+            "high_pelvis_m": [
+              0.42513752749035616,
+              0.15783543352073784,
+              -0.1016111804681397
+            ],
+            "category": "dish",
+            "instances": {
+              "cam_torso": 2
+            },
+            "depth_points": 11368
+          },
+          {
+            "low_pelvis_m": [
+              0.46075937887877627,
+              0.21724089708641653,
+              -0.11893724508882637
+            ],
+            "high_pelvis_m": [
+              0.46075937887877627,
+              0.21724089708641653,
+              -0.11893724508882637
+            ],
+            "category": "unknown",
+            "instances": {
+              "cam_torso": -1
+            },
+            "depth_points": 1,
+            "source_instances": {
+              "cam_torso": 2
+            }
+          },
+          {
+            "low_pelvis_m": [
+              0.3103949601119347,
+              0.24913135215794457,
+              -0.15246111337997315
+            ],
+            "high_pelvis_m": [
+              0.3803639139036863,
+              0.2979694352055008,
+              -0.12357517190210847
+            ],
+            "category": "figure",
+            "instances": {
+              "cam_torso": 3
+            },
+            "depth_points": 3601
+          },
+          {
+            "low_pelvis_m": [
+              0.3110168775722394,
+              -0.11338271765032179,
+              -0.15059489407949928
+            ],
+            "high_pelvis_m": [
+              0.4095653693876342,
+              -0.013908996754764535,
+              -0.08051573085846452
+            ],
+            "category": "dish",
+            "instances": {
+              "cam_torso": 4
+            },
+            "depth_points": 9222
+          },
+          {
+            "low_pelvis_m": [
+              0.4421696948557906,
+              0.2160690823346565,
+              -0.1428523248192849
+            ],
+            "high_pelvis_m": [
+              0.47908952995930987,
+              0.34873314961217344,
+              -0.08724151483410993
+            ],
+            "category": "figure",
+            "instances": {
+              "cam_torso": 5
+            },
+            "depth_points": 3954
+          },
+          {
+            "low_pelvis_m": [
+              0.4718993367863711,
+              0.3203032102145686,
+              -0.14109210984495402
+            ],
+            "high_pelvis_m": [
+              0.47767744108718313,
+              0.33512061008916927,
+              -0.13293845373231328
+            ],
+            "category": "unknown",
+            "instances": {
+              "cam_torso": -2
+            },
+            "depth_points": 43,
+            "source_instances": {
+              "cam_torso": 5
+            }
+          }
+        ]
+      }
+    },
+    {
+      "device": "cpu",
+      "capture_id": "sink-000082-000000",
+      "trials": [
+        {
+          "segmentation_s": 0.10304275713860989,
+          "geometry_s": 0.04975897818803787,
+          "pose_and_regions_s": 0.5286327437497675,
+          "total_s": 0.6814344790764153
+        },
+        {
+          "segmentation_s": 0.1101427897810936,
+          "geometry_s": 0.049924083054065704,
+          "pose_and_regions_s": 0.5276667750440538,
+          "total_s": 0.6877336478792131
+        },
+        {
+          "segmentation_s": 0.10940939607098699,
+          "geometry_s": 0.0502606937661767,
+          "pose_and_regions_s": 0.5287045771256089,
+          "total_s": 0.6883746669627726
+        },
+        {
+          "segmentation_s": 0.11166933784261346,
+          "geometry_s": 0.04992470284923911,
+          "pose_and_regions_s": 0.5281553412787616,
+          "total_s": 0.6897493819706142
+        }
+      ],
+      "warm_median_s": {
+        "segmentation_s": 0.1101427897810936,
+        "geometry_s": 0.04992470284923911,
+        "pose_and_regions_s": 0.5281553412787616,
+        "total_s": 0.6883746669627726
+      },
+      "result": {
+        "schema": "hack_perception.model_poses/v1",
+        "status": "ok",
+        "stamp_ns": 1,
+        "frame_id": "pelvis",
+        "pool": 4,
+        "table_z_m": -0.18030610579170742,
+        "objects": [
+          {
+            "name": "Schleich_African_Black_Rhino",
+            "category": "figure",
+            "pose_status": "ok",
+            "T_pelvis_object": [
+              [
+                0.9972737498770459,
+                -0.005559463941568308,
+                -0.07358097693599361,
+                0.44943459776346334
+              ],
+              [
+                0.005567399625880482,
+                0.9999844971810888,
+                -9.725682557655741e-05,
+                -0.36728699407728715
+              ],
+              [
+                0.07358037691924768,
+                -0.0003126630243215602,
+                0.997289241080166,
+                -0.14897337771108346
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "center_pelvis_m": [
+              0.4475188201854626,
+              -0.3652022639658318,
+              -0.11940383511576771
+            ],
+            "size_model_m": [
+              0.03978482324630022,
+              0.1286103242635727,
+              0.05932414312301262
+            ],
+            "orientation_mode": "full",
+            "detector_score": 0.914469301700592,
+            "depth_points": 1300,
+            "fit_rmse_m": 0.0005466721161645583,
+            "depth_supported_views": 2,
+            "instances": {
+              "cam_head": 2,
+              "cam_torso": 4
+            }
+          },
+          {
+            "name": null,
+            "category": "dish",
+            "pose_status": "not_fitted",
+            "T_pelvis_object": null,
+            "center_pelvis_m": null,
+            "size_model_m": null,
+            "orientation_mode": null,
+            "detector_score": 0.9811636805534363,
+            "depth_points": null,
+            "fit_rmse_m": null,
+            "depth_supported_views": 0,
+            "instances": {
+              "cam_torso": 1
+            }
+          },
+          {
+            "name": null,
+            "category": "dish",
+            "pose_status": "not_fitted",
+            "T_pelvis_object": null,
+            "center_pelvis_m": null,
+            "size_model_m": null,
+            "orientation_mode": null,
+            "detector_score": 0.9747307896614075,
+            "depth_points": null,
+            "fit_rmse_m": null,
+            "depth_supported_views": 0,
+            "instances": {
+              "cam_torso": 2
+            }
+          },
+          {
+            "name": null,
+            "category": "figure",
+            "pose_status": "not_fitted",
+            "T_pelvis_object": null,
+            "center_pelvis_m": null,
+            "size_model_m": null,
+            "orientation_mode": null,
+            "detector_score": 0.9520254135131836,
+            "depth_points": null,
+            "fit_rmse_m": null,
+            "depth_supported_views": 0,
+            "instances": {
+              "cam_torso": 3
+            }
+          },
+          {
+            "name": null,
+            "category": "figure",
+            "pose_status": "not_fitted",
+            "T_pelvis_object": null,
+            "center_pelvis_m": null,
+            "size_model_m": null,
+            "orientation_mode": null,
+            "detector_score": 0.8451951742172241,
+            "depth_points": null,
+            "fit_rmse_m": null,
+            "depth_supported_views": 0,
+            "instances": {
+              "cam_torso": 5
+            }
+          }
+        ],
+        "containers": [],
+        "table_normal_pelvis": [
+          -0.06967816099683415,
+          -8.467725202854215e-06,
+          0.9975695232956934
+        ],
+        "observed_regions": [
+          {
+            "low_pelvis_m": [
+              0.42734700365889555,
+              -0.43263987048667885,
+              -0.1432073580483051
+            ],
+            "high_pelvis_m": [
+              0.46528108599740314,
+              -0.29832272211268906,
+              -0.08748809170939109
+            ],
+            "category": "figure",
+            "instances": {
+              "cam_head": 2
+            },
+            "depth_points": 848
+          },
+          {
+            "low_pelvis_m": [
+              0.4339961158581699,
+              -0.36773667915849323,
+              -0.1438653476330939
+            ],
+            "high_pelvis_m": [
+              0.4608167686321631,
+              -0.3096915498027366,
+              -0.12975903058630123
+            ],
+            "category": "unknown",
+            "instances": {
+              "cam_head": -1
+            },
+            "depth_points": 15,
+            "source_instances": {
+              "cam_head": 2
+            }
+          },
+          {
+            "low_pelvis_m": [
+              0.3204584914797131,
+              -0.05403269925365718,
+              -0.13929923421105697
+            ],
+            "high_pelvis_m": [
+              0.43129931043838693,
+              0.059257857217768946,
+              -0.08771897808608697
+            ],
+            "category": "dish",
+            "instances": {
+              "cam_torso": 1
+            },
+            "depth_points": 9141
+          },
+          {
+            "low_pelvis_m": [
+              0.358395004232633,
+              0.001871539801452514,
+              -0.1489647294416901
+            ],
+            "high_pelvis_m": [
+              0.35905681285715846,
+              0.005566044324502244,
+              -0.1489647294416901
+            ],
+            "category": "unknown",
+            "instances": {
+              "cam_torso": -1
+            },
+            "depth_points": 5,
+            "source_instances": {
+              "cam_torso": 1
+            }
+          },
+          {
+            "low_pelvis_m": [
+              0.29354214933133754,
+              -0.3095000874450565,
+              -0.15179197751300952
+            ],
+            "high_pelvis_m": [
+              0.39236175384589406,
+              -0.20966042501585047,
+              -0.08183017486508234
+            ],
+            "category": "dish",
+            "instances": {
+              "cam_torso": 2
+            },
+            "depth_points": 9129
+          },
+          {
+            "low_pelvis_m": [
+              0.4287864656634038,
+              -0.40923376602280465,
+              -0.1242538674604689
+            ],
+            "high_pelvis_m": [
+              0.45924935142835605,
+              -0.3046157644581119,
+              -0.09973271928953903
+            ],
+            "category": "unknown",
+            "instances": {
+              "cam_torso": -2
+            },
+            "depth_points": 9,
+            "source_instances": {
+              "cam_torso": 2
+            }
+          },
+          {
+            "low_pelvis_m": [
+              0.3177265590602367,
+              0.16697916958614134,
+              -0.15188087705767028
+            ],
+            "high_pelvis_m": [
+              0.36395498672933785,
+              0.22145577405063055,
+              -0.1246372583072754
+            ],
+            "category": "figure",
+            "instances": {
+              "cam_torso": 3
+            },
+            "depth_points": 3853
+          },
+          {
+            "low_pelvis_m": [
+              0.4286962816122976,
+              -0.43342373618289104,
+              -0.12652635773114548
+            ],
+            "high_pelvis_m": [
+              0.4596266778871782,
+              -0.303426088207685,
+              -0.08865100384935995
+            ],
+            "category": "figure",
+            "instances": {
+              "cam_torso": 4
+            },
+            "depth_points": 1324
+          },
+          {
+            "low_pelvis_m": [
+              0.3762309108611146,
+              -0.29656297845398766,
+              -0.08313703307145492
+            ],
+            "high_pelvis_m": [
+              0.3791261196268565,
+              -0.29444088740380353,
+              -0.08299712157187605
+            ],
+            "category": "unknown",
+            "instances": {
+              "cam_torso": -3
+            },
+            "depth_points": 2,
+            "source_instances": {
+              "cam_torso": 4
+            }
+          },
+          {
+            "low_pelvis_m": [
+              0.31759917931772313,
+              -0.3763874440080917,
+              -0.15200337130970562
+            ],
+            "high_pelvis_m": [
+              0.37587803477280407,
+              -0.35668748290785274,
+              -0.08045397222347087
+            ],
+            "category": "figure",
+            "instances": {
+              "cam_torso": 5
+            },
+            "depth_points": 1306
+          },
+          {
+            "low_pelvis_m": [
+              0.29649594730374773,
+              -0.30461292500865933,
+              -0.10384331001406283
+            ],
+            "high_pelvis_m": [
+              0.3229356492613784,
+              -0.27594739748474967,
+              -0.08636385640560568
+            ],
+            "category": "unknown",
+            "instances": {
+              "cam_torso": -4
+            },
+            "depth_points": 72,
+            "source_instances": {
+              "cam_torso": 5
+            }
+          }
+        ]
+      }
+    },
+    {
+      "device": "cpu",
+      "capture_id": "mouse-000060-000000",
+      "trials": [
+        {
+          "segmentation_s": 0.1132471770979464,
+          "geometry_s": 0.05386714683845639,
+          "pose_and_regions_s": 0.6131530930288136,
+          "total_s": 0.7802674169652164
+        },
+        {
+          "segmentation_s": 0.11479575606063008,
+          "geometry_s": 0.053416102193295956,
+          "pose_and_regions_s": 0.6039289147593081,
+          "total_s": 0.7721407730132341
+        },
+        {
+          "segmentation_s": 0.11585916904732585,
+          "geometry_s": 0.05337870214134455,
+          "pose_and_regions_s": 0.6059625390917063,
+          "total_s": 0.7752004102803767
+        },
+        {
+          "segmentation_s": 0.11382365506142378,
+          "geometry_s": 0.05349928606301546,
+          "pose_and_regions_s": 0.6058070240542293,
+          "total_s": 0.7731299651786685
+        }
+      ],
+      "warm_median_s": {
+        "segmentation_s": 0.11479575606063008,
+        "geometry_s": 0.053416102193295956,
+        "pose_and_regions_s": 0.6058070240542293,
+        "total_s": 0.7731299651786685
+      },
+      "result": {
+        "schema": "hack_perception.model_poses/v1",
+        "status": "ok",
+        "stamp_ns": 1,
+        "frame_id": "pelvis",
+        "pool": 4,
+        "table_z_m": -0.18048648191993913,
+        "objects": [
+          {
+            "name": "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g",
+            "category": "box",
+            "pose_status": "ok",
+            "T_pelvis_object": [
+              [
+                0.25857076888088754,
+                -0.9574714621142053,
+                -0.1280217040865922,
+                0.47428701976964444
+              ],
+              [
+                0.9655436739504113,
+                0.2602095990068506,
+                0.004047008652883813,
+                -0.18461633802136504
+              ],
+              [
+                0.029437580992480318,
+                -0.12465698464820466,
+                0.9917631093178093,
+                -0.15518535075412138
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "center_pelvis_m": [
+              0.46341007086371805,
+              -0.18416137955445974,
+              -0.07135744815640392
+            ],
+            "size_model_m": [
+              0.09118105098605156,
+              0.06405099118128418,
+              0.15382970918202774
+            ],
+            "orientation_mode": "c2",
+            "detector_score": 0.9662442803382874,
+            "depth_points": 1300,
+            "fit_rmse_m": 0.0006735305385987136,
+            "depth_supported_views": 2,
+            "instances": {
+              "cam_head": 6,
+              "cam_torso": 4
+            }
+          },
+          {
+            "name": null,
+            "category": "box",
+            "pose_status": "not_fitted",
+            "T_pelvis_object": null,
+            "center_pelvis_m": null,
+            "size_model_m": null,
+            "orientation_mode": null,
+            "detector_score": 0.9665570855140686,
+            "depth_points": null,
+            "fit_rmse_m": null,
+            "depth_supported_views": 0,
+            "instances": {
+              "cam_head": 2
+            }
+          },
+          {
+            "name": null,
+            "category": "box",
+            "pose_status": "not_fitted",
+            "T_pelvis_object": null,
+            "center_pelvis_m": null,
+            "size_model_m": null,
+            "orientation_mode": null,
+            "detector_score": 0.9596176743507385,
+            "depth_points": null,
+            "fit_rmse_m": null,
+            "depth_supported_views": 0,
+            "instances": {
+              "cam_head": 4
+            }
+          },
+          {
+            "name": null,
+            "category": "box",
+            "pose_status": "not_fitted",
+            "T_pelvis_object": null,
+            "center_pelvis_m": null,
+            "size_model_m": null,
+            "orientation_mode": null,
+            "detector_score": 0.9712671637535095,
+            "depth_points": null,
+            "fit_rmse_m": null,
+            "depth_supported_views": 0,
+            "instances": {
+              "cam_torso": 1
+            }
+          },
+          {
+            "name": null,
+            "category": "box",
+            "pose_status": "not_fitted",
+            "T_pelvis_object": null,
+            "center_pelvis_m": null,
+            "size_model_m": null,
+            "orientation_mode": null,
+            "detector_score": 0.7224048376083374,
+            "depth_points": null,
+            "fit_rmse_m": null,
+            "depth_supported_views": 0,
+            "instances": {
+              "cam_torso": 6
+            }
+          }
+        ],
+        "containers": [
+          {
+            "id": "tray_left",
+            "kind": "tray",
+            "color": "red",
+            "center_pelvis_m": [
+              0.34738323943154903,
+              0.6874281190165201,
+              -0.08389597142567083
+            ],
+            "yaw_rad": -0.017496902705884665,
+            "size_m": [
+              0.22,
+              0.32,
+              0.07
+            ],
+            "T_pelvis_opening": [
+              [
+                0.9973983345547557,
+                0.0174959963188133,
+                -0.0699317691769023,
+                0.34738323943154903
+              ],
+              [
+                -0.017540503335911638,
+                0.9998461532868038,
+                -2.2367476516849116e-05,
+                0.6874281190165201
+              ],
+              [
+                0.06992061906277963,
+                0.0012489477143597554,
+                0.9975517766810325,
+                -0.08389597142567083
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            ]
+          }
+        ],
+        "table_normal_pelvis": [
+          -0.0699317691769023,
+          -2.2367476516849116e-05,
+          0.9975517766810325
+        ],
+        "observed_regions": [
+          {
+            "low_pelvis_m": [
+              0.32885678170516497,
+              -0.3807183061342655,
+              -0.15066856466832812
+            ],
+            "high_pelvis_m": [
+              0.4314700491942034,
+              -0.2715050390004182,
+              -0.12195416020252137
+            ],
+            "category": "box",
+            "instances": {
+              "cam_head": 2
+            },
+            "depth_points": 1614
+          },
+          {
+            "low_pelvis_m": [
+              0.3742771460096926,
+              -0.06395976819144772,
+              -0.1409533510989741
+            ],
+            "high_pelvis_m": [
+              0.41805490877851836,
+              -0.0546399602891078,
+              -0.11138740141114956
+            ],
+            "category": "electronics",
+            "instances": {
+              "cam_head": 3
+            },
+            "depth_points": 41
+          },
+          {
+            "low_pelvis_m": [
+              0.3243510993385019,
+              -0.23070216017452788,
+              -0.12741569670425235
+            ],
+            "high_pelvis_m": [
+              0.41771056715943194,
+              -0.051575455320551265,
+              -0.07643598302663668
+            ],
+            "category": "unknown",
+            "instances": {
+              "cam_head": -1
+            },
+            "depth_points": 2808,
+            "source_instances": {
+              "cam_head": 3
+            }
+          },
+          {
+            "low_pelvis_m": [
+              0.38342381744778703,
+              0.12038523236135243,
+              -0.14587665430978158
+            ],
+            "high_pelvis_m": [
+              0.47222207697821145,
+              0.1985084689186043,
+              0.006118389553872006
+            ],
+            "category": "box",
+            "instances": {
+              "cam_head": 4
+            },
+            "depth_points": 1317
+          },
+          {
+            "low_pelvis_m": [
+              0.42719176032207384,
+              0.1787230135988906,
+              -0.08529752264746926
+            ],
+            "high_pelvis_m": [
+              0.43396707738147056,
+              0.1839752212357902,
+              -0.07667253172279798
+            ],
+            "category": "unknown",
+            "instances": {
+              "cam_head": -2
+            },
+            "depth_points": 2,
+            "source_instances": {
+              "cam_head": 4
+            }
+          },
+          {
+            "low_pelvis_m": [
+              0.336040613627446,
+              0.2555770410455624,
+              -0.15010065821558027
+            ],
+            "high_pelvis_m": [
+              0.40232501254303427,
+              0.39448551549109273,
+              -0.11321458253750583
+            ],
+            "category": "electronics",
+            "instances": {
+              "cam_head": 5
+            },
+            "depth_points": 1332
+          },
+          {
+            "low_pelvis_m": [
+              0.3149877969766402,
+              0.39554574328375847,
+              -0.14705033851934268
+            ],
+            "high_pelvis_m": [
+              0.409921169012994,
+              0.43763118026476927,
+              -0.11845227187997609
+            ],
+            "category": "unknown",
+            "instances": {
+              "cam_head": -3
+            },
+            "depth_points": 438,
+            "source_instances": {
+              "cam_head": 5
+            }
+          },
+          {
+            "low_pelvis_m": [
+              0.41391445178847414,
+              -0.22250989615209515,
+              -0.14330415145851771
+            ],
+            "high_pelvis_m": [
+              0.4920850393246448,
+              -0.13114809239924874,
+              0.005973890345200683
+            ],
+            "category": "box",
+            "instances": {
+              "cam_head": 6
+            },
+            "depth_points": 2202
+          },
+          {
+            "low_pelvis_m": [
+              0.33287190869645195,
+              -0.02695320611824515,
+              -0.10352034209052985
+            ],
+            "high_pelvis_m": [
+              0.43591914335887955,
+              0.04745040601908055,
+              0.009046866084479799
+            ],
+            "category": "electronics",
+            "instances": {
+              "cam_head": 7
+            },
+            "depth_points": 1164
+          },
+          {
+            "low_pelvis_m": [
+              0.34532432382285133,
+              -0.02369036578193564,
+              -0.14877208233114037
+            ],
+            "high_pelvis_m": [
+              0.3968395108289978,
+              0.034479857525580006,
+              -0.089834383436047
+            ],
+            "category": "unknown",
+            "instances": {
+              "cam_head": -4
+            },
+            "depth_points": 13,
+            "source_instances": {
+              "cam_head": 7
+            }
+          },
+          {
+            "low_pelvis_m": [
+              0.3820713533597692,
+              0.11865007275724326,
+              -0.14635834323859573
+            ],
+            "high_pelvis_m": [
+              0.46160739450143057,
+              0.20009792386026,
+              0.005063040862647479
+            ],
+            "category": "box",
+            "instances": {
+              "cam_torso": 1
+            },
+            "depth_points": 9589
+          },
+          {
+            "low_pelvis_m": [
+              0.3232364277926074,
+              -0.2282283637366716,
+              -0.15014328440062225
+            ],
+            "high_pelvis_m": [
+              0.4186083683857706,
+              -0.051580926753142325,
+              -0.07681139106544889
+            ],
+            "category": "electronics",
+            "instances": {
+              "cam_torso": 2
+            },
+            "depth_points": 16659
+          },
+          {
+            "low_pelvis_m": [
+              0.4269203484712296,
+              -0.207670101503795,
+              -0.1161338150933156
+            ],
+            "high_pelvis_m": [
+              0.4865271752774919,
+              -0.13820480926986503,
+              -0.10203545537026726
+            ],
+            "category": "unknown",
+            "instances": {
+              "cam_torso": -1
+            },
+            "depth_points": 5,
+            "source_instances": {
+              "cam_torso": 2
+            }
+          },
+          {
+            "low_pelvis_m": [
+              0.33174820930095816,
+              -0.03126734089195701,
+              -0.14934047387134308
+            ],
+            "high_pelvis_m": [
+              0.41689333617460517,
+              0.047589932164938835,
+              0.007808721453941948
+            ],
+            "category": "electronics",
+            "instances": {
+              "cam_torso": 3
+            },
+            "depth_points": 8838
+          },
+          {
+            "low_pelvis_m": [
+              0.41218977901968956,
+              -0.2232493598923328,
+              -0.10648359692961654
+            ],
+            "high_pelvis_m": [
+              0.4853858944039303,
+              -0.13167015178638114,
+              0.0043784525716172515
+            ],
+            "category": "box",
+            "instances": {
+              "cam_torso": 4
+            },
+            "depth_points": 11637
+          },
+          {
+            "low_pelvis_m": [
+              0.3837660978102074,
+              -0.13928192464572967,
+              -0.08060243934427896
+            ],
+            "high_pelvis_m": [
+              0.38563244652353645,
+              -0.13734146264762007,
+              -0.07984056393444279
+            ],
+            "category": "unknown",
+            "instances": {
+              "cam_torso": -2
+            },
+            "depth_points": 2,
+            "source_instances": {
+              "cam_torso": 4
+            }
+          },
+          {
+            "low_pelvis_m": [
+              0.3395116895905558,
+              0.2541789019149182,
+              -0.1504374655239668
+            ],
+            "high_pelvis_m": [
+              0.39523448950538204,
+              0.3193846489720269,
+              -0.11379931708949867
+            ],
+            "category": "electronics",
+            "instances": {
+              "cam_torso": 5
+            },
+            "depth_points": 3752
+          },
+          {
+            "low_pelvis_m": [
+              0.3631521102300638,
+              -0.3232436508857812,
+              -0.1486619945521013
+            ],
+            "high_pelvis_m": [
+              0.4338453903351734,
+              -0.27188385234524437,
+              -0.12229511203131968
+            ],
+            "category": "box",
+            "instances": {
+              "cam_torso": 6
+            },
+            "depth_points": 1112
+          },
+          {
+            "low_pelvis_m": [
+              0.32533363153087147,
+              -0.22619174979845033,
+              -0.1125193437384523
+            ],
+            "high_pelvis_m": [
+              0.34044663028211186,
+              -0.22177522070010422,
+              -0.0916166440609974
+            ],
+            "category": "unknown",
+            "instances": {
+              "cam_torso": -3
+            },
+            "depth_points": 17,
+            "source_instances": {
+              "cam_torso": 6
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "process_peak_rss_kib": 925928,
+  "gpu_peak_allocated_bytes": null
+}

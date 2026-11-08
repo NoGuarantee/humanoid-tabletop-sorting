@@ -16,9 +16,10 @@ import traceback
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from bodyctrl_msgs.msg import CmdSetMotorPosition, SetMotorPosition
+from bodyctrl_msgs.srv import SetForce, SetSpeed
 from hack_interfaces.action import Hand, MoveJoints, MoveTcp
 from hack_interfaces.msg import SceneObjects
-from rclpy.action import ActionServer
+from rclpy.action import ActionServer, CancelResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
@@ -31,11 +32,39 @@ from .curobo_planner import Unreachable
 from .robot import ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, TCP_LINK, TRAYS, clip, raise_steps
 
 PERIOD = 0.05  # s, real time between control checks
+# Inspire actuator 6, thumb rotation. It turns across before the other fingers close.
+THUMB = 5
+# /inspire_hand/set_speed: 1.0 is a full stroke in 0.8 s. Half of that keeps the close from kicking the object out.
+HAND_CLOSE_SPEED = 0.5
+HAND_STROKE_S = 0.8
+FINGER_MOVE = 0.05  # a finger this far from where it was is actually closing or turning
+
+
+def _closing(current, target):
+    """A preset that pulls any finger shut. Unknown state counts too: pinch and power both close."""
+    if current is None:
+        return any(v < 0.9 for v in target)
+    return any(target[i] < current[i] - FINGER_MOVE for i in range(6))
+
+
+def _thumb_first(current, target):
+    """Thumb rotation and another finger both have to move. The thumb goes first."""
+    if current is None:
+        return False
+    turns = target[THUMB] < current[THUMB] - FINGER_MOVE
+    others = any(abs(target[i] - current[i]) > FINGER_MOVE for i in range(5))
+    return turns and others
+
+
 # 1/s, integrates the PD undershoot. The arm actuators settle with tau = kd/kp = 0.25 s, so this is damping 0.7.
 COMPENSATION_RATE = 2.0
 MAX_COMPENSATION = 0.3  # rad added on top of the target at most
 HOME_TOL = 0.1  # rad, every arm joint within this of 0 -> the arm hangs at home
+READY_TOL = 0.05  # rad: a `ready` move that timed out this close to the raised pose still counts
 HELD_TOL = 0.05  # rad, the arm MoveTcp did not ask for: it only holds its pose
+# Joint step of one follow segment. 0.3 rad left the 10 cm grasp descent (21 planned waypoints, no joint
+# past 0.3) as a single joint-space chord, so the hand did not travel the straight line cuRobo had planned.
+PATH_STEP = 0.1
 TASK_WAIT = 5.0  # s, real time the preload waits for /sim/task, so that it does not build the planner twice
 
 
@@ -43,6 +72,8 @@ class MotionNode(Node):
     def __init__(self):
         super().__init__("hack_motion")
         self.lock = threading.Lock()
+        self._execution_lock = threading.Lock()
+        self._execution = threading.local()
         self.q = {}
         self.compensation = {}  # joint -> rad on top of the target, kept between moves (see move_joints)
         self.hand_state = {"left": None, "right": None}
@@ -61,9 +92,16 @@ class MotionNode(Node):
                     for g in ("arm", "head", "waist")}
         self.hand_cmd = {s: self.create_publisher(JointState, f"/inspire_hand/ctrl/{s}_hand", 10)
                          for s in ("left", "right")}
-        ActionServer(self, MoveJoints, "motion/move_joints", self.exec_move_joints, callback_group=cb)
-        ActionServer(self, Hand, "motion/hand", self.exec_hand, callback_group=cb)
-        ActionServer(self, MoveTcp, "motion/move_tcp", self.exec_move_tcp, callback_group=cb)
+        self.hand_speed = {s: self.create_client(SetSpeed, f"/inspire_hand/set_speed/{s}_hand", callback_group=cb)
+                           for s in ("left", "right")}
+        self.hand_force = {s: self.create_client(SetForce, f"/inspire_hand/set_force/{s}_hand", callback_group=cb)
+                           for s in ("left", "right")}
+        ActionServer(self, MoveJoints, "motion/move_joints", self.exec_move_joints, callback_group=cb,
+                     cancel_callback=lambda _: CancelResponse.ACCEPT)
+        ActionServer(self, Hand, "motion/hand", self.exec_hand, callback_group=cb,
+                     cancel_callback=lambda _: CancelResponse.ACCEPT)
+        ActionServer(self, MoveTcp, "motion/move_tcp", self.exec_move_tcp, callback_group=cb,
+                     cancel_callback=lambda _: CancelResponse.ACCEPT)
         self.declare_parameter("planner", "curobo")  # curobo | ik (ik is the unused fallback, see ik.py)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -147,6 +185,10 @@ class MotionNode(Node):
     # ---------------------------------------------------------------- MoveJoints
     def move_joints(self, names, positions, speed=0.0, tol=0.0, max_time=0.0, feedback=None, held=()):
         """Blocking joint move. Returns (success, max_error, message). Joints in `held` only need HELD_TOL."""
+        if self.cancelled():
+            return False, 0.0, 'cancelled'
+        if not names or not all(math.isfinite(p) for p in positions):
+            return False, 0.0, 'invalid joint goal'
         unknown = [n for n in names if n not in JOINTS]
         if unknown:
             return False, 0.0, f"unknown joints {unknown}"
@@ -169,8 +211,13 @@ class MotionNode(Node):
         cmd = {n: clip(n, goal[n] + self.compensation.get(n, 0.0)) for n in names}
         self.send(cmd, speeds)
         t0 = t_prev = self.now()
+        wall_start = time.monotonic()
         while rclpy.ok():
             time.sleep(PERIOD)
+            if self.cancelled():
+                return False, 0.0, 'cancelled'
+            if time.monotonic()-wall_start > max(30.0, max_time*10):
+                return False, 0.0, 'clock_watchdog'
             q = dict(zip(names, self.joints(names)))
             err = {n: goal[n] - q[n] for n in names}
             max_err = max(abs(e) for e in err.values())
@@ -209,13 +256,15 @@ class MotionNode(Node):
         anchors = []
         prev = None
         for q in waypoints:
-            if prev is None or max(abs(a - b) for a, b in zip(prev, q)) >= 0.3:
+            if prev is None or max(abs(a - b) for a, b in zip(prev, q)) >= PATH_STEP:
                 anchors.append(q)
                 prev = q
         if anchors[-1] != waypoints[-1]:
             anchors.append(waypoints[-1])
         self.get_logger().info(f"follow {len(anchors)} segments, {len(names)} joints")
         for i, q in enumerate(anchors):
+            if self.cancelled():
+                return False, 0.0, 'cancelled'
             left = 0.0
             if deadline is not None:
                 left = deadline - self.now()
@@ -231,23 +280,64 @@ class MotionNode(Node):
                 return False, err, msg
         return True, 0.0, "ok"
 
+    def cancelled(self):
+        handle = getattr(self._execution, 'handle', None)
+        return handle is not None and handle.is_cancel_requested
+
+    def hold_measured(self, handle):
+        """Replace outstanding setpoints on abort; never open a possibly loaded hand."""
+        if hasattr(handle.request, 'hand'):
+            side = handle.request.hand
+            with self.lock:
+                state = self.hand_state.get(side)
+            if state is not None and self.now() - (state.header.stamp.sec + state.header.stamp.nanosec*1e-9) <= .2:
+                msg = JointState()
+                msg.name, msg.position = list(state.name), list(state.position)
+                self.hand_cmd[side].publish(msg)
+        else:
+            with self.lock:
+                q = {n:v for n,v in self.q.items() if n in JOINTS and math.isfinite(v)}
+            if q:
+                self.send(q,{n:MAX_SPEED for n in q})
+                self.compensation.clear()
+
+    def execute(self, handle, action, run):
+        # All three action servers share the robot, including auto-raise of the other arm.
+        with self._execution_lock:
+            self._execution.handle = handle
+            try:
+                result = action.Result(success=False) if self.cancelled() else run()
+                if self.cancelled() or not result.success:
+                    self.hold_measured(handle)
+                if self.cancelled():
+                    result.success = False
+                    if hasattr(result, 'message'):
+                        result.message = 'cancelled'
+                    handle.canceled()
+                else:
+                    handle.succeed()
+                return result
+            except Exception as exc:
+                self.hold_measured(handle)
+                handle.abort()
+                self.get_logger().error(str(exc))
+                return action.Result(success=False)
+            finally:
+                self._execution.handle = None
+
     def exec_move_joints(self, handle):
-        g = handle.request
-        fb = MoveJoints.Feedback()
+        def run():
+            g = handle.request
+            fb = MoveJoints.Feedback()
+            def feedback(e):
+                fb.max_error = float(e)
+                handle.publish_feedback(fb)
+            ok, err, msg = self.move_joints(list(g.joints), list(g.positions), g.speed, g.tol, g.max_time, feedback)
+            return MoveJoints.Result(success=ok, max_error=float(err), message=msg)
+        return self.execute(handle,MoveJoints,run)
 
-        def feedback(e):
-            fb.max_error = float(e)
-            handle.publish_feedback(fb)
-
-        ok, err, msg = self.move_joints(list(g.joints), list(g.positions), g.speed, g.tol, g.max_time, feedback)
-        handle.succeed()  # the action itself ran; whether the move reached the target is in the result
-        return MoveJoints.Result(success=ok, max_error=float(err), message=msg)
-
-    # ---------------------------------------------------------------- Hand
     def exec_hand(self, handle):
-        res = self.hand(handle)
-        handle.succeed()
-        return res
+        return self.execute(handle,Hand,lambda: self.hand(handle))
 
     def hand(self, handle):
         g = handle.request
@@ -255,35 +345,26 @@ class MotionNode(Node):
         if g.hand not in self.hand_cmd or g.preset not in HAND_PRESETS:
             res.success = False
             return res
-        if g.force > 0:
-            # TODO(grasping): call /inspire_hand/set_force/{side}_hand (bodyctrl_msgs/srv/SetForce).
-            # A limit of 1.0 pushes objects out of the hand; 0.3-0.5 is the range to tune (ANALYSIS.md §8.10).
-            # Also /inspire_hand/set_speed, and rotate the thumb before the other fingers close.
-            self.get_logger().warn("Hand.force is not applied yet")
-        target = HAND_PRESETS[g.preset]
-        msg = JointState()
-        msg.name = [str(i) for i in range(1, 7)]
-        msg.position = [float(v) for v in target]
-        self.hand_cmd[g.hand].publish(msg)
-
-        t0, last, still_since = self.now(), None, None
-        fb = Hand.Feedback()
-        while rclpy.ok() and self.now() - t0 < 2.0:  # full stroke takes 0.8 s at default speed
-            time.sleep(PERIOD)
-            with self.lock:
-                st = self.hand_state[g.hand]
-            if st is None or len(st.position) < 6:
-                continue
-            pos = list(st.position[:6])
-            fb.position = [float(p) for p in pos]
-            handle.publish_feedback(fb)
-            if last is not None and max(abs(a - b) for a, b in zip(pos, last)) < 0.005:
-                still_since = still_since or self.now()
-                if self.now() - still_since > 0.2:
-                    break
-            else:
-                still_since = None
-            last = pos
+        target = [float(v) for v in HAND_PRESETS[g.preset]]
+        # 0 keeps the limit already set (Hand.action). 1.0 pushes the object out; grasps pass 0.3-0.5.
+        if g.force > 0 and not self._set_hand_limit(g.hand, g.force):
+            self.get_logger().warn(f"set_force {g.hand} {g.force:.2f} was not applied")
+        current = self._finger_pos(g.hand)
+        speed = HAND_CLOSE_SPEED if _closing(current, target) else 1.0
+        if not self._set_hand_speed(g.hand, speed):
+            self.get_logger().warn(f"set_speed {g.hand} {speed:.2f} was not applied")
+        # Turn the thumb across before the other fingers move. One command does both, and the
+        # fingers arrive while the thumb is still swinging.
+        if _thumb_first(current, target):
+            staged = list(current)
+            staged[THUMB] = target[THUMB]
+            self._command_fingers(g.hand, staged, (6,))
+            if not self._wait_fingers(handle, g.hand, staged, HAND_STROKE_S / speed + 0.6):
+                return Hand.Result(success=False)
+            self.get_logger().info(f"hand {g.hand} thumb across, closing the rest")
+        self._command_fingers(g.hand, target)
+        if not self._wait_fingers(handle, g.hand, target, HAND_STROKE_S / speed + 0.6):
+            return Hand.Result(success=False)
         with self.lock:
             st = self.hand_state[g.hand]
         if st is not None and len(st.position) >= 6:
@@ -293,14 +374,88 @@ class MotionNode(Node):
             # a closing finger stopped well short of its target with noticeable effort -> something is in the hand
             res.object_detected = any(
                 res.position[i] > target[i] + 0.05 and (not res.effort or res.effort[i] > 0.1) for i in closing)
-        res.success = True
+        res.success = (st is not None and len(st.position) >= 6 and
+                       0 <= self.now()-(st.header.stamp.sec+st.header.stamp.nanosec*1e-9) <= .2)
         return res
+
+    def _finger_pos(self, side):
+        with self.lock:
+            st = self.hand_state[side]
+        if st is None or len(st.position) < 6:
+            return None
+        return [float(p) for p in st.position[:6]]
+
+    def _command_fingers(self, side, positions, actuators=range(1, 7)):
+        msg = JointState()
+        msg.name = [str(i) for i in actuators]
+        msg.position = [float(positions[i - 1]) for i in actuators]
+        self.hand_cmd[side].publish(msg)
+
+    def _set_hand_limit(self, side, force):
+        req = SetForce.Request()
+        for i in range(6):
+            setattr(req, f"force{i}_ratio", float(force))
+        res = self._call_hand(self.hand_force[side], req)
+        return res is not None and res.force_accepted
+
+    def _set_hand_speed(self, side, speed):
+        req = SetSpeed.Request()
+        for i in range(6):
+            setattr(req, f"speed{i}_ratio", float(speed))
+        res = self._call_hand(self.hand_speed[side], req)
+        return res is not None and res.speed_accepted
+
+    def _call_hand(self, client, request):
+        """Service calls from the action callback. The executor is multi-threaded, so sleep until the reply."""
+        if not client.service_is_ready() and not client.wait_for_service(timeout_sec=1.0):
+            return None
+        fut = client.call_async(request)
+        deadline = time.perf_counter() + 1.0
+        while rclpy.ok() and not fut.done() and time.perf_counter() < deadline:
+            time.sleep(PERIOD)
+        if not fut.done():
+            return None
+        try:
+            return fut.result()
+        except Exception as e:
+            self.get_logger().warn(f"hand service failed: {e}")
+            return None
+
+    def _wait_fingers(self, handle, side, target, timeout):
+        """Until the fingers sit near `target`, or stop short of it. Stillness before anything moves does not count.
+
+        False if the goal was cancelled or the sim clock stalled (20 s wall), True otherwise."""
+        t0, last, still_since, moved = self.now(), None, None, False
+        wall_start = time.monotonic()
+        fb = Hand.Feedback()
+        while rclpy.ok() and self.now() - t0 < timeout:
+            time.sleep(PERIOD)
+            if self.cancelled() or time.monotonic() - wall_start > 20:
+                return False
+            pos = self._finger_pos(side)
+            if pos is None:
+                continue
+            fb.position = pos
+            handle.publish_feedback(fb)
+            if last is not None and max(abs(a - b) for a, b in zip(pos, last)) >= 0.005:
+                moved = True
+                still_since = None
+            elif last is not None:
+                still_since = still_since or self.now()
+            last = pos
+            near = max(abs(pos[i] - target[i]) for i in range(6)) < FINGER_MOVE
+            if still_since is None:
+                continue
+            held = self.now() - still_since
+            if near and held > 0.15:
+                return True
+            if moved and held > 0.2:  # stopped on the way: the finger met the object
+                return True
+        return True
 
     # ---------------------------------------------------------------- MoveTcp
     def exec_move_tcp(self, handle):
-        res = self.move_tcp(handle.request)
-        handle.succeed()
-        return res
+        return self.execute(handle,MoveTcp,lambda: self.move_tcp(handle.request))
 
     def _planner_obj(self):
         if self._planner is None:
@@ -376,7 +531,7 @@ class MotionNode(Node):
         if backend != "curobo":
             return MoveTcp.Result(success=False, message=f"not_implemented: planner {backend}")
         mode = g.mode or "direct"
-        if mode not in ("direct", "linear"):
+        if mode not in ("direct", "linear", "ready"):
             return MoveTcp.Result(success=False, message=f"unknown mode {mode}")
         pos_tol = g.pos_tol or 0.01
         rot_tol = g.rot_tol or 0.1
@@ -404,13 +559,20 @@ class MotionNode(Node):
             except Exception as e:
                 self.get_logger().error(traceback.format_exc())
                 return MoveTcp.Result(success=False, message=f"planner: {e}")
+            if self.cancelled():
+                return MoveTcp.Result(success=False, message='cancelled')
             known = [(n, i) for i, n in enumerate(names) if n in JOINTS]
             names = [n for n, _ in known]
             waypoints = [[q[i] for _, i in known] for q in waypoints]
             self.get_logger().info(f"move_tcp {g.arm} {mode}: {len(waypoints)} waypoints, {len(names)} joints, "
                                    f"start moved {planner.start_moved:.3f} rad, {planner.scene_note}")
             other = next(joints for arm, joints in ARM_JOINTS.items() if arm != g.arm)
-            ok, _, msg = self.follow(names, waypoints, dt, tol=0.01, max_time=g.max_time, held=other)
+            ok, err, msg = self.follow(names, waypoints, dt, tol=0.01, max_time=g.max_time, held=other)
+        if mode == "ready":  # the goal is joints, the target pose is not used
+            reached = ok or (msg == "timeout" and err <= READY_TOL)
+            note = f" ({planner.ready_note})" if planner.ready_note else ""
+            self.get_logger().info(f"move_tcp {g.arm} ready{note}: joint error {err:.3f} rad, {msg}")
+            return MoveTcp.Result(success=reached, message="ok" if reached else msg)
         pos_err, rot_err = self.tcp_error(g.arm, g.target)
         if pos_err is None:
             return MoveTcp.Result(success=False, pos_error=0.0, rot_error=0.0, message=f"{msg}; no tf")

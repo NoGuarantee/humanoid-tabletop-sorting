@@ -1,0 +1,6 @@
+# After the evaluator's torch==2.8.0. Keep numpy<2 for ROS Humble.
+scipy==1.11.4
+pillow==11.3.0
+opencv-python==4.11.0.86
+torchvision==0.23.0
+ultralytics==8.3.40

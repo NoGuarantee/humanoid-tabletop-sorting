@@ -1,0 +1,38 @@
+{
+  "scope": "one fresh official Sort3/pool4 layout, six independent LOOK_TABLE movements followed by the first Perceive RPC; no active 6D gate in final acceptance",
+  "code_commit": "ebaeb13406257208f19f654291f6fab40357edb1",
+  "calls": 6,
+  "passed": 6,
+  "wall_s": {
+    "min": 0.32405779184773564,
+    "median": 0.46340014203451574,
+    "max": 0.5930835017934442
+  },
+  "age_sim_s": {
+    "min": 0.229999994,
+    "max": 0.44999999
+  },
+  "evidence_archive_sha256": "0be60ffadb11e0c6c9f65af03d79d9ad7d3c49ff8d498b1e5d46a9a08da66abd",
+  "files_sha256": {
+    "boot_sim.sh": "4585329cf8979c631b381099d4035cbc0c7c7c12d6ef70932b92aab777691006",
+    "cam_head.npz": "ba544a8bd73a6ae2e959060fdf1ebe40d799f5c44df96b6dc7c4f9e82e026b75",
+    "cam_head.png": "cdeac2c065d44acd0adb2e113a0f908acee7c6cccaba1be2dbce8be6c9b244de",
+    "cam_torso.npz": "e3940f1a97d17d7a652779ffc1535bd21a2fa0b1c18f03b5230d5f3c556b7e4a",
+    "cam_torso.png": "01e341d6e0cbbd1e1fad34d074aa0604f8046828ba04e3738d39579d8ce258d8",
+    "capture.log": "ae12c349102005b324d102cd05c6bd51c6d41d1564211eb7eb55332701a2b764",
+    "capture_sensors.py": "ad47b50d59bcc5e60791673c990cf2f4b0be8218d25f8f82fb335987eda3f4f2",
+    "fastdds_hack.xml": "1b90506f46e660c0e3b7e83f5f83b553dd7dff6f02469306c7ccdd0867ba5c5d",
+    "live_probe.py": "544864798637db1c7987f72fbf3f85cf47e78f499bc88685fbe1557c475f4852",
+    "live_result.json": "dc2f388f5640c9db685acca5579d69a88cc5cc18858931341e1a4c91428fc189",
+    "motion.log": "16aeb83bfc6d2bacd8925fc8d57c55e129b786600ba22ac28c71ba6322a9de64",
+    "perception.log": "e4c62f7a862ff7a6227ba563a0cee8e9f3738cebabd9908a1dcaec1dcb2fd63d",
+    "probe.log": "3d3e98736f8536b9775bea3c2d33b3626afd8de93d2ad557b7e3fef7442fd010",
+    "runtime-receipt.txt": "3adb918d09c0021c6fcd2fff7db9bce06092f75c6f13b6aa996a7df2e148a25c",
+    "source-live-manifest.json": "632bafbf9b9660935b18069de03d9e642c71dfbbdb8916b42b65b0473c624370",
+    "start_solution.sh": "b655dfea96a9f31f5b2ae61e1df42614cf59e7ae34dd9308e93258f0f63727ce",
+    "stop-receipt.txt": "f6dbf76e353c9f89e38b61451f7069057960afc555d4e4de49abcccc3d8ae5a3",
+    "task_metadata.json": "a99f2cbdc6b7424f80f07bd1bbcebcebf24ed6f86d323d48bc09447a0fa2d5c3",
+    "unit-published.log": "9b8b66808305dce848d9a979c342a893bb815c7254ffc3d0f8c16ee14e5f7675",
+    "wait_camera.py": "fd592aa82e09068fe66d1f28587b94397e5929b25e2092034c6e3f30d8df439e"
+  }
+}

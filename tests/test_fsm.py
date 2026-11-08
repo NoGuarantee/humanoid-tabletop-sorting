@@ -170,8 +170,23 @@ class MissionTests(unittest.TestCase):
         f = Fake()
         f.until(State.VERIFY_PLACE)
         f.answer(replace(f.default(), placed=False))
-        self.assertEqual(f.c.reason, 'placement_unconfirmed')
+        self.assertEqual(f.c.state, State.VERIFY_EMPTY)
         self.assertFalse(f.c.history['a'].placed)
+        self.assertTrue(f.c.history['a'].released)
+
+    def test_unconfirmed_placement_with_object_in_hand_ends(self):
+        f = Fake()
+        f.until(State.VERIFY_PLACE)
+        f.answer(replace(f.default(), placed=False, hand=Hand.HOLDING))
+        self.assertEqual(f.c.reason, 'placement_unconfirmed')
+
+    def test_released_object_is_not_selected_again(self):
+        f = Fake()
+        f.until(State.VERIFY_PLACE)
+        f.answer(replace(f.default(), placed=False))
+        f.until(State.OBSERVE)
+        f.answer()
+        self.assertEqual(f.c.target.id, 'b')
 
     def test_wrong_destination_not_success(self):
         f = Fake()

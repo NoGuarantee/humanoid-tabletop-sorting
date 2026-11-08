@@ -232,7 +232,13 @@ def _result(c, e, op, effects):
                 c.target = None
                 _look(c, effects)
         elif state == State.VERIFY_PLACE:
-            if not placement(c, ev):
+            if not placement(c, ev) and ev.hand == Hand.EMPTY:
+                # Released over the destination but not seen there: the camera missed the tray behind the arm
+                # once, and a cartridge sorted correctly ended the mission with 8 objects left (eval 2026-11-08).
+                # The hand is empty, so go on with the others, and never pick this one again: it may be in a tray.
+                c.history[c.target.id].released = True
+                _enter(c, State.VERIFY_EMPTY, effects)
+            elif not placement(c, ev):
                 _done(c, effects, 'placement_unconfirmed')
             else:
                 c.history[c.target.id].placed = True

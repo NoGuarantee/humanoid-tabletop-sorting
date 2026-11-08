@@ -91,6 +91,7 @@ class History:
     lift_attempts: int = 0
     lift: Lift = Lift.NEVER_LIFTED
     placed: bool = False
+    released: bool = False  # let go over the destination, placement not confirmed: never picked again
     contacted: bool = False
 
 

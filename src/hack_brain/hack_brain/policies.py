@@ -40,7 +40,7 @@ def select(c, scene):
     candidates = []
     for obj in scene.objects:
         h = c.history.get(obj.id, History())
-        if (not obj.id or obj.partial or not math.isfinite(obj.confidence) or obj.confidence < c.config.min_confidence or h.placed
+        if (not obj.id or obj.partial or not math.isfinite(obj.confidence) or obj.confidence < c.config.min_confidence or h.placed or h.released
                 or h.attempts >= c.config.max_attempts or not destinations(c.spec, obj)):
             continue
         if c.spec.kind == 'sort' and destination_in_scene(c, scene, obj) is None:

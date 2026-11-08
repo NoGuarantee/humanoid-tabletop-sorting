@@ -550,7 +550,13 @@ class MotionNode(Node):
                                f"and planning again")
         with self.lock:
             snapshot = dict(self.q)
-        names, waypoints, dt = planner.plan(other, None, snapshot, "ready")
+        try:
+            names, waypoints, dt = planner.plan(other, None, snapshot, "ready")
+        except Unreachable as e:
+            # Seen right after the start raise, both forearms in front of the chest: the failure brain gets is
+            # the first one, about its own arm.
+            self.get_logger().info(f"move_tcp {arm}: the {other} arm stays: {e}")
+            return False
         known = [(n, i) for i, n in enumerate(names) if n in JOINTS]
         waypoints = [[w[i] for _, i in known] for w in waypoints]
         ok, err, msg = self.follow([n for n, _ in known], waypoints, dt, tol=0.01, max_time=0.0,

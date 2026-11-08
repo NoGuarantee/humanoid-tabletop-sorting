@@ -17,7 +17,8 @@
 | `policies.py` | capabilities, выбор предметов и контейнеров, правила всех вариантов |
 | `verification.py` | свежесть и соответствие доказательств текущей цели |
 | `task.py` | JSON задания, бюджет, маршрутизация штативов |
-| `skills.py` | перевод фаз сортировки в существующие Hand/MoveTcp goals; без второго mission loop |
+| `skills.py` | `command`: перевод фаз сортировки в Hand/MoveTcp goals, без второго mission loop. `pick`/`place`/`ready`: блокирующие последовательности с запасными путями со стенда, для `tools/pick_one.py`; в FSM их пока нет |
+| `blocking.py` | `BlockingClients`: блокирующие обёртки perception и motion для `Skills.pick/place` и `tools/` |
 | `grasp_planner.py` | существующие геометрические кандидаты захвата и укладки, параметры не откалиброваны |
 | `clients.py` | ROS services/actions, преобразование SceneObjects, честный UNKNOWN для отсутствующего verifier |
 | `transport.py` | goal handle, отказ, асинхронный результат, позднее принятие, cancel и владение ресурсом |

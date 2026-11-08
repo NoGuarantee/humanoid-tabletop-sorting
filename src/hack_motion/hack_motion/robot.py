@@ -106,6 +106,16 @@ RAISE_STEPS = (
 PLAN_ROLL_LIMIT = 1.3  # rad
 
 
+# The MoveTcp `ready` pose: out to the side with the elbow folded (RAISE_STEPS[1]), off the table and, unlike the
+# end of the raise, out of the head camera's view of the table.
+READY_STEP = 1
+
+
+def ready_pose(arm):
+    """Arm joints of the MoveTcp `ready` mode, in ARM_JOINTS[arm] order."""
+    return raise_steps(arm)[READY_STEP]
+
+
 def plan_limits(name):
     """(lower, upper) of a joint for planning: JOINTS narrowed by the shoulder singularity."""
     _, _, lo, hi = JOINTS[name]
@@ -130,6 +140,10 @@ HAND_PRESETS = {
     "open": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
     "power": [0.2, 0.2, 0.2, 0.2, 0.5, 0.2],  # example from INTERFACES.md
     "pinch": [1.0, 1.0, 1.0, 0.3, 0.4, 0.1],  # TODO tune: index + thumb
+    # Flat pinch: thumb already across (actuator 6) and left open as the anvil. Bending it on a 3 cm
+    # dish drove the pad into the table (the reading went to 1.34, past open). Only the index closes.
+    "pinch_ready": [1.0, 1.0, 1.0, 1.0, 1.0, 0.1],
+    "pinch_flat": [1.0, 1.0, 1.0, 0.55, 1.0, 0.1],
     "tube50": [0.35, 0.35, 0.35, 0.35, 0.5, 0.1],  # TODO tune on a 29 mm tube
     "tube15": [1.0, 1.0, 0.25, 0.25, 0.4, 0.1],  # TODO tune on a 17 mm tube
 }

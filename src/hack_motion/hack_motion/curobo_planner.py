@@ -11,7 +11,7 @@ import math
 import time
 
 from .curobo_robot import load_robot_cfg
-from .robot import JOINTS, TCP_LINK, plan_limits, table_scene
+from .robot import ARM_JOINTS, JOINTS, TCP_LINK, plan_limits, ready_pose, table_scene
 
 
 LOCK_TOL = 0.02  # rad
@@ -24,6 +24,9 @@ START_CLEARANCE = 0.002  # m past the self-collision buffer that a start state m
 START_CLEAR_STEPS = (0.01, 0.03, 0.1)  # rad, spreads of the samples around a start state in collision
 START_CLEAR_SAMPLES = 512
 START_CLEAR_MAX = 0.08  # rad: a farther jump is a different pose, and a held object comes off
+# A 45° hand rises as two TCP-axis steps. Past 0.14 m that pair has no plan: the 0.15 m
+# lift of the soap dish reports the start or the end in collision, while 0.12 m still plans.
+LEAN_STEP = 0.12
 
 
 class Unreachable(Exception):
@@ -66,6 +69,7 @@ class CuroboPlanner:
         self.trays = ()  # trays of this task for the next build (motion_node, from /sim/task)
         self.world_trays = ()  # trays the current planner was built with
         self.start_moved = 0.0  # rad, how far the last plan moved its start state off the self-collision buffer
+        self.ready_note = ""  # how the last `ready` plan was found, when not the plain way
 
     def load(self, lock_positions, graphs="reset"):
         """Create the motion planner. Returns a one-line description.
@@ -156,8 +160,10 @@ class CuroboPlanner:
         """
         if self.mp is None:
             raise RuntimeError("curobo is not loaded")
-        if mode not in ("direct", "linear"):
+        if mode not in ("direct", "linear", "ready"):
             raise RuntimeError(f"unknown mode {mode}")
+        if mode == "ready":
+            return self._plan_ready(arm, q_by_name)
         goal, state = self._goal(arm, target, q_by_name)
         if mode == "direct":
             if self._already(goal, state, arm, pos_tol, rot_tol):
@@ -187,15 +193,65 @@ class CuroboPlanner:
             raise Unreachable(f"no collision-free joint path to {min(len(solutions), MAX_PATHS)} IK solutions from {start}")
         return self._plan_linear(arm, goal, state)
 
+    def _plan_ready(self, arm, q_by_name):
+        """A collision-free joint path that puts `arm` and body_yaw back to robot.ready_pose.
+
+        `direct` picks the IK solution nearest the current joints, so after a place, or after a pose-only park,
+        the arm can sit by a stop (elbow_yaw -2.95, wrist_pitch 1.03 on 2026-11-07), and from there no pre-grasp
+        plans. Every pick starts from fixed joints instead. The other arm keeps its joints.
+        """
+        import torch
+        from curobo.types import JointState
+
+        self.ready_note = ""
+        missing = [name for name in self.joint_names if q_by_name.get(name) is None]
+        if missing:
+            raise RuntimeError(f"no /joint_states for {missing}")
+        q = torch.tensor([[self._inside_limits(name, q_by_name[name]) for name in self.joint_names]],
+                         device="cuda", dtype=torch.float32)
+        q = self._clear_start(q)
+        state = JointState.from_position(q, joint_names=self.joint_names)
+        want = dict(zip(self.joint_names, q.reshape(-1).tolist()))
+        want.update(zip(ARM_JOINTS[arm], ready_pose(arm)))
+        if "body_yaw_joint" in want:
+            want["body_yaw_joint"] = self.ready.get("body_yaw_joint", 0.0)
+        if max(abs(want[n] - v) for n, v in zip(self.joint_names, q.reshape(-1).tolist())) < LOCK_TOL:
+            return list(self.joint_names), [q.reshape(-1).tolist()], None
+        goal_js = JointState.from_position(
+            torch.tensor([[want[n] for n in self.joint_names]], device=q.device, dtype=q.dtype),
+            joint_names=self.joint_names)
+        traj = self.mp.plan_cspace(goal_js, state)
+        if (traj is None or not _flag(traj.success, any_ok=True)) and self.world_trays:
+            # The trays are solid blocks here and hollow in the scene: a hand can rest inside one (the left hand
+            # 0.8 cm into tray_center on 2026-11-07), and then no state of that robot is free. Leave without them.
+            traj = self._without_trays(lambda: self.mp.plan_cspace(goal_js, state))
+            if traj is not None and _flag(traj.success, any_ok=True):
+                self.ready_note = "planned without the trays"
+        if traj is None or not _flag(traj.success, any_ok=True):
+            start = [round(v, 3) for v in q.reshape(-1).tolist()]
+            raise Unreachable(f"no collision-free joint path to the ready {arm} arm from {start}")
+        return self._trajectory(traj)
+
+    def _without_trays(self, plan):
+        checker = self.mp.scene_collision_checker
+        try:
+            for name in self.world_trays:
+                checker.enable_obstacle(name, False)
+            self.mp.graph_planner.reset_buffer()  # it keeps node feasibility from the old scene
+            return plan()
+        finally:
+            for name in self.world_trays:
+                checker.enable_obstacle(name, True)
+            self.mp.graph_planner.reset_buffer()
+
     def _plan_linear(self, arm, goal, state):
         """plan_pose with the moving TCP held on the line through the goal along one axis of the goal frame.
 
         cuRobo's linear criterion frees one goal-frame axis on the way and pulls the other two and the orientation
-        to the goal. The axis is the one the move is mostly along: approach, lift and retreat are moves along the
-        TCP z axis. A sideways start offset is pulled onto the line, not kept.
+        to the goal. A move that lies along one TCP axis uses that axis. A world-vertical move of a leaned hand
+        does not: it is two axis moves, the one that gains height first, so the path is not pulled down into the table.
         """
         import torch
-        from curobo._src.cost.tool_pose_criteria import ToolPoseCriteria
 
         link = TCP_LINK[arm]
         i = goal.tool_frames.index(link)
@@ -208,15 +264,88 @@ class CuroboPlanner:
             [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)],
         ], device=end.device, dtype=end.dtype)
         local = rot.T @ (end - start.to(end.dtype))
-        axis = "xyz"[int(local.abs().argmax().item())]
+        length = float(torch.linalg.norm(local))
+        dominant = int(local.abs().argmax().item())
+        # Longer than one leaned step: cut the straight move into pieces, each planned below.
+        if length > LEAN_STEP and float(local[dominant].abs()) <= 0.85 * length:
+            n = math.ceil(length / LEAN_STEP)
+            names, waypoints, dt = None, [], None
+            js = state
+            for step_i in range(1, n + 1):
+                alpha = step_i / n
+                step = goal.clone()
+                step.position[0, 0, i, 0] = start.to(end.dtype) + (end - start.to(end.dtype)) * alpha
+                try:
+                    names, part, dt = self._plan_linear(arm, step, js)
+                except Unreachable as e:
+                    raise Unreachable(f"at {alpha:.2f} of {length:.3f} m: {e}") from e
+                waypoints.extend(part)
+                js = self._chain_state(names, part[-1], js)
+            return names, waypoints, dt
+        # A leaned hand's world-vertical move is split across two TCP axes. Freeing only the larger one
+        # pulls the path onto a line that, for the 45° pinch, points down into the table.
+        if length < 1e-4 or float(local[dominant].abs()) > 0.85 * length:
+            return self._linear_axis(link, goal, state, "xyz"[dominant])
+        order = sorted(range(3), key=lambda k: -float(rot[2, k] * local[k]))  # gain height before sliding
+        names, waypoints, dt = None, [], None
+        here = start.to(end.dtype).clone()
+        js = state
+        for k in order:
+            if abs(float(local[k])) < 1e-4:
+                continue
+            step = goal.clone()
+            here = here + rot[:, k] * local[k]
+            step.position[0, 0, i, 0] = here
+            names, part, dt = self._linear_axis(link, step, js, "xyz"[k])
+            waypoints.extend(part)
+            js = self._chain_state(names, part[-1], js)
+        return names, waypoints, dt
+
+    def _chain_state(self, names, waypoint, prev):
+        """Joint state at the end of one axis step, in the planner cspace.
+
+        The interpolated plan also carries locked joints. Passing that wider vector back in makes the
+        IK seed 26 wide while the solver is the 15-dof cspace, and the next plan_pose crashes.
+        """
+        import torch
+        from curobo.types import JointState
+
+        got = {name: float(value) for name, value in zip(names, waypoint)}
+        prev_names = list(prev.joint_names) if getattr(prev, "joint_names", None) else list(self.joint_names)
+        keep = {name: float(value) for name, value in zip(prev_names, prev.position.detach().reshape(-1).tolist())}
+        q = [got.get(name, keep.get(name, 0.0)) for name in self.joint_names]
+        return JointState.from_position(
+            torch.tensor([q], device=prev.position.device, dtype=prev.position.dtype),
+            joint_names=list(self.joint_names))
+
+    def _linear_axis(self, link, goal, state, axis):
+        """One Cartesian plan that may travel only along `axis` of the goal frame."""
+        from curobo._src.cost.tool_pose_criteria import ToolPoseCriteria
+
         self.mp.update_tool_pose_criteria({link: ToolPoseCriteria.linear_motion(axis=axis)})
         try:
             result = self.mp.plan_pose(goal, state)
         finally:
             self.mp.update_tool_pose_criteria({link: ToolPoseCriteria()})
         if result is None or not _flag(result.success, any_ok=True):
-            raise Unreachable(f"no straight collision-free path along the goal {axis} axis")
+            raise Unreachable(f"no straight collision-free path along the goal {axis} axis; start {self._violated(state)}")
         return self._trajectory(result)
+
+    def _violated(self, state):
+        """The constraints a joint state breaks, as the graph planner's start check sees them, e.g. 'scene_collision 39'."""
+        try:
+            gp = self.mp.graph_planner
+            buf = gp._max_act_buffer
+            buf[:] = state.position.detach().reshape(1, 1, -1)
+            cc = gp.feasibility_rollout.compute_metrics_from_action(buf).costs_and_constraints
+            bad = []
+            for group in (cc.constraints, cc.hybrid_costs_constraints):
+                for name, value in zip(getattr(group, "names", []), getattr(group, "values", [])):
+                    if value is not None and float(value[0].max().item()) > 0.0:
+                        bad.append(f"{name} {float(value[0].max().item()):.3g}")
+            return ", ".join(bad) or "free"
+        except Exception as e:  # diagnostics only: never hide the planning error behind this one
+            return f"? ({e!r})"
 
     def _trajectory(self, result):
         plan = result.get_interpolated_plan()

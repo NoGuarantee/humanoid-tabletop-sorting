@@ -201,10 +201,12 @@ class PerceptionNode(Node):
                 raise e
             return latest
 
+
     def cloud_in_pelvis(self, f, stride=1):
         """Organised point cloud of the depth frame in pelvis: (HxWx3 array with NaN where no depth, 4x4 cam->pelvis)."""
         depth = f["depth"]
-        # tf at the frame time: the head may move. /tf in this node can run 1 s behind the depth frame.
+        # tf at the frame time: the head may move. Just after the sim starts /tf ran 1 s behind the depth frame
+        # (2026-11-07), and 0.5 s gave up.
         m = geo.transform_matrix(self.lookup_at(depth.header.frame_id, depth.header.stamp, sim_wait=2.0))
         z = geo.depth_to_m(depth)[::stride, ::stride]
         v, u = np.mgrid[0:depth.height:stride, 0:depth.width:stride]

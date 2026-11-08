@@ -36,6 +36,10 @@ class MeasurementsTests(unittest.TestCase):
             m.update('left',msg(1+i*.1,[.4,.4,.4,.4,.7+(.02 if i%2 else 0),.2],[.3]*6))
         self.assertEqual(m.hand('left',1.4,1,[.2,.2,.2,.2,.5,.2])[1],'HOLDING')
 
+    def test_finger_curled_below_closed_still_reads(self):
+        m=Measurements();fill(m,'right',positions=[1.01,.94,-.13,1.12,.55,.1],efforts=[.01,.12,1.,1.,.51,1.])
+        self.assertEqual(m.hand('right',1.4,1,[1,1,1,.3,.4,.1])[1],'HOLDING')
+
     def test_pinch_ready_reads_empty_without_a_target(self):
         m=Measurements();fill(m,'left',positions=[.99,.99,.99,.99,.97,.1])
         self.assertEqual(m.hand('left',1.4,1)[1],'EMPTY')

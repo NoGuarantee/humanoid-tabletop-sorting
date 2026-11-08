@@ -107,7 +107,7 @@ brain сохраняет блокировку и завершает миссию
 | RECOVER | терминальная ошибка навыка | проверить руку | EMPTY → BACK_OFF, если рука могла остаться у объекта (DESCEND принят, LIFT не прошёл), иначе новый осмотр; HOLDING+LIFTED → REORIENT для lying без upright, иначе новое назначение; UNKNOWN → повторный замер в пределах recovery budget | лимит, анонимная цель после контакта → DONE |
 | BACK_OFF | RECOVER: EMPTY и рука внизу | линейно вверх к pre_grasp, как на main | CLEAR при любом исходе | — |
 | CLEAR | перед осмотром, arm_out (APPROACH или TRANSFER был принят) | MoveTcp `ready` руки последнего захвата: в сторону, из кадра головной камеры | LOOK_TABLE при любом исходе, arm_out=False | — |
-| CANCELLING | есть активная операция | один cancel | ACK+terminal+stopped → DONE | отказ/no ack/no stop → blocked DONE; 5 wall s |
+| CANCELLING | есть активная операция | один cancel | ACK+terminal+stopped → DONE (терминальный ответ read-only операции считается stopped: она ничего не двигала) | отказ/no ack/no stop → blocked DONE; 5 wall s |
 | DONE | reason отдельно от успеха | эффект publish done | поглощает всё | никаких движений |
 
 ## Таблица переходов

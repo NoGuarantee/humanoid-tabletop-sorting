@@ -247,6 +247,7 @@ class MissionTests(unittest.TestCase):
         for mode in ('no_ack', 'refused', 'no_stop'):
             with self.subTest(mode=mode):
                 f = Fake()
+                f.until(State.LOOK_TABLE)  # a move: a reading cannot leave anything unstopped
                 op = f.c.active.id
                 f.send(Event('CANCEL'))
                 if mode == 'refused':
@@ -452,6 +453,20 @@ class MissionTests(unittest.TestCase):
         f.send(Event('RESULT', op, None, ok=False, stopped=False))
         self.assertEqual(f.c.state, State.DONE)
         self.assertEqual(f.c.reason, 'holding_lost_or_unknown:stop_unconfirmed')
+
+    def test_hold_lost_during_a_reading_recovers(self):
+        f = Fake()
+        f.until(State.LIFT)
+        f.answer('unreachable', ok=False)
+        self.assertEqual(f.c.state, State.RECOVER)
+        self.assertEqual(f.c.hand, Hand.HOLDING)
+        op = f.c.active.id
+        f.send(Event('SENSOR', data=Evidence(1, Hand.EMPTY, source='fake')))
+        # The reading was queued before the cancel: it does not report a stop, yet nothing moved.
+        f.send(Event('RESULT', op, f.default(), ok=True, stopped=False))
+        f.send(Event('CANCEL_ACK', op))
+        self.assertEqual(f.c.state, State.RECOVER)
+        self.assertEqual(f.c.last_recovery, 'object_lost')
 
     def test_destination_requires_fresh_hold(self):
         f = Fake()

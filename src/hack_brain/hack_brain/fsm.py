@@ -154,7 +154,10 @@ def transition(context: Context, event: Event):
                     op.cancel_ack = True
             elif e.kind in ('RESULT', 'REJECTED'):
                 op.terminal = True
-                op.stopped = e.stopped or e.kind == 'REJECTED'
+                # A sensor-only op moves nothing: its reading, already queued when the hold was lost, is a stop.
+                # Taken as unconfirmed, it ended a RECOVER with 300 s and 8 objects left (eval 2026-11-08).
+                op.stopped = (e.stopped or e.kind == 'REJECTED'
+                              or op.phase in VERIFY | {State.OBSERVE, State.DESTINATION})
             if c.state != State.DONE and op.cancel_ack and op.terminal:
                 c.blocked = not op.stopped
                 if op.stopped:

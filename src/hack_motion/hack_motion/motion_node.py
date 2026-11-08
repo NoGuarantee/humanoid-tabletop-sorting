@@ -29,7 +29,7 @@ from std_msgs.msg import String
 from tf2_ros import Buffer, TransformListener
 
 from .curobo_planner import Unreachable
-from .robot import ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, TCP_LINK, TRAY_IDS, clip, raise_steps
+from .robot import ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, TCP_LINK, TRAY_IDS, clip, raise_steps, ready_pose
 
 PERIOD = 0.05  # s, real time between control checks
 # Inspire actuator 6, thumb rotation. It turns across before the other fingers close.
@@ -61,6 +61,8 @@ COMPENSATION_RATE = 2.0
 MAX_COMPENSATION = 0.3  # rad added on top of the target at most
 HOME_TOL = 0.1  # rad, every arm joint within this of 0 -> the arm hangs at home
 READY_TOL = 0.05  # rad: a `ready` move that timed out this close to the raised pose still counts
+OTHER_READY_TOL = 0.1  # rad: an arm this close to ready is not what blocks a plan for the other one
+OPEN_FINGER = 0.85  # a hand with fingers 1-5 all above this holds nothing (open is 1.0)
 HELD_TOL = 0.05  # rad, the arm MoveTcp did not ask for: it only holds its pose
 # Joint step of one follow segment. 0.3 rad left the 10 cm grasp descent (21 planned waypoints, no joint
 # past 0.3) as a single joint-space chord, so the hand did not travel the straight line cuRobo had planned.
@@ -525,6 +527,38 @@ class MotionNode(Node):
                 if not ok:
                     raise RuntimeError(f"{arm} arm stopped on raise step {i + 1}: {msg} (err {err:.3f})")
 
+    def _other_arm_to_ready(self, planner, arm, why):
+        """Move the arm that is not planned for to the ready pose, when it may be in the way. True if it moved.
+
+        The planner holds the other arm still. On the bench most failed approaches had it raised in front of the
+        chest at the start, or stretched out over the table after its own task, and the same approach planned once
+        it was back at ready. Not when its hand is closed: it may hold an object, and only brain knows.
+        """
+        other = next(a for a in ARM_JOINTS if a != arm)
+        q = self.joints(ARM_JOINTS[other])
+        if any(v is None for v in q):
+            return False
+        off = max(abs(v - r) for v, r in zip(q, ready_pose(other)))
+        if off <= OTHER_READY_TOL:
+            return False
+        fingers = self._finger_pos(other)
+        if fingers is None or min(fingers[:5]) < OPEN_FINGER:
+            self.get_logger().info(f"move_tcp {arm}: {why}; the {other} arm is {off:.2f} rad off ready, "
+                                   f"but its hand is not open, so it stays")
+            return False
+        self.get_logger().info(f"move_tcp {arm}: {why}; moving the {other} arm to ready ({off:.2f} rad off) "
+                               f"and planning again")
+        with self.lock:
+            snapshot = dict(self.q)
+        names, waypoints, dt = planner.plan(other, None, snapshot, "ready")
+        known = [(n, i) for i, n in enumerate(names) if n in JOINTS]
+        waypoints = [[w[i] for _, i in known] for w in waypoints]
+        ok, err, msg = self.follow([n for n, _ in known], waypoints, dt, tol=0.01, max_time=0.0,
+                                   held=ARM_JOINTS[arm])
+        if not (ok or (msg == "timeout" and err <= READY_TOL)):
+            raise RuntimeError(f"the {other} arm did not reach ready: {msg} (err {err:.3f})")
+        return True
+
     def tcp_error(self, arm, target):
         """Position (m) and rotation (rad) of the TCP tf against the goal, or (None, None)."""
         tf = None
@@ -584,8 +618,17 @@ class MotionNode(Node):
                 with self.lock:
                     snapshot = dict(self.q)
                     planner.objects = self.scene_objects
-                names, waypoints, dt = planner.plan(
-                    g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol)
+                try:
+                    names, waypoints, dt = planner.plan(
+                        g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol)
+                except Unreachable as e:
+                    if mode != "direct" or not self._other_arm_to_ready(planner, g.arm, e):
+                        raise
+                    with self.lock:
+                        snapshot = dict(self.q)
+                    names, waypoints, dt = planner.plan(
+                        g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol)
+                    planner.scene_note += ", after the other arm went to ready"
             except Unreachable as e:
                 try:
                     report = planner.start_report(snapshot)

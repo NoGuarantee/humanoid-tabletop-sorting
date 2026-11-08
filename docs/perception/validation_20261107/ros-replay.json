@@ -1,0 +1,1098 @@
+{
+  "scope": "ROS/DDS CPU replay; repeated saved sensor frames stamped on wall clock; no live LOOK_TABLE, motion or solution.sh",
+  "scenes": [
+    {
+      "phase": "normal",
+      "pending": null,
+      "wall_s": 1.397399307694286,
+      "success": false,
+      "message": "RGB-D worker exposure expired",
+      "trays": 0,
+      "age_s": 1794080711.1801703
+    },
+    {
+      "phase": "normal",
+      "pending": null,
+      "wall_s": 1.3648822619579732,
+      "success": false,
+      "message": "RGB-D worker exposure expired",
+      "trays": 0,
+      "age_s": 1794080712.6947398
+    },
+    {
+      "phase": "worker_killed",
+      "wall_s": 1.282491596415639,
+      "success": false,
+      "message": "RuntimeError('RGB-D exposure invalidated')"
+    }
+  ],
+  "last_pose": {
+    "schema": "hack_perception.model_poses/v1",
+    "status": "ok",
+    "stamp_ns": 1794080711158030147,
+    "frame_id": "pelvis",
+    "pool": 4,
+    "table_z_m": -0.18026189671685264,
+    "objects": [
+      {
+        "name": "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g",
+        "category": "box",
+        "pose_status": "ok",
+        "T_pelvis_object": [
+          [
+            0.9919900961113857,
+            0.09558738609782332,
+            -0.08257542513308841,
+            0.3480076559370627
+          ],
+          [
+            -0.09646560737117289,
+            0.9953137489814609,
+            -0.006702811572789803,
+            0.1791752789687988
+          ],
+          [
+            0.0815477517252029,
+            0.014614811235704066,
+            0.9965622767700518,
+            -0.15651234281255166
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "center_pelvis_m": [
+          0.34112910135573976,
+          0.1786821915583077,
+          -0.0722622709412558
+        ],
+        "size_model_m": [
+          0.09118105098605156,
+          0.06405099118128418,
+          0.15382970918202774
+        ],
+        "orientation_mode": "c2",
+        "detector_score": 0.9394312500953674,
+        "depth_points": 650,
+        "fit_rmse_m": 0.0006895858260113349,
+        "depth_supported_views": 1,
+        "instances": {
+          "cam_head": 8
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "name": "Schleich_African_Black_Rhino",
+        "category": "figure",
+        "pose_status": "ok",
+        "T_pelvis_object": [
+          [
+            0.9941877871142271,
+            -0.0768769780203775,
+            -0.07536958407321379,
+            0.37235226894014883
+          ],
+          [
+            0.07713925470841929,
+            0.9970201651784614,
+            0.0005706229433983009,
+            0.015360867216192732
+          ],
+          [
+            0.07510112739463005,
+            -0.0063812599044649,
+            0.9971555045157634,
+            -0.15432228752963337
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "center_pelvis_m": [
+          0.37023386480991777,
+          0.017479013170569987,
+          -0.12476894635948566
+        ],
+        "size_model_m": [
+          0.03978482324630022,
+          0.1286103242635727,
+          0.05932414312301262
+        ],
+        "orientation_mode": "full",
+        "detector_score": 0.7784529328346252,
+        "depth_points": 650,
+        "fit_rmse_m": 0.0005505827472439402,
+        "depth_supported_views": 1,
+        "instances": {
+          "cam_head": 14
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "name": null,
+        "category": "dish",
+        "pose_status": "insufficient_depth",
+        "T_pelvis_object": null,
+        "center_pelvis_m": null,
+        "size_model_m": null,
+        "orientation_mode": null,
+        "detector_score": 0.9812544584274292,
+        "depth_points": null,
+        "fit_rmse_m": null,
+        "depth_supported_views": 0,
+        "instances": {
+          "cam_head": 1
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "name": null,
+        "category": "dish",
+        "pose_status": "insufficient_depth",
+        "T_pelvis_object": null,
+        "center_pelvis_m": null,
+        "size_model_m": null,
+        "orientation_mode": null,
+        "detector_score": 0.9760924577713013,
+        "depth_points": null,
+        "fit_rmse_m": null,
+        "depth_supported_views": 0,
+        "instances": {
+          "cam_head": 2
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "name": null,
+        "category": "dish",
+        "pose_status": "insufficient_depth",
+        "T_pelvis_object": null,
+        "center_pelvis_m": null,
+        "size_model_m": null,
+        "orientation_mode": null,
+        "detector_score": 0.9546985626220703,
+        "depth_points": null,
+        "fit_rmse_m": null,
+        "depth_supported_views": 0,
+        "instances": {
+          "cam_head": 5
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "name": null,
+        "category": "figure",
+        "pose_status": "insufficient_depth",
+        "T_pelvis_object": null,
+        "center_pelvis_m": null,
+        "size_model_m": null,
+        "orientation_mode": null,
+        "detector_score": 0.9511005282402039,
+        "depth_points": null,
+        "fit_rmse_m": null,
+        "depth_supported_views": 0,
+        "instances": {
+          "cam_head": 6
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "name": null,
+        "category": "figure",
+        "pose_status": "insufficient_depth",
+        "T_pelvis_object": null,
+        "center_pelvis_m": null,
+        "size_model_m": null,
+        "orientation_mode": null,
+        "detector_score": 0.9476934671401978,
+        "depth_points": null,
+        "fit_rmse_m": null,
+        "depth_supported_views": 0,
+        "instances": {
+          "cam_head": 7
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "name": null,
+        "category": "dish",
+        "pose_status": "insufficient_depth",
+        "T_pelvis_object": null,
+        "center_pelvis_m": null,
+        "size_model_m": null,
+        "orientation_mode": null,
+        "detector_score": 0.9277141094207764,
+        "depth_points": null,
+        "fit_rmse_m": null,
+        "depth_supported_views": 0,
+        "instances": {
+          "cam_head": 10
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "name": null,
+        "category": "box",
+        "pose_status": "insufficient_depth",
+        "T_pelvis_object": null,
+        "center_pelvis_m": null,
+        "size_model_m": null,
+        "orientation_mode": null,
+        "detector_score": 0.9260531663894653,
+        "depth_points": null,
+        "fit_rmse_m": null,
+        "depth_supported_views": 0,
+        "instances": {
+          "cam_head": 11
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "name": null,
+        "category": "dish",
+        "pose_status": "insufficient_depth",
+        "T_pelvis_object": null,
+        "center_pelvis_m": null,
+        "size_model_m": null,
+        "orientation_mode": null,
+        "detector_score": 0.9254381060600281,
+        "depth_points": null,
+        "fit_rmse_m": null,
+        "depth_supported_views": 0,
+        "instances": {
+          "cam_head": 12
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "name": null,
+        "category": "box",
+        "pose_status": "insufficient_depth",
+        "T_pelvis_object": null,
+        "center_pelvis_m": null,
+        "size_model_m": null,
+        "orientation_mode": null,
+        "detector_score": 0.8049918413162231,
+        "depth_points": null,
+        "fit_rmse_m": null,
+        "depth_supported_views": 0,
+        "instances": {
+          "cam_head": 13
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "name": null,
+        "category": "box",
+        "pose_status": "insufficient_depth",
+        "T_pelvis_object": null,
+        "center_pelvis_m": null,
+        "size_model_m": null,
+        "orientation_mode": null,
+        "detector_score": 0.5427867770195007,
+        "depth_points": null,
+        "fit_rmse_m": null,
+        "depth_supported_views": 0,
+        "instances": {
+          "cam_head": 15
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "name": null,
+        "category": "box",
+        "pose_status": "insufficient_depth",
+        "T_pelvis_object": null,
+        "center_pelvis_m": null,
+        "size_model_m": null,
+        "orientation_mode": null,
+        "detector_score": 0.4479723274707794,
+        "depth_points": null,
+        "fit_rmse_m": null,
+        "depth_supported_views": 0,
+        "instances": {
+          "cam_head": 16
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      }
+    ],
+    "containers": [
+      {
+        "id": "tray_center",
+        "kind": "tray",
+        "color": "green",
+        "center_pelvis_m": [
+          0.5367373137135076,
+          0.001151827750148689,
+          -0.07045039921526221
+        ],
+        "yaw_rad": -5.145423422892037e-07,
+        "size_m": [
+          0.22,
+          0.32,
+          0.07
+        ],
+        "T_pelvis_opening": [
+          [
+            0.9975755335206574,
+            5.145423422327877e-07,
+            -0.06959206075919269,
+            0.5367373137135076
+          ],
+          [
+            -1.5436300587520085e-06,
+            0.9999999998902686,
+            -1.4733652460583165e-05,
+            0.001151827750148689
+          ],
+          [
+            0.06959206074397514,
+            1.4805355610912583e-05,
+            0.997575533411986,
+            -0.07045039921526221
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "id": "tray_left",
+        "kind": "tray",
+        "color": "red",
+        "center_pelvis_m": [
+          0.34620249638302886,
+          0.6888684385236893,
+          -0.08362195148107338
+        ],
+        "yaw_rad": 0.017495187408372193,
+        "size_m": [
+          0.22,
+          0.32,
+          0.07
+        ],
+        "T_pelvis_opening": [
+          [
+            0.9974221248644333,
+            -0.017494282214700178,
+            -0.06959206075919269,
+            0.34620249638302886
+          ],
+          [
+            0.017535771916432446,
+            0.9998462364214882,
+            -1.4733652460583165e-05,
+            0.6888684385236893
+          ],
+          [
+            0.06958161778956855,
+            -0.001205654833723463,
+            0.997575533411986,
+            -0.08362195148107338
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "id": "tray_right",
+        "kind": "tray",
+        "color": "blue",
+        "center_pelvis_m": [
+          0.3447657323749383,
+          -0.6866696019409619,
+          -0.08397856530034416
+        ],
+        "yaw_rad": -0.01749621586388006,
+        "size_m": [
+          0.22,
+          0.32,
+          0.07
+        ],
+        "T_pelvis_opening": [
+          [
+            0.9974221068391731,
+            0.017495309879901503,
+            -0.06959206075919269,
+            0.3447657323749383
+          ],
+          [
+            -0.017538857437473708,
+            0.9998461823014114,
+            -1.4733652460583165e-05,
+            -0.6866696019409619
+          ],
+          [
+            0.06958109849875121,
+            0.00123526090311416,
+            0.997575533411986,
+            -0.08397856530034416
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      }
+    ],
+    "table_normal_pelvis": [
+      -0.06959206075919269,
+      -1.4733652460583165e-05,
+      0.997575533411986
+    ],
+    "observed_regions": [
+      {
+        "low_pelvis_m": [
+          0.28948963369872077,
+          -0.19528009726729476,
+          -0.15186132801827668
+        ],
+        "high_pelvis_m": [
+          0.3867345952771804,
+          -0.0963974098592147,
+          -0.08136708170714979
+        ],
+        "category": "dish",
+        "instances": {
+          "cam_head": 1
+        },
+        "depth_points": 1694,
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.28692149930733024,
+          0.3115245018391471,
+          -0.14370415890551602
+        ],
+        "high_pelvis_m": [
+          0.3987663303627109,
+          0.40871984398726674,
+          -0.08979662711403524
+        ],
+        "category": "dish",
+        "instances": {
+          "cam_head": 2
+        },
+        "depth_points": 1932,
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.2314915237055834,
+          0.2459519120797786,
+          0.1469698382295862
+        ],
+        "high_pelvis_m": [
+          0.26459791545632283,
+          0.25638183386140917,
+          0.17429564422323368
+        ],
+        "category": "unknown",
+        "instances": {
+          "cam_head": -1
+        },
+        "depth_points": 62,
+        "source_instances": {
+          "cam_head": 2
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.27332322208436755,
+          0.26049991870212097,
+          0.14387822401296396
+        ],
+        "high_pelvis_m": [
+          0.2989882377893224,
+          0.2665005992299521,
+          0.15719087651979857
+        ],
+        "category": "unknown",
+        "instances": {
+          "cam_head": -2
+        },
+        "depth_points": 55,
+        "source_instances": {
+          "cam_head": 2
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.2345877397596211,
+          0.24345364064463304,
+          0.20071014376905405
+        ],
+        "high_pelvis_m": [
+          0.27440011402115183,
+          0.2892197695647359,
+          0.2273567921868574
+        ],
+        "category": "dish",
+        "instances": {
+          "cam_head": 5
+        },
+        "depth_points": 1563,
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.25264758767732076,
+          0.26168891084447193,
+          0.17606693352440972
+        ],
+        "high_pelvis_m": [
+          0.25264758767732076,
+          0.26168891084447193,
+          0.17606693352440972
+        ],
+        "category": "unknown",
+        "instances": {
+          "cam_head": -3
+        },
+        "depth_points": 1,
+        "source_instances": {
+          "cam_head": 5
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.4142376849507181,
+          -0.30693037735654183,
+          -0.14376809890664566
+        ],
+        "high_pelvis_m": [
+          0.4896257156219473,
+          -0.22228626457436376,
+          -0.01940010600907227
+        ],
+        "category": "figure",
+        "instances": {
+          "cam_head": 6
+        },
+        "depth_points": 2131,
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.30385905403063285,
+          -0.2831497642997849,
+          -0.1514992734072127
+        ],
+        "high_pelvis_m": [
+          0.3839864615354836,
+          -0.22929197728187398,
+          -0.12329917273401081
+        ],
+        "category": "figure",
+        "instances": {
+          "cam_head": 7
+        },
+        "depth_points": 842,
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.29121635768771087,
+          0.14415647648836197,
+          -0.1525841080522311
+        ],
+        "high_pelvis_m": [
+          0.3874961026664402,
+          0.21310864170506877,
+          0.007084036125126314
+        ],
+        "category": "box",
+        "instances": {
+          "cam_head": 8
+        },
+        "depth_points": 2909,
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.4235458965637711,
+          0.2218430902701284,
+          -0.14144886177625982
+        ],
+        "high_pelvis_m": [
+          0.4350908510333488,
+          0.25537712303763627,
+          -0.09086976302061645
+        ],
+        "category": "unknown",
+        "instances": {
+          "cam_head": -4
+        },
+        "depth_points": 7,
+        "source_instances": {
+          "cam_head": 8
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.3214394722832977,
+          -0.4276139464502932,
+          -0.15035099474731628
+        ],
+        "high_pelvis_m": [
+          0.4213485066408205,
+          -0.34846275690293416,
+          -0.09962377684809864
+        ],
+        "category": "dish",
+        "instances": {
+          "cam_head": 10
+        },
+        "depth_points": 1521,
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.2722578655671807,
+          -0.2684715331373696,
+          0.14307798293472818
+        ],
+        "high_pelvis_m": [
+          0.3063450623823728,
+          -0.2585237768997225,
+          0.160250943793405
+        ],
+        "category": "unknown",
+        "instances": {
+          "cam_head": -5
+        },
+        "depth_points": 89,
+        "source_instances": {
+          "cam_head": 10
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.25454561304600587,
+          -0.2536112501869283,
+          0.15369191482230327
+        ],
+        "high_pelvis_m": [
+          0.26492548645576663,
+          -0.24944929043426306,
+          0.16853405233420127
+        ],
+        "category": "unknown",
+        "instances": {
+          "cam_head": -6
+        },
+        "depth_points": 19,
+        "source_instances": {
+          "cam_head": 10
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.4168448174676247,
+          0.2182212132544015,
+          -0.14431706726091809
+        ],
+        "high_pelvis_m": [
+          0.4844995282616404,
+          0.32487047099181016,
+          -0.039079983954224184
+        ],
+        "category": "box",
+        "instances": {
+          "cam_head": 11
+        },
+        "depth_points": 2278,
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.3772910761402823,
+          0.20242054791233394,
+          0.005787140473148322
+        ],
+        "high_pelvis_m": [
+          0.3810775109084712,
+          0.2058327879850715,
+          0.007083857647782854
+        ],
+        "category": "unknown",
+        "instances": {
+          "cam_head": -7
+        },
+        "depth_points": 4,
+        "source_instances": {
+          "cam_head": 11
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.24611276058291304,
+          -0.26707379424874605,
+          0.173363948842221
+        ],
+        "high_pelvis_m": [
+          0.25662656185545546,
+          -0.2522113948069161,
+          0.1865944714672007
+        ],
+        "category": "dish",
+        "instances": {
+          "cam_head": 12
+        },
+        "depth_points": 36,
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.23460156826908712,
+          -0.2841746979142409,
+          0.20027657386094783
+        ],
+        "high_pelvis_m": [
+          0.27540969944028426,
+          -0.24155976846844213,
+          0.22641332008796156
+        ],
+        "category": "unknown",
+        "instances": {
+          "cam_head": -8
+        },
+        "depth_points": 1499,
+        "source_instances": {
+          "cam_head": 12
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.2801598714207521,
+          -0.2634880325263593,
+          0.18700446053732667
+        ],
+        "high_pelvis_m": [
+          0.2870125070586833,
+          -0.25722273665529233,
+          0.19436005477091134
+        ],
+        "category": "unknown",
+        "instances": {
+          "cam_head": -9
+        },
+        "depth_points": 6,
+        "source_instances": {
+          "cam_head": 12
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.29053832199124424,
+          -0.02271690950788928,
+          -0.1533738535684549
+        ],
+        "high_pelvis_m": [
+          0.3192244532525884,
+          0.0628949057853417,
+          -0.011859194300836484
+        ],
+        "category": "box",
+        "instances": {
+          "cam_head": 13
+        },
+        "depth_points": 1282,
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.3485558992359299,
+          -0.04745883412038253,
+          -0.14908685428017232
+        ],
+        "high_pelvis_m": [
+          0.3857582563921904,
+          0.08067123528757003,
+          -0.09289663952589544
+        ],
+        "category": "figure",
+        "instances": {
+          "cam_head": 14
+        },
+        "depth_points": 880,
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.35962148419782064,
+          0.021804455977496657,
+          -0.14746513880217382
+        ],
+        "high_pelvis_m": [
+          0.36026938292203625,
+          0.024016181264688498,
+          -0.1454478223978326
+        ],
+        "category": "unknown",
+        "instances": {
+          "cam_head": -10
+        },
+        "depth_points": 2,
+        "source_instances": {
+          "cam_head": 14
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.30364885781221496,
+          -0.30305906683696376,
+          0.19635331729910327
+        ],
+        "high_pelvis_m": [
+          0.3515755867050699,
+          -0.23724174351335778,
+          0.23932698524565593
+        ],
+        "category": "box",
+        "instances": {
+          "cam_head": 15
+        },
+        "depth_points": 1330,
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.2862428147083404,
+          0.23888409903247032,
+          0.18875643202623188
+        ],
+        "high_pelvis_m": [
+          0.34959383974743063,
+          0.3053970423103628,
+          0.24018134162280852
+        ],
+        "category": "box",
+        "instances": {
+          "cam_head": 16
+        },
+        "depth_points": 2058,
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      },
+      {
+        "low_pelvis_m": [
+          0.31746185971951535,
+          0.25212684482892134,
+          0.1798275206457262
+        ],
+        "high_pelvis_m": [
+          0.32230506662649716,
+          0.2847878581360056,
+          0.18995495685994085
+        ],
+        "category": "unknown",
+        "instances": {
+          "cam_head": -11
+        },
+        "depth_points": 2,
+        "source_instances": {
+          "cam_head": 16
+        },
+        "exposure_key": {
+          "session_id": "14152d5db02a4a95aab6eb472b173360",
+          "epoch": 0,
+          "stamp_ns": 1794080711158030147
+        }
+      }
+    ],
+    "exposure_key": {
+      "session_id": "14152d5db02a4a95aab6eb472b173360",
+      "epoch": 0,
+      "stamp_ns": 1794080711158030147
+    },
+    "source_cameras": [
+      "cam_head"
+    ]
+  },
+  "worker_restarts": 1
+}

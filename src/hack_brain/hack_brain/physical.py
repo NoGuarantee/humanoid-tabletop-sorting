@@ -59,10 +59,15 @@ class PhysicalVerifier:
         if hand == 'HOLDING' and self.target_id == c.target.id and not self.contact_lost:
             self.contact_seen = True
             current = self.tcp(self.arm,c.sim)
+            if self.baseline is None and c.state == State.VERIFY_GRASP:
+                # The arm has not moved since CLOSE: a pose missed then is still the grasp height.
+                self.baseline = current
             if self.baseline and current and current[0] >= since:
                 if current[1][2] - self.baseline[1][2] >= .05:
                     self.lifted = True
                 t = min(t,current[0])
+            elif c.state == State.VERIFY_LIFT and not self.lifted:
+                return None  # no TCP pose after the lift yet: wait instead of reporting it not lifted
             return Evidence(t,Hand.HOLDING,c.target.id,lifted=self.lifted,source='opposed_finger_contact_and_tcp')
         if hand != 'EMPTY':
             return None

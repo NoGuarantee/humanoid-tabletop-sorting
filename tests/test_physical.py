@@ -96,6 +96,23 @@ class EvidenceTests(unittest.TestCase):
         ev=self.v.read(self.c)
         self.assertTrue(ev.lifted)
 
+    def test_missing_baseline_is_taken_in_verify_grasp(self):
+        v=PhysicalVerifier(self.m, lambda side,now:None if now < 1.2 else (now,(.4,0,self.height)))
+        v.closing(self.c.target,'left',self.target,1)
+        self.assertIsNone(v.baseline)
+        self.contact();ev=v.read(self.c)
+        self.assertEqual(ev.hand,Hand.HOLDING);self.assertIsNotNone(v.baseline)
+        self.height=.15;self.c.state=State.VERIFY_LIFT
+        self.assertTrue(v.read(self.c).lifted)
+
+    def test_verify_lift_waits_for_a_pose_after_the_lift(self):
+        self.contact();self.v.read(self.c)
+        self.height=.15;self.c.state=State.VERIFY_LIFT
+        self.c.active=Operation(2,State.VERIFY_LIFT,1.5,0)
+        self.assertIsNone(self.v.read(self.c))  # TCP stamped 1.4, before the phase start 1.5
+        self.c.sim=2.0;fill(self.m,'left',1.5,[.4,.4,.4,.4,.7,.2],[.3]*6)
+        self.assertTrue(self.v.read(self.c).lifted)
+
     def test_tcp_motion_alone_or_stale_hand_cannot_prove_lift(self):
         self.height=.2
         self.assertIsNone(self.v.read(self.c))

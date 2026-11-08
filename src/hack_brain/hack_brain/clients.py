@@ -21,7 +21,25 @@ from .transport import ActionTransport
 HAND_STILL = .015  # finger reading spread over 0.3 s that still counts as stopped, as sensors.hand
 SCENE_WAIT_S = 6.0  # sim s an OBSERVE or DESTINATION waits for a fresh scene: the first look after an arm
                    # move took 4-6 s wall, 2.5-3.7 s sim, waiting for /tf (eval 2026-11-08)
+# sim s a TCP pose from /tf may lag /clock. 0.2 s left the grasp baseline empty: every lift of the held cartridge
+# read as not lifted and the mission ended lift_unconfirmed (eval 2026-11-08). Lift checks also require a sample
+# stamped after the phase start, so an old pose cannot pass for the new one.
+TCP_MAX_AGE = 2.0
 UNSURE_S = 1.5  # sim s without a HOLDING reading before a held object counts as lost
+
+
+def stop_resource(name, goal):
+    """(measurement key, joint names) that must read at rest after the goal.
+
+    A MoveTcp settles its own arm, the waist and the head. The other arm it only holds within 0.05 rad: after a
+    left descend the right shoulder and elbow kept moving 0.02 rad per 0.4 s for over 4 s, the stop over every
+    joint never came, and the mission ended (eval 2026-11-08)."""
+    if name == 'hand':
+        return goal.hand, tuple(str(i) for i in range(1,7))
+    if name == 'tcp':
+        other = '_r_joint' if goal.arm == 'left' else '_l_joint'
+        return 'joints', tuple(n for n in JOINTS if not n.endswith(other))
+    return 'joints', tuple(JOINTS)
 
 
 class Clients:
@@ -106,8 +124,7 @@ class Clients:
                     self.verifier.unsure_since = None
                 if effect.phase == State.CLOSE:
                     self.verifier.closing(effect.target,goal.hand,HAND_PRESETS[goal.preset],context.sim)
-                self.stop_resources = {effect.op_id: (goal.hand if name == 'hand' else 'joints',
-                    tuple(str(i) for i in range(1,7)) if name == 'hand' else tuple(JOINTS))}
+                self.stop_resources = {effect.op_id: stop_resource(name, goal)}
                 self.transport.send(effect.op_id, self.actions[name], goal)
         except Exception as exc:
             self.emit(Event('REJECTED', effect.op_id, repr(exc), ok=False, stopped=True))
@@ -133,7 +150,7 @@ class Clients:
             tf = self.tf.lookup_transform('pelvis', arm+'_tcp_link', Time())
             t = stamp(tf)
             v = tf.transform.translation
-            if 0 <= now-t <= .2 and all(math.isfinite(x) for x in (v.x,v.y,v.z)):
+            if 0 <= now-t <= TCP_MAX_AGE and all(math.isfinite(x) for x in (v.x,v.y,v.z)):
                 return t,(v.x,v.y,v.z)
         except Exception:
             pass

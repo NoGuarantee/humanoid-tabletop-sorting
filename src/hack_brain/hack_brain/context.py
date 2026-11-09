@@ -11,7 +11,6 @@ class State(str, Enum):
     OBSERVE = 'OBSERVE'
     OPEN = 'OPEN'
     APPROACH = 'APPROACH'
-    REFRESH_TARGET = 'REFRESH_TARGET'
     DESCEND = 'DESCEND'
     CLOSE = 'CLOSE'
     VERIFY_GRASP = 'VERIFY_GRASP'
@@ -30,6 +29,7 @@ class State(str, Enum):
     RETREAT = 'RETREAT'
     RECOVER = 'RECOVER'
     BACK_OFF = 'BACK_OFF'
+    CLEAR = 'CLEAR'
     CANCELLING = 'CANCELLING'
     DONE = 'DONE'
 
@@ -91,6 +91,7 @@ class History:
     lift_attempts: int = 0
     lift: Lift = Lift.NEVER_LIFTED
     placed: bool = False
+    released: bool = False  # let go over the destination, placement not confirmed: never picked again
     contacted: bool = False
 
 
@@ -149,6 +150,11 @@ class Context:
     empty_observations: int = 0
     # The arm may be down at the object (DESCEND was accepted and no LIFT or BACK_OFF since).
     arm_low: bool = False
+    # An arm may be over the table, in the head camera view (APPROACH was accepted and no CLEAR since).
+    # An arm left at the tray or above an object hid three of nine objects and all three trays from the look.
+    arm_out: bool = False
+    # RETREAT is done; the look that follows checks the placement (VERIFY_PLACE) instead of a new OBSERVE.
+    place_look: bool = False
     last_recovery: str = ''
     reason: str = ''
     blocked: bool = False

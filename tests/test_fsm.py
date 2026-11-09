@@ -47,7 +47,7 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(f.c.state, State.BACK_OFF)
         self.assertEqual(f.c.last_recovery, 'timeout')
         f.answer('unreachable', ok=False)  # a failed back-off does not loop back to RECOVER
-        self.assertEqual(f.c.state, State.LOOK_TABLE)
+        self.assertEqual(f.c.state, State.CLEAR)
         self.assertFalse(f.c.arm_low)
         self.assertTrue(f.run().history['a'].placed)
 
@@ -56,7 +56,7 @@ class MissionTests(unittest.TestCase):
         f.until(State.APPROACH)
         f.answer('unreachable', ok=False)
         f.answer()  # RECOVER: hand empty
-        self.assertEqual(f.c.state, State.LOOK_TABLE)
+        self.assertEqual(f.c.state, State.CLEAR)  # a failed approach may still have moved the arm
         self.assertFalse(any(x.phase == State.BACK_OFF for x in f.commands))
 
     def test_unknown_hand_in_recover_is_measured_again_within_budget(self):
@@ -72,6 +72,13 @@ class MissionTests(unittest.TestCase):
             f.answer(Evidence(f.sim, Hand.UNKNOWN))
         self.assertEqual(f.c.state, State.DONE)
         self.assertEqual(f.c.reason, 'physical_unknown')
+
+    def test_recovery_budget_is_per_attempt(self):
+        f = Fake(objects=[Object('a', 'figure', name='a')])
+        f.until(State.OBSERVE)
+        f.c.recoveries = f.c.config.max_recoveries
+        f.until(State.OPEN)
+        self.assertEqual(f.c.recoveries, 0)
 
     def test_unreachable_retries_are_bounded(self):
         f = Fake(objects=[Object('a', 'figure', name='a')])
@@ -96,8 +103,10 @@ class MissionTests(unittest.TestCase):
                 f.until(state)
                 n = len(f.commands)
                 f.answer(Evidence(f.sim, source='fake'))
-                self.assertEqual(f.c.state, State.DONE)
-                self.assertEqual(len(f.commands), n)
+                # Before the lift an unknown hand is measured again in RECOVER, still without motion.
+                self.assertEqual(f.c.state, State.RECOVER if state == State.VERIFY_GRASP else State.DONE)
+                self.assertEqual([e.phase for e in f.commands[n:]],
+                                 [State.RECOVER] if state == State.VERIFY_GRASP else [])
                 self.assertEqual(f.c.hand, Hand.UNKNOWN)
 
     def test_loss_after_lift_keeps_history_and_reobserves(self):
@@ -106,6 +115,8 @@ class MissionTests(unittest.TestCase):
         f.answer(Evidence(f.sim, Hand.EMPTY, source='fake'))
         self.assertEqual(f.c.history['a'].lift, Lift.LIFTED)
         f.answer(Evidence(f.sim, Hand.EMPTY, source='fake'))
+        self.assertEqual(f.c.state, State.CLEAR)
+        f.answer()
         self.assertEqual(f.c.state, State.LOOK_TABLE)
         f.answer()
         self.assertEqual(f.c.target.id, 'a')
@@ -138,10 +149,26 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(f.c.state, State.RETREAT)
         self.assertFalse(f.c.history['a'].placed)
         f.answer()
+        # The arm leaves the head camera view before the placement is looked at.
+        self.assertEqual(f.c.state, State.CLEAR)
+        f.answer()
+        self.assertEqual(f.c.state, State.LOOK_TABLE)
+        f.answer()
         self.assertEqual(f.c.state, State.VERIFY_PLACE)
         self.assertFalse(f.c.history['a'].placed)
         f.answer()
         self.assertTrue(f.c.history['a'].placed)
+        f.until(State.OBSERVE)
+        self.assertEqual(f.c.state, State.OBSERVE)
+
+    def test_failed_clear_still_checks_the_placement(self):
+        f = Fake()
+        f.until(State.RETREAT)
+        f.answer()
+        f.answer('unreachable', ok=False)
+        self.assertEqual(f.c.state, State.LOOK_TABLE)
+        f.answer()
+        self.assertEqual(f.c.state, State.VERIFY_PLACE)
 
     def test_motion_error_without_stop_does_not_recover(self):
         f = Fake()
@@ -161,8 +188,23 @@ class MissionTests(unittest.TestCase):
         f = Fake()
         f.until(State.VERIFY_PLACE)
         f.answer(replace(f.default(), placed=False))
-        self.assertEqual(f.c.reason, 'placement_unconfirmed')
+        self.assertEqual(f.c.state, State.VERIFY_EMPTY)
         self.assertFalse(f.c.history['a'].placed)
+        self.assertTrue(f.c.history['a'].released)
+
+    def test_unconfirmed_placement_with_object_in_hand_ends(self):
+        f = Fake()
+        f.until(State.VERIFY_PLACE)
+        f.answer(replace(f.default(), placed=False, hand=Hand.HOLDING))
+        self.assertEqual(f.c.reason, 'placement_unconfirmed')
+
+    def test_released_object_is_not_selected_again(self):
+        f = Fake()
+        f.until(State.VERIFY_PLACE)
+        f.answer(replace(f.default(), placed=False))
+        f.until(State.OBSERVE)
+        f.answer()
+        self.assertEqual(f.c.target.id, 'b')
 
     def test_wrong_destination_not_success(self):
         f = Fake()
@@ -205,6 +247,7 @@ class MissionTests(unittest.TestCase):
         for mode in ('no_ack', 'refused', 'no_stop'):
             with self.subTest(mode=mode):
                 f = Fake()
+                f.until(State.LOOK_TABLE)  # a move: a reading cannot leave anything unstopped
                 op = f.c.active.id
                 f.send(Event('CANCEL'))
                 if mode == 'refused':
@@ -338,7 +381,9 @@ class MissionTests(unittest.TestCase):
             f = Fake()
             f.until(State.VERIFY_GRASP)
             f.answer(ev)
-            self.assertEqual(f.c.reason, 'physical_unknown')
+            self.assertEqual(f.c.state, State.RECOVER)
+            self.assertEqual(f.c.last_recovery, 'hand_unknown')
+            self.assertFalse(f.c.history['a'].placed)
 
     def test_contact_invalidates_scene_and_anonymous_identity(self):
         f = Fake(objects=[Object('track', 'figure')])
@@ -361,9 +406,16 @@ class MissionTests(unittest.TestCase):
     def test_retreat_failure_does_not_claim_unobserved_place(self):
         f = Fake()
         f.until(State.RETREAT)
-        f.answer('retreat_failed', ok=False)
+        f.answer('unreachable', ok=False)
         self.assertFalse(f.c.history['a'].placed)
-        self.assertEqual(f.c.reason, 'retreat_failed')
+        self.assertEqual(f.c.state, State.CLEAR)
+        self.assertIn('unreachable', f.c.last_recovery)
+        f.answer()
+        f.answer()
+        self.assertEqual(f.c.state, State.VERIFY_PLACE)
+        f.answer(replace(f.default(), placed=False))
+        self.assertFalse(f.c.history['a'].placed)
+        self.assertTrue(f.c.history['a'].released)
 
     def test_unknown_task_and_rule(self):
         f = Fake(parse_task('{"task":"other"}'))
@@ -381,6 +433,41 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(f.c.hand, Hand.EMPTY)
         self.assertEqual(f.effects[-1].kind, 'CANCEL')
 
+    def test_hold_lost_and_stopped_recovers_instead_of_ending(self):
+        f = Fake()
+        f.until(State.TRANSFER)
+        op = f.c.active.id
+        f.send(Event('SENSOR', data=Evidence(1, Hand.EMPTY, source='fake')))
+        f.send(Event('CANCEL_ACK', op))
+        f.send(Event('RESULT', op, None, ok=False, stopped=True))
+        self.assertEqual(f.c.state, State.RECOVER)
+        self.assertEqual(f.c.last_recovery, 'object_lost')
+        self.assertEqual(f.c.active.phase, State.RECOVER)
+
+    def test_hold_lost_without_a_measured_stop_still_ends(self):
+        f = Fake()
+        f.until(State.TRANSFER)
+        op = f.c.active.id
+        f.send(Event('SENSOR', data=Evidence(1, Hand.EMPTY, source='fake')))
+        f.send(Event('CANCEL_ACK', op))
+        f.send(Event('RESULT', op, None, ok=False, stopped=False))
+        self.assertEqual(f.c.state, State.DONE)
+        self.assertEqual(f.c.reason, 'holding_lost_or_unknown:stop_unconfirmed')
+
+    def test_hold_lost_during_a_reading_recovers(self):
+        f = Fake()
+        f.until(State.LIFT)
+        f.answer('unreachable', ok=False)
+        self.assertEqual(f.c.state, State.RECOVER)
+        self.assertEqual(f.c.hand, Hand.HOLDING)
+        op = f.c.active.id
+        f.send(Event('SENSOR', data=Evidence(1, Hand.EMPTY, source='fake')))
+        # The reading was queued before the cancel: it does not report a stop, yet nothing moved.
+        f.send(Event('RESULT', op, f.default(), ok=True, stopped=False))
+        f.send(Event('CANCEL_ACK', op))
+        self.assertEqual(f.c.state, State.RECOVER)
+        self.assertEqual(f.c.last_recovery, 'object_lost')
+
     def test_destination_requires_fresh_hold(self):
         f = Fake()
         f.until(State.VERIFY_TRANSFER)
@@ -388,15 +475,52 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(f.c.state, State.DONE)
         self.assertFalse(any(x.phase == State.TRANSFER for x in f.commands))
 
-    def test_stale_before_contact_never_descends(self):
+    def test_approach_goes_straight_to_descend(self):
+        # The hand over the object hides it from the head camera: no perception between approach and descent.
         f = Fake()
         f.until(State.APPROACH)
-        f.tick(sim=4, wall=101)
         f.answer()
-        self.assertEqual(f.c.state, State.REFRESH_TARGET)
-        f.answer(Scene(1))
-        self.assertEqual(f.c.state, State.RECOVER)
-        self.assertFalse(any(x.phase == State.DESCEND for x in f.commands))
+        self.assertEqual(f.c.state, State.DESCEND)
+        self.assertEqual([x.phase for x in f.commands if x.phase == State.OBSERVE], [State.OBSERVE])
+
+    def test_first_look_does_not_clear(self):
+        f = Fake()
+        f.until(State.OBSERVE)
+        self.assertFalse(any(x.phase == State.CLEAR for x in f.commands))
+
+    def test_every_later_look_clears_the_arm_first(self):
+        f = Fake()
+        c = f.run()
+        phases = [x.phase for x in f.commands]
+        last = 0
+        for i, p in enumerate(phases):
+            if p == State.LOOK_TABLE:
+                # CLEAR exactly when an arm went out since the last look; empty re-looks at the end do not move it
+                self.assertEqual(phases[i - 1] == State.CLEAR, State.APPROACH in phases[last:i])
+                last = i
+        self.assertEqual(phases.count(State.CLEAR), 2)  # after a and after b
+        self.assertFalse(c.arm_out)
+
+    def test_failed_clear_still_looks_once(self):
+        f = Fake(objects=[Object('a', 'figure', name='a')])
+        f.until(State.CLEAR)
+        f.answer('unreachable', ok=False)
+        self.assertEqual(f.c.state, State.LOOK_TABLE)
+        self.assertEqual(f.c.last_recovery, 'clear_failed')
+        self.assertFalse(f.c.arm_out)
+        self.assertEqual(f.run().reason, 'candidates_exhausted')
+
+    def test_clear_after_back_off(self):
+        f = Fake(objects=[Object('a', 'figure', name='a')])
+        f.until(State.DESCEND)
+        f.send(Event('ACCEPTED', f.c.active.id))
+        f.answer('timeout', ok=False)
+        f.answer()  # RECOVER: hand empty
+        self.assertEqual(f.c.state, State.BACK_OFF)
+        f.answer()
+        self.assertEqual(f.c.state, State.CLEAR)
+        f.answer()
+        self.assertEqual(f.c.state, State.LOOK_TABLE)
 
     def test_accepted_and_ticks_do_not_resend(self):
         f = Fake()
@@ -470,7 +594,7 @@ class ReviewRegressionTests(unittest.TestCase):
         f.send(Event('REJECTED', f.c.active.id, ok=False, stopped=True))
         self.assertFalse(f.c.history['track'].contacted)
         f.answer(Evidence(f.sim, Hand.EMPTY, source='fake'))
-        self.assertEqual(f.c.state, State.LOOK_TABLE)
+        self.assertEqual(f.c.state, State.CLEAR)
 
     def test_recovery_can_confirm_lift_from_fresh_evidence(self):
         f = Fake()

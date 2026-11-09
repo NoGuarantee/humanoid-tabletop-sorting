@@ -1,6 +1,6 @@
 """Sensor-based sorting evidence. Thresholds are tunable, not ground-truth labels.
 
-Holding requires opposed finger contact. Lift additionally requires measured TCP
+Holding requires a closing finger held short of its target with effort (sensors.hand). Lift additionally requires measured TCP
 rise with uninterrupted contact. Placement requires a unique named RGB-D detection
 inside the observed tray after release and retreat. Occlusion stays UNKNOWN.
 """
@@ -31,20 +31,29 @@ class PhysicalVerifier:
         self.target_id = ''
         self.arm = None
         self.closure = None
+        # Last closing target per arm. OPEN clears self.closure for the new grasp, but the other hand may
+        # still be shut on nothing after a slipped attempt; VERIFY_EMPTY needs its target to read it empty.
+        self.closures = {}
         self.baseline = None
         self.contact_seen = False
         self.lifted = False
         self.contact_lost = False
+        self.unsure_since = None  # sim time the hand monitor stopped reading HOLDING (Clients.poll)
 
     def closing(self, target, arm, closure, now):
         self.target_id, self.arm, self.closure = target.id, arm, tuple(closure)
+        self.closures[arm] = self.closure
         self.baseline = self.tcp(arm, now)
         self.contact_seen = self.lifted = self.contact_lost = False
+        self.unsure_since = None
 
     def read(self, c, scene=None):
         since = c.active.sim_start
         if c.state == State.VERIFY_EMPTY:
-            hands = [self.measurements.hand(side,c.sim,since) for side in ('left','right')]
+            # A hand closed to its target with nothing in it is empty too: the right hand left shut by a slipped
+            # cartridge read UNKNOWN here after the left placed it, and ended the mission with 261 s left
+            # (eval 2026-11-09).
+            hands = [self.measurements.hand(side,c.sim,since,self.closures.get(side)) for side in ('left','right')]
             if all(h is not None and h[1] == 'EMPTY' for h in hands):
                 return Evidence(min(h[0] for h in hands), Hand.EMPTY, source='measured_open_hands')
             return None
@@ -57,10 +66,15 @@ class PhysicalVerifier:
         if hand == 'HOLDING' and self.target_id == c.target.id and not self.contact_lost:
             self.contact_seen = True
             current = self.tcp(self.arm,c.sim)
+            if self.baseline is None and c.state == State.VERIFY_GRASP:
+                # The arm has not moved since CLOSE: a pose missed then is still the grasp height.
+                self.baseline = current
             if self.baseline and current and current[0] >= since:
                 if current[1][2] - self.baseline[1][2] >= .05:
                     self.lifted = True
                 t = min(t,current[0])
+            elif c.state == State.VERIFY_LIFT and not self.lifted:
+                return None  # no TCP pose after the lift yet: wait instead of reporting it not lifted
             return Evidence(t,Hand.HOLDING,c.target.id,lifted=self.lifted,source='opposed_finger_contact_and_tcp')
         if hand != 'EMPTY':
             return None

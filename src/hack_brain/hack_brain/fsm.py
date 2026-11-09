@@ -8,11 +8,11 @@ from .verification import evidence, fresh, placement
 
 VERIFY = {State.VERIFY_EMPTY, State.VERIFY_GRASP, State.VERIFY_LIFT, State.VERIFY_REORIENT,
           State.VERIFY_HOLD, State.VERIFY_TRANSFER, State.VERIFY_PLACE, State.RECOVER}
-NEXT = {State.OPEN: State.APPROACH, State.DESCEND: State.CLOSE,
+NEXT = {State.OPEN: State.APPROACH, State.APPROACH: State.DESCEND, State.DESCEND: State.CLOSE,
         State.CLOSE: State.VERIFY_GRASP, State.LIFT: State.VERIFY_LIFT,
         State.REORIENT: State.VERIFY_REORIENT, State.TRANSFER: State.VERIFY_HOLD,
         State.LOWER: State.RELEASE, State.INSERT: State.RELEASE,
-        State.RELEASE: State.RETREAT, State.RETREAT: State.VERIFY_PLACE}
+        State.RELEASE: State.RETREAT}
 
 
 def _enter(c, state, effects):
@@ -27,6 +27,8 @@ def _enter(c, state, effects):
 
 def _may_have_moved(c, op):
     state = op.phase
+    if state in (State.APPROACH, State.TRANSFER):
+        c.arm_out = True
     if state == State.DESCEND:
         c.arm_low = True
     if state in (State.DESCEND, State.RELEASE):
@@ -36,6 +38,11 @@ def _may_have_moved(c, op):
         c.history[c.target.id].contacted = True
     if state == State.LIFT and c.history[c.target.id].lift != Lift.LIFTED:
         c.history[c.target.id].lift = Lift.UNKNOWN
+
+
+def _look(c, effects):
+    """Look at the table, after taking the last arm out of the camera view."""
+    _enter(c, State.CLEAR if c.arm_out else State.LOOK_TABLE, effects)
 
 
 def _done(c, effects, reason=None):
@@ -63,7 +70,7 @@ def _recover(c, effects, reason):
     if c.recoveries > c.config.max_recoveries:
         _done(c, effects, 'retries_exhausted:' + reason)
     elif c.target is None:
-        _enter(c, State.LOOK_TABLE, effects)
+        _look(c, effects)
     else:
         _enter(c, State.RECOVER, effects)
 
@@ -147,12 +154,22 @@ def transition(context: Context, event: Event):
                     op.cancel_ack = True
             elif e.kind in ('RESULT', 'REJECTED'):
                 op.terminal = True
-                op.stopped = e.stopped or e.kind == 'REJECTED'
+                # A sensor-only op moves nothing: its reading, already queued when the hold was lost, is a stop.
+                # Taken as unconfirmed, it ended a RECOVER with 300 s and 8 objects left (eval 2026-11-08).
+                op.stopped = (e.stopped or e.kind == 'REJECTED'
+                              or op.phase in VERIFY | {State.OBSERVE, State.DESTINATION})
             if c.state != State.DONE and op.cancel_ack and op.terminal:
                 c.blocked = not op.stopped
                 if op.stopped:
                     c.active = None
-                _done(c, effects, c.reason + (':cancelled' if op.stopped else ':stop_unconfirmed'))
+                if op.stopped and c.reason == 'holding_lost_or_unknown' and c.target is not None:
+                    # A hold lost mid-move, with the arm measured at rest, leaves the rest of the table to sort:
+                    # the sink slipping on the lift ended a mission with 400 s and 8 objects left (eval 2026-11-08).
+                    # RECOVER measures the hand again before anything moves.
+                    c.reason = ''
+                    _recover(c, effects, 'object_lost')
+                else:
+                    _done(c, effects, c.reason + (':cancelled' if op.stopped else ':stop_unconfirmed'))
         elif e.kind == 'SEND_ERROR':
             _may_have_moved(c, op)
             _stop(c, effects, 'send_error')
@@ -160,7 +177,7 @@ def transition(context: Context, event: Event):
             if e.kind == 'RESULT':
                 _may_have_moved(c, op)
             if (e.kind == 'RESULT' and not e.ok and not e.stopped
-                    and c.state not in VERIFY | {State.OBSERVE, State.DESTINATION, State.REFRESH_TARGET}):
+                    and c.state not in VERIFY | {State.OBSERVE, State.DESTINATION}):
                 _stop(c, effects, 'execution_failed_stop_unconfirmed')
             else:
                 c.active = None
@@ -174,6 +191,13 @@ def _result(c, e, op, effects):
         # Up or not, look again: a plan from a low arm fails on its own and spends the recovery budget.
         if e.kind == 'REJECTED' or not e.ok:
             c.last_recovery = 'back_off_failed'
+        _look(c, effects)
+        return
+    if state == State.CLEAR:
+        # Once per look: an arm that cannot reach the side pose may still leave the view clear enough.
+        c.arm_out = False
+        if e.kind == 'REJECTED' or not e.ok:
+            c.last_recovery = 'clear_failed'
         _enter(c, State.LOOK_TABLE, effects)
         return
     if state == State.LIFT and e.kind == 'RESULT' and e.ok:
@@ -183,13 +207,24 @@ def _result(c, e, op, effects):
             c.hand = Hand.UNKNOWN
             _done(c, effects, 'verification_unavailable')
         elif state == State.RETREAT:
-            _done(c, effects, 'retreat_failed')
+            # The hand is open and placed is never set without the camera: CLEAR plans its own way out of the
+            # tray, and the look decides. Ending here lost 8 objects after a sorted cartridge (eval 2026-11-08).
+            c.last_recovery = 'retreat_failed: ' + str(e.data or '')
+            c.place_look = True
+            _look(c, effects)
         else:
             _recover(c, effects, str(e.data or 'operation_failed'))
         return
     if state == State.LOOK_TABLE:
         c.scene_invalidated_at = c.sim
-        _enter(c, State.OBSERVE, effects)
+        _enter(c, State.VERIFY_PLACE if c.place_look else State.OBSERVE, effects)
+        c.place_look = False
+        return
+    if state == State.RETREAT:
+        # The arm above the tray hid it and the object from the head camera, so the placement went unconfirmed
+        # (eval 2026-11-08). Take the arm out of view first, then look at the placement.
+        c.place_look = True
+        _look(c, effects)
         return
     if state in VERIFY:
         ev = evidence(c, e.data, op.sim_start)
@@ -200,6 +235,10 @@ def _result(c, e, op, effects):
                 c.recoveries += 1
                 c.last_recovery = 'hand_unknown'
                 _enter(c, State.RECOVER, effects)
+            elif state == State.VERIFY_GRASP and c.recoveries < c.config.max_recoveries:
+                # Nothing is lifted yet; RECOVER measures the hand again and backs off. Ending here cost the
+                # rest of the mission twice over a finger pushed past its range (eval 2026-11-08).
+                _recover(c, effects, 'hand_unknown')
             else:
                 _done(c, effects, 'physical_unknown')
             return
@@ -209,9 +248,15 @@ def _result(c, e, op, effects):
                 _done(c, effects, 'hand_not_empty')
             else:
                 c.target = None
-                _enter(c, State.LOOK_TABLE, effects)
+                _look(c, effects)
         elif state == State.VERIFY_PLACE:
-            if not placement(c, ev):
+            if not placement(c, ev) and ev.hand == Hand.EMPTY:
+                # Released over the destination but not seen there: the camera missed the tray behind the arm
+                # once, and a cartridge sorted correctly ended the mission with 8 objects left (eval 2026-11-08).
+                # The hand is empty, so go on with the others, and never pick this one again: it may be in a tray.
+                c.history[c.target.id].released = True
+                _enter(c, State.VERIFY_EMPTY, effects)
+            elif not placement(c, ev):
                 _done(c, effects, 'placement_unconfirmed')
             else:
                 c.history[c.target.id].placed = True
@@ -229,7 +274,7 @@ def _result(c, e, op, effects):
                     c.arm_low = False
                     _enter(c, State.BACK_OFF, effects)
                 else:
-                    _enter(c, State.LOOK_TABLE, effects)
+                    _look(c, effects)
             elif h.lift == Lift.LIFTED:
                 _enter(c, State.REORIENT if c.spec.variant == 'lying' and not c.reoriented
                        else State.DESTINATION, effects)
@@ -285,31 +330,19 @@ def _result(c, e, op, effects):
             if obj is None and c.empty_observations < c.config.max_empty_observations:
                 c.empty_observations += 1
                 c.scene = None
-                _enter(c, State.LOOK_TABLE, effects)
+                _look(c, effects)
             elif obj is None:
                 _done(c, effects, 'candidates_exhausted')
             else:
                 c.empty_observations = 0
+                # Recoveries are budgeted per attempt: five 'no /joint_states yet' rejections while motion started
+                # spent a mission-wide budget, and one empty grasp later ended the mission (eval 2026-11-08).
+                # Attempts per object and the sim deadline still bound the mission.
+                c.recoveries = 0
                 c.target = obj
                 c.reoriented = False
                 c.history.setdefault(obj.id, History()).attempts += 1
                 c.destination, c.slot = destination_in_scene(c, scene, obj) or ('', None)
                 _enter(c, State.OPEN, effects)
-    elif state == State.APPROACH:
-        c.scene_invalidated_at = c.sim
-        _enter(c, State.REFRESH_TARGET, effects)
-    elif state == State.REFRESH_TARGET:
-        scene = e.data
-        if (not isinstance(scene, Scene) or scene.frame != 'pelvis'
-                or not fresh(scene.stamp, c.sim, c.config.freshness, c.scene_invalidated_at)
-                or not any(o.id == c.target.id and o.category == c.target.category and not o.partial
-                           and math.isfinite(o.confidence) and o.confidence >= c.config.min_confidence
-                           for o in scene.objects)):
-            _recover(c, effects, 'target_not_reobserved')
-        elif c.deadline - c.sim <= c.config.reserve:
-            _done(c, effects, 'insufficient_time')
-        else:
-            c.scene = scene
-            _enter(c, State.DESCEND, effects)
     elif state in NEXT:
         _enter(c, NEXT[state], effects)

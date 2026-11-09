@@ -8,7 +8,12 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 
 from .context import Container, Event, Evidence, Object, Scene, State
 from .physical import PhysicalVerifier
-from .sensors import Measurements, stamp
+from .sensors import HAND_STILL, Measurements, stamp, with_known_trays
+
+# Joint spread over 0.3 s that still counts as the arm at rest after a move. The drives sway 0.005..0.016 rad
+# while they settle; at 0.004 one sway outlasted the 4 s wait after a CLEAR that had arrived and ended the mission
+# after the first sorted object (eval 2026-11-08). A driven joint at a tenth of the 0.8 rad/s limit moves 0.024.
+JOINT_STILL = 0.02
 from sensor_msgs.msg import JointState
 from tf2_ros import Buffer, TransformListener
 from rclpy.time import Time
@@ -16,6 +21,29 @@ from hack_motion.robot import HAND_PRESETS, JOINTS
 from .fsm import VERIFY
 from .skills import Skills
 from .transport import ActionTransport
+
+
+SCENE_WAIT_S = 6.0  # sim s an OBSERVE or DESTINATION waits for a fresh scene: the first look after an arm
+                   # move took 4-6 s wall, 2.5-3.7 s sim, waiting for /tf (eval 2026-11-08)
+# sim s a TCP pose from /tf may lag /clock. 0.2 s left the grasp baseline empty: every lift of the held cartridge
+# read as not lifted and the mission ended lift_unconfirmed (eval 2026-11-08). Lift checks also require a sample
+# stamped after the phase start, so an old pose cannot pass for the new one.
+TCP_MAX_AGE = 2.0
+UNSURE_S = 1.5  # sim s without a HOLDING reading before a held object counts as lost
+
+
+def stop_resource(name, goal):
+    """(measurement key, joint names) that must read at rest after the goal.
+
+    A MoveTcp settles its own arm, the waist and the head. The other arm it only holds within 0.05 rad: after a
+    left descend the right shoulder and elbow kept moving 0.02 rad per 0.4 s for over 4 s, the stop over every
+    joint never came, and the mission ended (eval 2026-11-08)."""
+    if name == 'hand':
+        return goal.hand, tuple(str(i) for i in range(1,7))
+    if name == 'tcp':
+        other = '_r_joint' if goal.arm == 'left' else '_l_joint'
+        return 'joints', tuple(n for n in JOINTS if not n.endswith(other))
+    return 'joints', tuple(JOINTS)
 
 
 class Clients:
@@ -39,12 +67,20 @@ class Clients:
             node.create_subscription(JointState, topic, lambda msg,k=key: self.measurements.update(k,msg),
                                      10, callback_group=cb)
         self.tf = Buffer()
-        self.tf_listener = TransformListener(self.tf,node)
+        # /tf on its own node and thread. On this node's executor every /tf message became a task in the shared
+        # thread pool (tf2_ros puts it in a reentrant group): /tf lagged 1.2 s, and under load /clock and the camera
+        # callbacks waited behind it for over 10 s (eval 2026-11-08).
+        self.tf_listener = TransformListener(self.tf, None, spin_thread=True)
         self.verifier = PhysicalVerifier(self.measurements,self.tcp)
         self.stop_resources = {}
+        self.stop_reported = None
         self.scene_pending = None
         self.scene_future = None
         self.next_scene_request = 0.0
+        # The last Perceive call and its (camera, region), kept when its phase ends. Perception serves calls on four
+        # threads: a phase that abandoned a slow call and sent another stacked them until /tf and /clock starved
+        # there and every call took 8-14 s (eval 2026-11-08). A new phase takes the call over instead.
+        self.perceive_inflight = None
         self.motion_wait = None
         self.verify_pending = None
         self.verify_scene = None
@@ -52,6 +88,7 @@ class Clients:
         self.transport = ActionTransport(emit,self.stopped,self.now)
         self.skills = Skills(db)
         self.scenes = {}
+        self.trays = {}  # tray id -> the last hack_interfaces Container seen, see with_known_trays
 
     def execute(self, effect, context):
         if effect.kind == 'CANCEL':
@@ -60,7 +97,7 @@ class Clients:
                 self.emit(Event('CANCEL_ACK',effect.op_id))
                 self.emit(Event('RESULT',effect.op_id,ok=False,stopped=True))
                 return
-            if context.active.phase in VERIFY or context.active.phase in (State.OBSERVE, State.DESTINATION, State.REFRESH_TARGET):
+            if context.active.phase in VERIFY or context.active.phase in (State.OBSERVE, State.DESTINATION):
                 # Read-only operations can be abandoned. Late responses retain old IDs.
                 self.verify_pending = None
                 self.emit(Event('CANCEL_ACK', effect.op_id))
@@ -71,12 +108,11 @@ class Clients:
         if effect.phase in VERIFY:
             self.verify_pending = effect
             self.verify_scene = None
-            self.verify_future = None
+            self.verify_future = self.adopt_perceive(('head', 'table'))
             return
-        if effect.phase in (State.OBSERVE, State.DESTINATION, State.REFRESH_TARGET):
-            self.refresh_target = effect.target.id if effect.target else ''
+        if effect.phase in (State.OBSERVE, State.DESTINATION):
             self.scene_pending = effect
-            self.scene_future = None
+            self.scene_future = self.adopt_perceive(self.scene_request(effect.phase, context))
             self.next_scene_request = 0.0
             return
         try:
@@ -93,10 +129,10 @@ class Clients:
                     self.verifier.closure = None
                     self.verifier.baseline = None
                     self.verifier.contact_seen = self.verifier.lifted = self.verifier.contact_lost = False
+                    self.verifier.unsure_since = None
                 if effect.phase == State.CLOSE:
                     self.verifier.closing(effect.target,goal.hand,HAND_PRESETS[goal.preset],context.sim)
-                self.stop_resources = {effect.op_id: (goal.hand if name == 'hand' else 'joints',
-                    tuple(str(i) for i in range(1,7)) if name == 'hand' else tuple(JOINTS))}
+                self.stop_resources = {effect.op_id: stop_resource(name, goal)}
                 self.transport.send(effect.op_id, self.actions[name], goal)
         except Exception as exc:
             self.emit(Event('REJECTED', effect.op_id, repr(exc), ok=False, stopped=True))
@@ -105,19 +141,8 @@ class Clients:
         phase, response = event.data
         if not response.success:
             return Event('RESULT', event.op_id, response.message, ok=False, stopped=True)
-        s = response.scene
-        if phase == State.REFRESH_TARGET:
-            old = self.scenes.get('table')
-            target = self.refresh_target
-            before = [o for o in old.objects if (o.name or o.track_id)==target] if old else []
-            after = [o for o in s.objects if (o.name or o.track_id)==target]
-            if len(before)!=1 or len(after)!=1:
-                return Event('RESULT',event.op_id,'target_ambiguous',ok=False,stopped=True)
-            a,b = before[0].center,after[0].center
-            if (not all(math.isfinite(v) for v in (a.x,a.y,a.z,b.x,b.y,b.z))
-                    or (a.x-b.x)**2+(a.y-b.y)**2+(a.z-b.z)**2 > .02**2):
-                return Event('RESULT',event.op_id,'target_moved',ok=False,stopped=True)
-        self.scenes['table' if phase in (State.OBSERVE, State.REFRESH_TARGET) else 'destination'] = s
+        s = with_known_trays(response.scene, self.trays)
+        self.scenes['table' if phase == State.OBSERVE else 'destination'] = s
         stamp = s.header.stamp.sec + s.header.stamp.nanosec * 1e-9
         objects = tuple(Object(o.name or o.track_id, o.category, o.name, o.cap_color,
                                o.confidence, o.partially_visible, o.lying) for o in s.objects)
@@ -133,7 +158,7 @@ class Clients:
             tf = self.tf.lookup_transform('pelvis', arm+'_tcp_link', Time())
             t = stamp(tf)
             v = tf.transform.translation
-            if 0 <= now-t <= .2 and all(math.isfinite(x) for x in (v.x,v.y,v.z)):
+            if 0 <= now-t <= TCP_MAX_AGE and all(math.isfinite(x) for x in (v.x,v.y,v.z)):
                 return t,(v.x,v.y,v.z)
         except Exception:
             pass
@@ -141,7 +166,15 @@ class Clients:
 
     def stopped(self, op_id, since):
         resource = self.stop_resources.get(op_id)
-        return bool(resource and self.measurements.window(resource[0],self.now(),since,resource[1]))
+        # A squeezing hand jitters (sensors.HAND_STILL); the joint tolerance never saw it settle.
+        tolerance = HAND_STILL if resource and resource[0] in ('left', 'right') else JOINT_STILL
+        now = self.now()
+        still = bool(resource and self.measurements.window(resource[0],now,since,resource[1],tolerance=tolerance))
+        if resource and not still and now - since >= 1.0 and self.stop_reported != op_id:
+            self.stop_reported = op_id
+            self.node.get_logger().warning(f"op {op_id}: no measured stop 1 s after the result. "
+                + self.measurements.still_report(resource[0],now,since,resource[1],tolerance=tolerance))
+        return still
 
     def poll(self, context):
         self.transport.poll()
@@ -158,8 +191,20 @@ class Clients:
         if (v.contact_seen and context.target and context.hand.value == 'HOLDING'
                 and context.state not in (State.RELEASE,State.RETREAT,State.VERIFY_PLACE,State.CANCELLING,State.DONE)):
             sample = self.measurements.hand(v.arm,context.sim,context.sim-.6,v.closure)
-            if sample is None or sample[1] != 'HOLDING':
+            if sample is not None and sample[1] == 'HOLDING':
+                v.unsure_since = None
+            elif v.unsure_since is None and (sample is None or sample[1] != 'EMPTY'):
+                # Fingers shift under the load while the arm lifts or carries: a reading that is not still
+                # for 0.3 s is not a loss. A hand closed to its target is, and so is no HOLDING for UNSURE_S.
+                v.unsure_since = context.sim
+            elif (sample is not None and sample[1] == 'EMPTY') or context.sim-v.unsure_since >= UNSURE_S:
                 v.contact_lost = True
+                rows = list(self.measurements.samples[v.arm])[-4:]
+                self.node.get_logger().warn(
+                    f"hold lost on {v.arm}: {'closed to target' if sample else 'no HOLDING for %.1f s' % UNSURE_S}, "
+                    f"target {v.closure}, last readings "
+                    + '; '.join(f"{t:.2f}: " + ' '.join(f"{values.get(str(i), -1):.2f}" for i in range(1, 7))
+                                + ' effort ' + ' '.join(f"{e:.2f}" for e in msg.effort) for t, values, msg in rows))
                 self.emit(Event('SENSOR',data=Evidence(context.sim,source='contact_lost_or_stale')))
         effect = self.verify_pending
         if not effect or not context.active or context.active.id != effect.op_id:
@@ -169,13 +214,13 @@ class Clients:
                 try:
                     response = self.verify_future.result()
                     if response.success:
-                        self.verify_scene = response.scene
+                        self.verify_scene = with_known_trays(response.scene, self.trays)
                 except Exception:
                     pass
                 self.verify_future = None
             if self.verify_scene is None or stamp(self.verify_scene) < context.active.sim_start:
                 if self.verify_future is None and self.perceive_cli.service_is_ready():
-                    self.verify_future = self.perceive_cli.call_async(Perceive.Request(camera='head',region='table'))
+                    self.verify_future = self.call_perceive(('head', 'table'))
                 if context.sim-context.active.sim_start < 3.0:
                     return
         ev = self.verifier.read(context,self.verify_scene)
@@ -185,6 +230,25 @@ class Clients:
         self.verify_pending = None
         self.emit(Event('RESULT',effect.op_id,ev or Evidence(context.sim,source='sensors_unconfirmed')))
 
+    @staticmethod
+    def scene_request(phase, context):
+        region = 'hood' if phase == State.DESTINATION and context.spec.kind == 'tubes' else 'table'
+        camera = 'torso' if context.spec.kind == 'tubes' and region == 'table' else 'head'
+        return camera, region
+
+    def call_perceive(self, key):
+        future = self.perceive_cli.call_async(Perceive.Request(camera=key[0], region=key[1]))
+        self.perceive_inflight = (key, future)
+        return future
+
+    def adopt_perceive(self, key):
+        """The call still in flight for the same camera and region, if any. Its scene passes the phase's
+        freshness check or is dropped, as any other response."""
+        if self.perceive_inflight is None:
+            return None
+        k, future = self.perceive_inflight
+        return future if k == key and not future.done() else None
+
     def poll_scene(self, context):
         effect = self.scene_pending
         if not effect:
@@ -192,7 +256,7 @@ class Clients:
         if not context.active or context.active.id != effect.op_id or context.state == State.CANCELLING:
             self.scene_pending = self.scene_future = None
             return
-        expired = context.sim-context.active.sim_start >= 3.0
+        expired = context.sim-context.active.sim_start >= SCENE_WAIT_S
         future = self.scene_future
         if future is not None and future.done():
             try:
@@ -218,9 +282,7 @@ class Clients:
             self.emit(Event('RESULT',effect.op_id,'fresh_scene_unavailable',ok=False,stopped=True))
             return
         if self.scene_future is None and context.sim >= self.next_scene_request and self.perceive_cli.service_is_ready():
-            region = 'hood' if effect.phase == State.DESTINATION and context.spec.kind == 'tubes' else 'table'
-            camera = 'torso' if context.spec.kind == 'tubes' and region == 'table' else 'head'
             try:
-                self.scene_future = self.perceive_cli.call_async(Perceive.Request(camera=camera,region=region))
+                self.scene_future = self.call_perceive(self.scene_request(effect.phase, context))
             except Exception:
                 self.next_scene_request = context.sim + .1

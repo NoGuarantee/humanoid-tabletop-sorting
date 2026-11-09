@@ -348,9 +348,15 @@ def raise_steps(arm):
 HAND_PRESETS = {
     "open": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
     "power": [0.2, 0.2, 0.2, 0.2, 0.5, 0.2],  # example from INTERFACES.md
-    "pinch": [1.0, 1.0, 1.0, 0.3, 0.4, 0.1],  # TODO tune: index + thumb
+    # Index + thumb. A finger presses only as hard as its target is past the contact, whatever the force limit:
+    # at 0.3/0.4 the thumb stopped at its target without touching and the cartridge slipped out on the lift.
+    # Deep targets: 5 of 7 into the tray against 1 of 3 (pool 4, 2026-11-09). Keep the index target at 0.1 or
+    # more: the right index stops at 0.08 in free air, and a target under that reads as an object.
+    "pinch": [1.0, 1.0, 1.0, 0.1, 0.0, 0.1],
     # Flat pinch: thumb already across (actuator 6) and left open as the anvil. Bending it on a 3 cm
     # dish drove the pad into the table (the reading went to 1.34, past open). Only the index closes.
+    # It still slips on the lift (bowl, soap dish, rhino; 2026-11-09): neither force 0.7/1.0 nor an index target
+    # of 0.0 kept it, so the grip itself has to change, not its strength.
     "pinch_ready": [1.0, 1.0, 1.0, 1.0, 1.0, 0.1],
     "pinch_flat": [1.0, 1.0, 1.0, 0.55, 1.0, 0.1],
     "tube50": [0.35, 0.35, 0.35, 0.35, 0.5, 0.1],  # TODO tune on a 29 mm tube

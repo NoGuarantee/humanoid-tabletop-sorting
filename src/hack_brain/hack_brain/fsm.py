@@ -23,7 +23,7 @@ def _enter(c, state, effects):
         c.history[c.target.id].lift_attempts += 1
     c.serial += 1
     c.active = Operation(c.serial, state, c.sim, c.wall)
-    arm = c.start_steps[0][1] if c.start_steps else ''
+    arm = c.look_side if state == State.LOOK_TABLE else c.start_steps[0][1] if c.start_steps else ''
     effects.append(Effect('RUN', c.serial, state, c.target, c.destination, c.slot, arm))
 
 
@@ -45,6 +45,22 @@ def _may_have_moved(c, op):
 def _look(c, effects):
     """Look at the table, after taking the last arm out of the camera view."""
     _enter(c, State.CLEAR if c.arm_out else State.LOOK_TABLE, effects)
+
+
+def _side_to_look(c, scene):
+    """The side of a tray the task names and no look has shown, not looked at yet; '' when there is none.
+
+    The head camera straight ahead cut off the side trays: perception saw only tray_center, and the objects for the
+    others were never picked (eval 2026-11-09). tray_left is on the left (TASKS.md). A side whose arm is disabled is
+    not worth the look: nothing goes to its tray."""
+    if c.spec is None or c.spec.kind != 'sort':
+        return ''
+    seen = {x.id for x in scene.containers if x.kind == 'tray'}
+    for tray in sorted(set(c.spec.categories.values()) - seen):
+        side = 'left' if 'left' in tray else 'right' if 'right' in tray else ''
+        if side and side not in c.looked_sides and side != c.disabled_arm:
+            return side
+    return ''
 
 
 def _done(c, effects, reason=None):
@@ -384,6 +400,12 @@ def _result(c, e, op, effects):
                 _enter(c, State.VERIFY_TRANSFER, effects)
         elif c.deadline - c.sim <= c.config.cycle_estimate + c.config.reserve:
             _done(c, effects, 'insufficient_time')
+        elif c.look_side or _side_to_look(c, scene):
+            # A side look only adds trays: the next look is the other side or straight ahead, where the objects are.
+            c.look_side = _side_to_look(c, scene)
+            c.looked_sides.add(c.look_side)
+            c.scene = None
+            _look(c, effects)
         else:
             obj = select(c, scene)
             if obj is None and c.empty_observations < c.config.max_empty_observations:

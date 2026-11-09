@@ -50,7 +50,7 @@ from rclpy.parameter import Parameter
 from rclpy.qos import DurabilityPolicy, QoSProfile
 from scene_measured import TABLE, TRAYS, on_table, table_z, tray_rim, trays
 from sensor_msgs.msg import JointState
-from std_msgs.msg import String
+from std_msgs.msg import Int32, String
 
 # Same look-at-table pose as brain_node.LOOK_TABLE. Arms then go to the ready pose, out of the picture.
 LOOK = {"head_pitch_joint": 0.4, "head_yaw_joint": 0.0, "body_yaw_joint": 0.0}
@@ -184,6 +184,26 @@ def seen_object(node, known):
     return obj, scene
 
 
+def sim_tray(node, name):
+    """Where the simulator says the object is now: a tray id, None off the trays, or "?" with no answer.
+
+    /sim/task/check is a debug request (off on the real check), so this lives in tools/ only."""
+    got = []
+    sub = node.create_subscription(String, "/sim/task/result", lambda m: got.append(json.loads(m.data)), 10)
+    pub = node.create_publisher(Int32, "/sim/task/check", 10)
+    t0 = time.time()
+    while pub.get_subscription_count() == 0 and time.time() - t0 < 5.0:
+        time.sleep(0.05)
+    pub.publish(Int32(data=1))
+    while not got and time.time() - t0 < 10.0:
+        time.sleep(0.05)
+    node.destroy_subscription(sub)
+    node.destroy_publisher(pub)
+    if not got:
+        return "?"
+    return (got[-1].get("objects", {}).get(name) or {}).get("tray")
+
+
 def tray_for(arm):
     """Opening of the tray on this arm's side. sort2 and sort3 both have the side trays."""
     name = "tray_left" if arm == "left" else "tray_right"
@@ -244,6 +264,13 @@ def watch(node, stop, aim=0.0):
 
 
 def run(node, name, at, use_camera, watching=False):
+    status = _run(node, name, at, use_camera, watching)
+    # The pick's own checks miss a drop on the way to the tray, and an OK place does not see the tray floor.
+    print(f"SIM {name} tray {sim_tray(node, name)}", flush=True)
+    return status
+
+
+def _run(node, name, at, use_camera, watching=False):
     while rclpy.ok() and node.get_clock().now().nanoseconds == 0:
         time.sleep(0.1)
     if not node.api.wait_ready(timeout=120.0):

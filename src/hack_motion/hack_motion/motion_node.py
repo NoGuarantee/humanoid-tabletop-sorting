@@ -38,6 +38,29 @@ THUMB = 5
 HAND_CLOSE_SPEED = 0.5
 HAND_STROKE_S = 0.8
 FINGER_MOVE = 0.05  # a finger this far from where it was is actually closing or turning
+# Fingers are still when at least SETTLE_SAMPLES fresh hand states over the last SETTLE_S sim s or more show no
+# finger travelling faster than SETTLE_SPEED (stroke fraction per s; a full-speed stroke is 1.25/s). The same gate
+# PR #9 puts before planning.
+SETTLE_SAMPLES = 3  # the bench state topic gives 6-7 over the window (about 40 Hz); 3 still works at 10 Hz
+SETTLE_S = 0.15
+SETTLE_SPEED = 0.02
+SETTLE_EXTRA_S = 1.0  # sim s past the stroke time for a finger that still creeps
+
+
+def _settle_window(samples, sample):
+    """Fresh (stamp, positions) samples, oldest first, cut to the newest span just past SETTLE_S."""
+    samples = samples + [sample]
+    while len(samples) > 1 and samples[1][0] <= sample[0] - SETTLE_S:
+        samples.pop(0)
+    return samples
+
+
+def _finger_speed(samples):
+    """Widest range of any finger over the window divided by its span, stroke fraction per s."""
+    span = samples[-1][0] - samples[0][0]
+    if span <= 0:
+        return float("inf")
+    return max(max(p[i] for _, p in samples) - min(p[i] for _, p in samples) for i in range(6)) / span
 
 
 def _closing(current, target):
@@ -54,6 +77,7 @@ def _thumb_first(current, target):
     turns = target[THUMB] < current[THUMB] - FINGER_MOVE
     others = any(abs(target[i] - current[i]) > FINGER_MOVE for i in range(5))
     return turns and others
+
 
 
 # 1/s, integrates the PD undershoot. The arm actuators settle with tau = kd/kp = 0.25 s, so this is damping 0.7.
@@ -450,36 +474,52 @@ class MotionNode(Node):
             self.get_logger().warn(f"hand service failed: {e}")
             return None
 
+    def _finger_sample(self, side):
+        """(state stamp s, six positions) of the last /inspire_hand/state, or None."""
+        with self.lock:
+            st = self.hand_state[side]
+        if st is None or len(st.position) < 6:
+            return None
+        return st.header.stamp.sec + st.header.stamp.nanosec * 1e-9, [float(p) for p in st.position[:6]]
+
     def _wait_fingers(self, handle, side, target, timeout):
         """Until the fingers sit near `target`, or stop short of it. Stillness before anything moves does not count.
 
+        Only state messages with a new stamp count, and the fingers are still once SETTLE_SAMPLES of them over at
+        least SETTLE_S move no finger faster than SETTLE_SPEED: a finger pressing into the object at the force limit
+        still creeps, and a lift that starts then pulls the object out. Past `timeout` the fingers get SETTLE_EXTRA_S
+        more to settle; then the wait gives up, says so in the log, and returns True as before.
         False if the goal was cancelled or the sim clock stalled (20 s wall), True otherwise."""
-        t0, last, still_since, moved = self.now(), None, None, False
+        t0, moved, recent = self.now(), False, []  # recent: fresh (stamp, positions), oldest first
+        first = None
         wall_start = time.monotonic()
         fb = Hand.Feedback()
-        while rclpy.ok() and self.now() - t0 < timeout:
+        while rclpy.ok() and self.now() - t0 < timeout + SETTLE_EXTRA_S:
             time.sleep(PERIOD)
             if self.cancelled() or time.monotonic() - wall_start > 20:
                 return False
-            pos = self._finger_pos(side)
-            if pos is None:
+            sample = self._finger_sample(side)
+            if sample is None or (recent and sample[0] <= recent[-1][0]):
                 continue
+            stamp, pos = sample
             fb.position = pos
             handle.publish_feedback(fb)
-            if last is not None and max(abs(a - b) for a, b in zip(pos, last)) >= 0.005:
-                moved = True
-                still_since = None
-            elif last is not None:
-                still_since = still_since or self.now()
-            last = pos
-            near = max(abs(pos[i] - target[i]) for i in range(6)) < FINGER_MOVE
-            if still_since is None:
+            first = first or pos
+            moved = moved or max(abs(a - b) for a, b in zip(pos, first)) >= 0.005
+            recent = _settle_window(recent, sample)
+            speed = _finger_speed(recent)
+            settled = (len(recent) >= SETTLE_SAMPLES and recent[-1][0] - recent[0][0] >= SETTLE_S
+                       and speed <= SETTLE_SPEED)
+            if not settled:
                 continue
-            held = self.now() - still_since
-            if near and held > 0.15:
+            near = max(abs(pos[i] - target[i]) for i in range(6)) < FINGER_MOVE
+            if near or moved:  # at the target, or stopped on the way: the finger met the object
+                self.get_logger().info(f"hand {side} settled after {self.now() - t0:.2f} s, "
+                                       f"speed {speed:.4f}/s over {len(recent)} states")
                 return True
-            if moved and held > 0.2:  # stopped on the way: the finger met the object
-                return True
+        speed = _finger_speed(recent) if len(recent) > 1 else float("nan")
+        self.get_logger().warn(f"hand {side} not settled in {timeout + SETTLE_EXTRA_S:.1f} s: "
+                               f"{len(recent)} fresh states, speed {speed:.4f}/s, moved {moved}")
         return True
 
     # ---------------------------------------------------------------- MoveTcp

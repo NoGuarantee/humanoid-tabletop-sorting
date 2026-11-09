@@ -92,7 +92,7 @@ class Skills:
         if phase not in poses:
             raise NotImplementedError('skill unavailable: ' + phase.value)
         return 'tcp', MoveTcp.Goal(arm=g.arm, target=poses[phase],
-                                  mode='direct' if phase in (State.APPROACH, State.TRANSFER) else 'linear',
+                                  mode={State.APPROACH: 'direct', State.TRANSFER: 'carry'}.get(phase, 'linear'),
                                   pos_tol={State.DESCEND: GRASP_POS_TOL, State.APPROACH: FREE_POS_TOL,
                                            State.TRANSFER: FREE_POS_TOL}.get(phase, 0.0))
 

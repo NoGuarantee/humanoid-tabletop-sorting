@@ -73,6 +73,7 @@ class Brain(Node):
                     'lift': c.history[c.target.id].lift.value if c.target else None,
                     'scene_stamp': c.scene.stamp if c.scene else None,
                     'last_recovery': c.last_recovery,
+                    'look_side': c.look_side,
                     'operation_elapsed_sim': c.sim - old.active.sim_start if old.active and c.sim is not None else None,
                 }))
             except Exception:

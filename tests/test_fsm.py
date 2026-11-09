@@ -134,6 +134,33 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(f.c.state, State.DONE)
         self.assertEqual(f.c.reason, 'physical_unknown')
 
+    def test_a_hand_shut_after_every_free_disables_its_arm(self):
+        objects = [Object('a', 'figure', name='a', side='right'), Object('b', 'dish', name='b', side='left')]
+        f = Fake(objects=objects)
+        one_open = Evidence(f.sim, Hand.UNKNOWN, source='fake', empty_arms=frozenset({'left'}))
+        f.answer(one_open)
+        f.until(State.VERIFY_EMPTY)
+        for _ in range(f.c.config.max_unknown_frees):
+            f.answer(replace(one_open, stamp=f.sim))
+            f.until(State.VERIFY_EMPTY)
+        f.answer(replace(one_open, stamp=f.sim))
+        self.assertEqual(f.c.disabled_arm, 'right')
+        self.assertEqual(f.c.state, State.LOOK_TABLE)
+        c = f.run()
+        self.assertEqual(c.reason, 'candidates_exhausted')
+        self.assertEqual([x.target.id for x in f.commands if x.phase == State.OPEN], ['b'])
+
+    def test_free_hands_leaves_the_disabled_arm(self):
+        f = Fake()
+        f.c.disabled_arm = 'right'
+        f.until(State.VERIFY_LIFT)
+        n = len(f.commands)
+        f.answer(Evidence(f.sim, source='fake'))  # unknown with an object up: free the hands
+        f.until(State.VERIFY_EMPTY)
+        self.assertEqual([(e.phase, e.arm) for e in f.commands[n:]],
+                         [(State.OPEN_HANDS, 'left'), (State.LOOK_TABLE, ''), (State.OBSERVE, ''),
+                          (State.ARMS_READY, 'left'), (State.VERIFY_EMPTY, '')])
+
     def test_unknown_hand_frees_both_and_the_mission_goes_on(self):
         for state in (State.VERIFY_LIFT, State.VERIFY_TRANSFER, State.VERIFY_HOLD, State.VERIFY_PLACE):
             with self.subTest(state=state):

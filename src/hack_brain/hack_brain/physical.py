@@ -53,9 +53,18 @@ class PhysicalVerifier:
             # A hand closed to its target with nothing in it is empty too: the right hand left shut by a slipped
             # cartridge read UNKNOWN here after the left placed it, and ended the mission with 261 s left
             # (eval 2026-11-09).
-            hands = [self.measurements.hand(side,c.sim,since,self.closures.get(side)) for side in ('left','right')]
+            sides = [s for s in ('left','right') if s != c.disabled_arm]
+            hands = [self.measurements.hand(side,c.sim,since,self.closures.get(side)) for side in sides]
             if all(h is not None and h[1] == 'EMPTY' for h in hands):
                 return Evidence(min(h[0] for h in hands), Hand.EMPTY, source='measured_open_hands')
+            empty = [s for s, h in zip(sides, hands) if h is not None and h[1] == 'EMPTY']
+            shut = [s for s in sides if s not in empty]
+            # One hand stays shut (little finger 0.54 and thumb 0.81 at effort 1.0, creeping, after every free,
+            # eval 2026-11-09): it reads no state at all, but it reports. The FSM may go on with the empty one.
+            reported = [self.measurements.latest(s, c.sim, since) for s in shut]
+            if len(sides) == 2 and len(empty) == 1 and all(r is not None for r in reported):
+                t = min([h[0] for h in hands if h is not None] + reported)
+                return Evidence(t, Hand.UNKNOWN, source='measured_one_open_hand', empty_arms=frozenset(empty))
             return None
         if c.target is None or self.arm is None:
             return None

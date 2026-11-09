@@ -87,6 +87,12 @@ class Measurements:
         return (f"{key}: {len(rows)} rows over {rows[-1][0] - rows[0][0]:.2f} s, last {now - rows[-1][0]:.2f} s old, "
                 f"max gap {gaps:.2f} s, over {tolerance}: {', '.join(moving) or 'none'}")
 
+    def latest(self, side, now, since):
+        """Stamp of the newest sample of `side` in [since, now], or None: a hand that reports, settled or not."""
+        with self.lock:
+            stamps = [row[0] for row in self.samples.get(side, ()) if since <= row[0] <= now]
+        return max(stamps) if stamps else None
+
     def hand(self, side, now, since, target=None):
         row = self.window(side, now, since, tuple(str(i) for i in range(1,7)), tolerance=HAND_STILL)
         if row is None:

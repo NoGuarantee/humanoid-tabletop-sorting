@@ -36,6 +36,14 @@ def destination_in_scene(c, scene, obj):
     return None
 
 
+def arm_for(scene, obj, dests):
+    """The arm choose_arm will take: the side of a side tray, otherwise the side of the object."""
+    for container in scene.containers:
+        if container.id in dests and container.side:
+            return container.side
+    return obj.side
+
+
 def select(c, scene):
     candidates = []
     for obj in scene.objects:
@@ -45,6 +53,8 @@ def select(c, scene):
                 or not destinations(c.spec, obj)):
             continue
         if c.spec.kind == 'sort' and destination_in_scene(c, scene, obj) is None:
+            continue
+        if c.disabled_arm and arm_for(scene, obj, destinations(c.spec, obj)) == c.disabled_arm:
             continue
         candidates.append(obj)
     # Known lifted objects deserve recovery priority. No geometric identity guesses.

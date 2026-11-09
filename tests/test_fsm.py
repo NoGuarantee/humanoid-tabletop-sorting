@@ -66,12 +66,13 @@ class MissionTests(unittest.TestCase):
         f.answer(Evidence(f.sim, Hand.UNKNOWN))
         self.assertEqual(f.c.state, State.RECOVER)
         self.assertEqual(f.c.last_recovery, 'hand_unknown')
-        for _ in range(f.c.config.max_recoveries):
-            if f.c.state == State.DONE:
+        for _ in range(f.c.config.max_recoveries + 1):
+            if f.c.state != State.RECOVER:
                 break
             f.answer(Evidence(f.sim, Hand.UNKNOWN))
-        self.assertEqual(f.c.state, State.DONE)
-        self.assertEqual(f.c.reason, 'physical_unknown')
+        # Out of measurements: both hands open, both arms up, and the mission goes on.
+        self.assertEqual(f.c.state, State.OPEN_HANDS)
+        self.assertEqual(f.c.last_recovery, 'hand_unknown_freed')
 
     def test_recovery_budget_is_per_attempt(self):
         f = Fake(objects=[Object('a', 'figure', name='a')])
@@ -102,6 +103,7 @@ class MissionTests(unittest.TestCase):
                 f = Fake()
                 f.until(state)
                 f.c.start_cleared = True  # an unknown hand at the start is opened and raised first: see the test below
+                f.c.unknown_frees = f.c.config.max_unknown_frees  # and later ones too, within a budget: see below
                 n = len(f.commands)
                 f.answer(Evidence(f.sim, source='fake'))
                 # Before the lift an unknown hand is measured again in RECOVER, still without motion.
@@ -123,9 +125,32 @@ class MissionTests(unittest.TestCase):
                          [(State.OPEN_HANDS, 'left'), (State.OPEN_HANDS, 'right'), (State.LOOK_TABLE, ''),
                           (State.OBSERVE, ''), (State.ARMS_READY, 'left'), (State.ARMS_READY, 'right'),
                           (State.VERIFY_EMPTY, '')])
+        # Still unknown: opened and raised again within the mission budget, then the mission ends.
+        for _ in range(f.c.config.max_unknown_frees):
+            f.answer(Evidence(f.sim, source='fake'))
+            self.assertEqual(f.c.state, State.OPEN_HANDS)
+            f.until(State.VERIFY_EMPTY)
         f.answer(Evidence(f.sim, source='fake'))
         self.assertEqual(f.c.state, State.DONE)
         self.assertEqual(f.c.reason, 'physical_unknown')
+
+    def test_unknown_hand_frees_both_and_the_mission_goes_on(self):
+        for state in (State.VERIFY_LIFT, State.VERIFY_TRANSFER, State.VERIFY_HOLD, State.VERIFY_PLACE):
+            with self.subTest(state=state):
+                f = Fake()
+                f.until(state)
+                n = len(f.commands)
+                f.answer(Evidence(f.sim, source='fake'))
+                f.until(State.VERIFY_EMPTY)
+                self.assertEqual([(e.phase, e.arm) for e in f.commands[n:]],
+                                 [(State.OPEN_HANDS, 'left'), (State.OPEN_HANDS, 'right'), (State.LOOK_TABLE, ''),
+                                  (State.OBSERVE, ''), (State.ARMS_READY, 'left'), (State.ARMS_READY, 'right'),
+                                  (State.VERIFY_EMPTY, '')])
+                self.assertFalse(f.c.arm_low)
+                # Let go over the tray, the object may be in it: it is not picked again.
+                self.assertEqual(f.c.history['a'].released, state == State.VERIFY_PLACE)
+                c = f.run()
+                self.assertTrue(c.history['b'].placed)
 
     def test_arm_that_cannot_reach_ready_is_left_to_the_check(self):
         f = Fake()
@@ -520,7 +545,7 @@ class MissionTests(unittest.TestCase):
         f = Fake()
         f.until(State.VERIFY_TRANSFER)
         f.answer(Evidence(1, source='fake'))
-        self.assertEqual(f.c.state, State.DONE)
+        self.assertEqual(f.c.state, State.OPEN_HANDS)
         self.assertFalse(any(x.phase == State.TRANSFER for x in f.commands))
 
     def test_approach_goes_straight_to_descend(self):

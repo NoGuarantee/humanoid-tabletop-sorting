@@ -175,10 +175,19 @@ class EvidenceTests(unittest.TestCase):
             self.assertFalse(self.v.read(self.c,scene).placed)
         scene=self.scene();scene.objects.append(scene.objects[0])
         self.assertFalse(self.v.read(self.c,scene).placed)
+        # A frame from before the check shows nothing about the placement, but the open hand still reads empty.
         scene=self.scene();scene.header.stamp.sec=0
-        self.assertIsNone(self.v.read(self.c,scene))
+        ev=self.v.read(self.c,scene)
+        self.assertEqual((ev.hand,ev.placed,ev.source),(Hand.EMPTY,False,'measured_hand'))
         self.c.target=Object('track','figure')
         self.assertFalse(self.v.read(self.c,self.scene()).placed)
+
+    def test_slow_scene_from_after_the_check_started_still_counts(self):
+        # Perception answered 2.1 s after its frame and the open hand read UNKNOWN (eval 2026-11-09).
+        self.c.state=State.VERIFY_PLACE;self.c.sim=3.6
+        fill(self.m,'left',3.2)
+        ev=self.v.read(self.c,self.scene())
+        self.assertEqual((ev.hand,ev.placed),(Hand.EMPTY,True))
 
     def test_open_both_hands_for_initial_verification(self):
         self.c.state=State.VERIFY_EMPTY

@@ -221,7 +221,7 @@ class Clients:
             if self.verify_scene is None or stamp(self.verify_scene) < context.active.sim_start:
                 if self.verify_future is None and self.perceive_cli.service_is_ready():
                     self.verify_future = self.call_perceive(('head', 'table'))
-                if context.sim-context.active.sim_start < 3.0:
+                if context.sim-context.active.sim_start < SCENE_WAIT_S:
                     return
         ev = self.verifier.read(context,self.verify_scene)
         # Await fresh/stable measurements, but never wait forever for unavailable sensors.

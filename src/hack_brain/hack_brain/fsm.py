@@ -279,6 +279,16 @@ def _result(c, e, op, effects):
                 # Nothing is lifted yet; RECOVER measures the hand again and backs off. Ending here cost the
                 # rest of the mission twice over a finger pushed past its range (eval 2026-11-08).
                 _recover(c, effects, 'hand_unknown')
+            elif c.unknown_frees < c.config.max_unknown_frees:
+                # Open both hands and raise both arms, then go on with the others. Ending here lost 222 s after
+                # an open hand pressed on a box it never closed on (eval --layouts 3, 2026-11-09). A lifted object
+                # that falls costs -10, as it does left in the hand at the end; over the tray it lands inside.
+                c.unknown_frees += 1
+                c.last_recovery = 'hand_unknown_freed'
+                if c.target is not None and state == State.VERIFY_PLACE:
+                    c.history[c.target.id].released = True  # let go over the tray: it may be in it
+                c.arm_low = False
+                _free_hands(c, effects, raise_arms=True)
             else:
                 _done(c, effects, 'physical_unknown')
             return

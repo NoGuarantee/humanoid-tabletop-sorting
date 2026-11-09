@@ -120,6 +120,9 @@ class Config:
     reserve: float = 10.0
     max_attempts: int = 2
     max_recoveries: int = 6
+    # A hand that reads neither empty nor holding is opened, both arms raised, and the mission goes on; this
+    # many times per mission, then it ends.
+    max_unknown_frees: int = 2
     # Perception finds 1-3 of the trays per call: an empty answer is looked at again before giving up.
     max_empty_observations: int = 2
     min_confidence: float = 0.6
@@ -160,6 +163,7 @@ class Context:
     # Start steps still to run, (OPEN_HANDS | ARMS_READY, arm) one per operation, and whether they already ran.
     start_steps: list = field(default_factory=list)
     start_cleared: bool = False
+    unknown_frees: int = 0
     last_recovery: str = ''
     reason: str = ''
     blocked: bool = False

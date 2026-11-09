@@ -81,10 +81,17 @@ class PhysicalVerifier:
         if self.contact_seen:
             self.contact_lost = True
         placed = False
-        if c.state == State.VERIFY_PLACE and scene is not None:
+        if c.state != State.VERIFY_PLACE:
+            scene = None
+        elif scene is not None:
             st = stamp(scene)
-            if scene.header.frame_id != 'pelvis' or not since <= st <= c.sim or c.sim-st > c.config.freshness:
-                return None
+            # A frame taken after this check started is after the arm left the view, however long perception
+            # took: one 2.1 s old was dropped and read the open, empty hand UNKNOWN, which ended the mission after
+            # a sorted sink with 308 s left (eval --layouts 3, 2026-11-09). An earlier frame shows nothing about
+            # the placement; the hand still reads, so the object counts released, not placed.
+            if scene.header.frame_id != 'pelvis' or not since <= st <= c.sim:
+                scene = None
+        if scene is not None:
             # track_id is only stable before contact; never rename a nearby detection.
             matches = [o for o in scene.objects if c.target.name and o.name == c.target.name
                        and not o.partially_visible and o.confidence >= c.config.min_confidence]

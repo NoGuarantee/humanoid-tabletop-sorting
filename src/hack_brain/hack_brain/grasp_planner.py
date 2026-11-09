@@ -139,6 +139,12 @@ def params_for(db, name, category):
 SIDE_TRAY_Y = 0.3  # tray_center lies on y 0, the side trays near y +-0.69
 
 
+def tray_side(container):
+    """'left' or 'right' for a side tray, '' for the centre one (or a rack)."""
+    y = container.pose.position.y
+    return ("left" if y > 0 else "right") if abs(y) > SIDE_TRAY_Y else ""
+
+
 def choose_arm(obj, container=None):
     """The arm on the side of a side tray, otherwise the arm on the side of the object (y > 0: left).
 

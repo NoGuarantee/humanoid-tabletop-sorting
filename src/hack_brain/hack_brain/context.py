@@ -57,6 +57,7 @@ class Object:
     confidence: float = 1.0
     partial: bool = False
     lying: bool = False
+    side: str = ''  # 'left' for y > 0, else 'right': the arm when the tray does not choose it (choose_arm)
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,7 @@ class Container:
     id: str
     kind: str
     free_slots: tuple = ()  # indices, not inferred from absent occupancy data
+    side: str = ''  # a side tray: the arm on its side carries to it (choose_arm); '' for the centre one
 
 
 @dataclass(frozen=True)
@@ -85,6 +87,7 @@ class Evidence:
     destination: str = ''
     slot: Optional[int] = None
     source: str = ''
+    empty_arms: frozenset = frozenset()  # VERIFY_EMPTY: the hands measured empty when the other one is not
 
 
 @dataclass
@@ -166,6 +169,7 @@ class Context:
     # Start steps still to run, (OPEN_HANDS | ARMS_READY, arm) one per operation, and whether they already ran.
     start_steps: list = field(default_factory=list)
     start_cleared: bool = False
+    disabled_arm: str = ''  # a hand that stays shut after every free: the mission goes on with the other one
     unknown_frees: int = 0
     last_recovery: str = ''
     reason: str = ''

@@ -191,7 +191,7 @@ class EvidenceTests(unittest.TestCase):
 
     def test_open_both_hands_for_initial_verification(self):
         self.c.state=State.VERIFY_EMPTY
-        fill(self.m,'left');self.assertIsNone(self.v.read(self.c))
+        fill(self.m,'left');self.assertIsNone(self.v.read(self.c))  # the right hand reports nothing yet
         fill(self.m,'right');self.assertEqual(self.v.read(self.c).hand,Hand.EMPTY)
 
     def test_hand_closed_on_nothing_reads_empty_after_the_other_arm_placed(self):
@@ -205,7 +205,23 @@ class EvidenceTests(unittest.TestCase):
     def test_hand_shut_on_an_object_is_not_empty(self):
         self.c.state=State.VERIFY_EMPTY
         self.contact();fill(self.m,'right')
-        self.assertIsNone(self.v.read(self.c))
+        ev=self.v.read(self.c)
+        self.assertEqual((ev.hand,ev.empty_arms),(Hand.UNKNOWN,frozenset({'right'})))
+
+
+
+class OneHandTests(unittest.TestCase):
+    def test_one_shut_hand_reads_unknown_with_the_open_one_and_the_other_alone_reads_empty(self):
+        m=Measurements()
+        fill(m,'left',positions=[.98,.98,.98,.98,1.,1.],efforts=[.2,.22,.22,.17,0.,0.])
+        # eval 2026-11-09 layout 3: little finger and thumb bend at effort 1.0 after every free
+        fill(m,'right',positions=[.99,.99,.98,.54,.81,1.],efforts=[.2,.18,.06,1.,1.,.23])
+        v=PhysicalVerifier(m, lambda side,now:None)
+        c=Context(state=State.VERIFY_EMPTY,sim=1.4,active=Operation(1,State.VERIFY_EMPTY,1,0))
+        ev=v.read(c)
+        self.assertEqual(ev.hand,Hand.UNKNOWN);self.assertEqual(ev.empty_arms,frozenset({'left'}))
+        c.disabled_arm='right'
+        self.assertEqual(v.read(c).hand,Hand.EMPTY)
 
 
 if __name__=='__main__': unittest.main()

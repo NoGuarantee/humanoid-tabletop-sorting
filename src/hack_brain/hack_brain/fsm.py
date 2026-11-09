@@ -75,6 +75,7 @@ def _free_hands(c, effects, raise_arms=False):
     if raise_arms:
         c.start_steps += [(State.LOOK_TABLE, ''), (State.OBSERVE, ''),
                           (State.ARMS_READY, 'left'), (State.ARMS_READY, 'right')]
+    c.start_steps = [(s, arm) for s, arm in c.start_steps if not arm or arm != c.disabled_arm]
     _enter(c, c.start_steps[0][0], effects)
 
 
@@ -289,6 +290,14 @@ def _result(c, e, op, effects):
                     c.history[c.target.id].released = True  # let go over the tray: it may be in it
                 c.arm_low = False
                 _free_hands(c, effects, raise_arms=True)
+            elif state == State.VERIFY_EMPTY and ev is not None and len(ev.empty_arms) == 1 and not c.disabled_arm:
+                # Every free left one hand shut (little finger and thumb at effort 1.0, a layout ended with 374 s
+                # left, eval 2026-11-09). Go on with the other hand; select skips what only the shut one would take.
+                c.disabled_arm = 'right' if 'left' in ev.empty_arms else 'left'
+                c.last_recovery = 'arm_disabled:' + c.disabled_arm
+                c.hand = Hand.EMPTY
+                c.target = None
+                _look(c, effects)
             else:
                 _done(c, effects, 'physical_unknown')
             return

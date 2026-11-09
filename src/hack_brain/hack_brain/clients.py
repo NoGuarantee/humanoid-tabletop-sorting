@@ -20,6 +20,7 @@ from rclpy.time import Time
 from hack_motion.robot import HAND_PRESETS, JOINTS
 from .fsm import VERIFY
 from .skills import Skills
+from .grasp_planner import tray_side
 from .transport import ActionTransport
 
 
@@ -145,9 +146,11 @@ class Clients:
         self.scenes['table' if phase == State.OBSERVE else 'destination'] = s
         stamp = s.header.stamp.sec + s.header.stamp.nanosec * 1e-9
         objects = tuple(Object(o.name or o.track_id, o.category, o.name, o.cap_color,
-                               o.confidence, o.partially_visible, o.lying) for o in s.objects)
+                               o.confidence, o.partially_visible, o.lying,
+                               'left' if o.center.y > 0 else 'right') for o in s.objects)
         containers = tuple(Container(x.id, x.kind, tuple(i for i, occupied in enumerate(x.slot_occupied)
-                                                        if not occupied and i < len(x.slots))) for x in s.containers)
+                                                        if not occupied and i < len(x.slots)),
+                                     tray_side(x)) for x in s.containers)
         return Event('RESULT', event.op_id, Scene(stamp, objects, containers, s.header.frame_id), stopped=True)
 
     def now(self):

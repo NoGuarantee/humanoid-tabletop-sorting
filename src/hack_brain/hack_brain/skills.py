@@ -70,7 +70,8 @@ class Skills:
             return 'tcp', MoveTcp.Goal(arm=effect.arm, target=Pose(), mode='ready')
         if phase == State.OPEN:
             obj = next(o for o in scene.objects if (o.name or o.track_id) == effect.target.id)
-            candidates = plan_grasps(obj, scene, self.db)
+            container = next((x for x in scene.containers if x.id == effect.destination and x.kind == 'tray'), None)
+            candidates = plan_grasps(obj, scene, self.db, container)
             if not candidates:
                 raise ValueError('no_grasp_candidates')
             self.grasp = candidates[min(attempt - 1, len(candidates) - 1)]

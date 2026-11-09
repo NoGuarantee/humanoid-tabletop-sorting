@@ -70,3 +70,21 @@ class PlaceTests(unittest.TestCase):
             self.assertAlmostEqual(p.position.x,.47)
             self.assertAlmostEqual(p.position.y,0)
         self.assertGreater(plan.approach.position.z,plan.release.position.z)
+
+
+class ArmTests(unittest.TestCase):
+    def setUp(self):
+        self.m=_planner()
+        self.obj=NS(name='a',category='figure',center=NS(x=.4,y=-.2),top_z=.06,size=NS(z=.03),yaw=0.0)
+
+    def test_side_tray_picks_its_own_arm(self):
+        self.assertEqual(self.m.choose_arm(self.obj,_tray(.34,.69)),'left')
+        self.assertEqual(self.m.choose_arm(self.obj,_tray(.34,-.69)),'right')
+
+    def test_centre_tray_or_none_keeps_the_object_side(self):
+        self.assertEqual(self.m.choose_arm(self.obj,_tray(.53,0)),'right')
+        self.assertEqual(self.m.choose_arm(self.obj),'right')
+
+    def test_candidates_use_the_tray_arm(self):
+        for c in self.m.plan_grasps(self.obj,NS(table_z=0),{},_tray(.34,.69)):
+            self.assertEqual(c.arm,'left')

@@ -131,8 +131,18 @@ def params_for(db, name, category):
     return p
 
 
-def choose_arm(obj):
-    """Objects on the left (y > 0) with the left arm."""
+SIDE_TRAY_Y = 0.3  # tray_center lies on y 0, the side trays near y +-0.69
+
+
+def choose_arm(obj, container=None):
+    """The arm on the side of a side tray, otherwise the arm on the side of the object (y > 0: left).
+
+    The other arm does not reach across: the right arm carried a sink to tray_left (y 0.69), got to y 0.51 and
+    stopped with the sink in the hand (eval --layouts 3, 2026-11-09). An object the tray-side arm cannot reach
+    stays untouched, 0 points instead of -10.
+    """
+    if container is not None and abs(container.pose.position.y) > SIDE_TRAY_Y:
+        return "left" if container.pose.position.y > 0 else "right"
     return "left" if obj.center.y > 0 else "right"
 
 
@@ -470,10 +480,10 @@ def plan_flat_pinches(obj, scene, p, arm):
     return out
 
 
-def plan_grasps(obj, scene, db):
-    """Candidates for one DetectedObject, best first."""
+def plan_grasps(obj, scene, db, container=None):
+    """Candidates for one DetectedObject, best first. container: the destination, it picks the arm."""
     p = params_for(db, obj.name, obj.category)
-    arm = choose_arm(obj)
+    arm = choose_arm(obj, container)
     if p.get("preset", "power") == "pinch" and obj.size.z <= FLAT_MAX_HEIGHT:
         # The upright thumb pad is 7 cm above the open index. A taller object keeps the upright rim grasp:
         # the leaned pre-grasp over a 13 cm box had no IK (197 mm).

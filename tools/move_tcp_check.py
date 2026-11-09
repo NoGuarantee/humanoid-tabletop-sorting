@@ -33,8 +33,8 @@ from rclpy.node import Node
 from rclpy.parameter import Parameter
 from tf2_ros import Buffer, TransformListener
 
-# (arm, x, y, z, yaw) in pelvis, top-down. Fingertips above the tallest objects: neither they nor the table are
-# in the cuRobo world yet (milestone M2), and this checks tracking, not avoidance.
+# (arm, x, y, z, yaw) in pelvis, top-down. This checks tracking. Objects enter the cuRobo world only from
+# perception/scene, and this run starts motion alone, so the goals are not steered around anything on the table.
 GOALS = [
     ("right", 0.40, -0.35, 0.30, 0.0),
     ("right", 0.30, -0.15, 0.25, 0.8),

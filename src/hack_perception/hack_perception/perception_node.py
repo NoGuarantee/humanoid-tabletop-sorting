@@ -101,6 +101,8 @@ class PerceptionNode(Node):
                                              self.store_image(c, k, m, raw),
                                          camera_qos, callback_group=camera_group,
                                          raw=raw_images and msg_type is Image)
+        # Motion builds the cuRobo world from this, between its own plans. Latched: a plan after the scan still sees it.
+        self.scene_pub = self.create_publisher(SceneObjects, "perception/scene", latched)
         self.get_logger().info("perception ready")
 
     def on_names(self, msg):
@@ -307,6 +309,7 @@ class PerceptionNode(Node):
             res.message = f"stale frame: none after the request, using one {age:.2f} s old" if stale else "ok"
             if stale:
                 self.get_logger().warn(f"perceive({cam}): {res.message}")
+            self.scene_pub.publish(res.scene)
         except NotImplementedError as e:
             res.success, res.message = False, f"not_implemented: {e}"
         except Exception as e:  # never kill the service: the brain decides what to do
@@ -347,6 +350,13 @@ class PerceptionNode(Node):
         if result is None and plane is None:
             raise RuntimeError("table plane not found")
         scene.table_z = table_z_at(plane, *tc.TABLE_REF_XY) if plane is not None else result.table_z
+        if plane is not None:
+            normal, offset = plane
+        else:
+            normal, offset = result.plane.normal, -float(result.plane.normal @ result.plane.point)
+        normal = np.asarray(normal, dtype=float)
+        scale = float(np.linalg.norm(normal)) * (1.0 if normal[2] > 0 else -1.0)
+        scene.table_plane = [*(float(v) / scale for v in normal), float(offset) / scale]  # motion's collision world
         rgb = geo.rgb_to_np(f["color"])
         depth = f["depth"]
         if rgb.shape[0] != depth.height or rgb.shape[1] != depth.width:

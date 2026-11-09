@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "src" / "hack_motion"))
 from curobo._src.cost.tool_pose_criteria import ToolPoseCriteria  # noqa: E402
 from hack_motion.curobo_planner import CuroboPlanner  # noqa: E402
 from hack_motion import robot  # noqa: E402
+import scene_measured  # noqa: E402
 from hack_motion.robot import ARM_JOINTS, raise_steps  # noqa: E402
 
 ROBOT = ROOT / "src" / "hack_motion" / "robot"
@@ -49,8 +50,7 @@ def down(yaw):  # rpy (0, 0, yaw), xyzw
 
 
 p = CuroboPlanner(ROBOT / "tiangong2pro_with_hands.urdf", ROBOT / "tienkung_curobo.yml")
-if args.tray:
-    p.trays = tuple(robot.TRAYS)
+scene_measured.use(p, None if args.tray else ())
 p.load(None)
 q = {n: p.ready.get(n, 0.0) for n in p.joint_names}
 for arm in ARM_JOINTS:

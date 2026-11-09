@@ -18,6 +18,7 @@ from ament_index_python.packages import get_package_share_directory
 from bodyctrl_msgs.msg import CmdSetMotorPosition, SetMotorPosition
 from bodyctrl_msgs.srv import SetForce, SetSpeed
 from hack_interfaces.action import Hand, MoveJoints, MoveTcp
+from hack_interfaces.msg import SceneObjects
 from rclpy.action import ActionServer, CancelResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
@@ -28,7 +29,7 @@ from std_msgs.msg import String
 from tf2_ros import Buffer, TransformListener
 
 from .curobo_planner import Unreachable
-from .robot import ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, TCP_LINK, TRAYS, clip, raise_steps
+from .robot import ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, TCP_LINK, TRAY_IDS, clip, raise_steps, ready_pose
 
 PERIOD = 0.05  # s, real time between control checks
 # Inspire actuator 6, thumb rotation. It turns across before the other fingers close.
@@ -60,11 +61,12 @@ COMPENSATION_RATE = 2.0
 MAX_COMPENSATION = 0.3  # rad added on top of the target at most
 HOME_TOL = 0.1  # rad, every arm joint within this of 0 -> the arm hangs at home
 READY_TOL = 0.05  # rad: a `ready` move that timed out this close to the raised pose still counts
+OTHER_READY_TOL = 0.1  # rad: an arm this close to ready is not what blocks a plan for the other one
+OPEN_FINGER = 0.85  # a hand with fingers 1-5 all above this holds nothing (open is 1.0)
 HELD_TOL = 0.05  # rad, the arm MoveTcp did not ask for: it only holds its pose
 # Joint step of one follow segment. 0.3 rad left the 10 cm grasp descent (21 planned waypoints, no joint
 # past 0.3) as a single joint-space chord, so the hand did not travel the straight line cuRobo had planned.
 PATH_STEP = 0.1
-TASK_WAIT = 5.0  # s, real time the preload waits for /sim/task, so that it does not build the planner twice
 
 
 class MotionNode(Node):
@@ -77,11 +79,15 @@ class MotionNode(Node):
         self.compensation = {}  # joint -> rad on top of the target, kept between moves (see move_joints)
         self.hand_state = {"left": None, "right": None}
         self.task_trays = None  # trays of the task from /sim/task, None until it arrives
+        self.scene_objects = ()  # neighbours from the latest perception/scene, tuples for the cuRobo world
+        self.table_plane = None  # (a, b, c, d) of the table in pelvis, the latest perception/scene that had one
+        self.seen_trays = {}  # tray id -> tray tuple (robot.TRAY_SIZE), the last pose perception measured
         cb = ReentrantCallbackGroup()
         self.create_subscription(JointState, "/joint_states", self.on_joints, 10, callback_group=cb)
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
                              reliability=ReliabilityPolicy.RELIABLE)
         self.create_subscription(String, "/sim/task", self.on_task, latched, callback_group=cb)
+        self.create_subscription(SceneObjects, "perception/scene", self.on_scene, latched, callback_group=cb)
         for side in ("left", "right"):
             self.create_subscription(JointState, f"/inspire_hand/state/{side}_hand",
                                      lambda m, s=side: self.on_hand(s, m), 10, callback_group=cb)
@@ -118,9 +124,6 @@ class MotionNode(Node):
         if not self._wait_joints(timeout=60.0):
             return
         self._startup("first /joint_states")
-        t0 = time.perf_counter()
-        while self.task_trays is None and time.perf_counter() - t0 < TASK_WAIT:
-            time.sleep(PERIOD)
         with self._tcp_lock:
             try:
                 with self.lock:
@@ -136,14 +139,46 @@ class MotionNode(Node):
 
     # ---------------------------------------------------------------- state
     def on_task(self, msg):
-        """The trays of this task go into the cuRobo world (sort2 has no tray_center, objects may lie there)."""
+        """Which trays this task has (sort2 has no tray_center, objects may lie there). Their poses come from perception."""
         try:
             trays = json.loads(msg.data).get("trays", {})
         except (ValueError, AttributeError) as e:
             self.get_logger().error(f"cannot read /sim/task: {e!r}")
             trays = {}
-        self.task_trays = tuple(sorted(name for name in trays if name in TRAYS))
-        self.get_logger().info(f"trays in the world: {list(self.task_trays)}")
+        self.task_trays = tuple(sorted(name for name in trays if name in TRAY_IDS))
+        self.get_logger().info(f"trays of the task: {list(self.task_trays)}")
+
+    def on_scene(self, msg):
+        """The latest objects, as cuboids for the next plan. The one under the goal is left out there, not here."""
+        objs = tuple(
+            (o.track_id or f"obj{i}", float(o.center.x), float(o.center.y), float(o.center.z), float(o.yaw),
+             float(o.size.x), float(o.size.y), float(o.size.z), float(o.top_z))
+            for i, o in enumerate(msg.objects))
+        plane = tuple(float(v) for v in msg.table_plane)
+        seen = {}
+        for c in msg.containers:
+            if c.kind != "tray" or c.id not in TRAY_IDS:
+                continue
+            q = c.pose.orientation
+            yaw = 2.0 * math.atan2(q.z, q.w)  # perception writes the yaw alone, about the pelvis z
+            seen[c.id] = (c.id, float(c.pose.position.x), float(c.pose.position.y), float(c.pose.position.z), yaw,
+                          float(c.size.x), float(c.size.y), float(c.size.z))
+        found = len(plane) == 4 and plane[2] > 0.0
+        with self.lock:
+            self.scene_objects = objs
+            if found:
+                self.table_plane = plane
+            # A tray the arm hides keeps the pose it was last seen at: trays are not moved during the task.
+            self.seen_trays.update(seen)
+        table = f"z = {-plane[3] / plane[2]:.4f} + {-plane[0] / plane[2]:.4f} x" if found else "none"
+        self.get_logger().info(f"perception scene: {len(objs)} objects, trays {sorted(seen)}, table {table}")
+
+    def _world(self):
+        """(table plane, trays) for the cuRobo world: what perception measured, limited to the trays of the task."""
+        with self.lock:
+            trays = [t for name, t in sorted(self.seen_trays.items())
+                     if self.task_trays is None or name in self.task_trays]
+            return self.table_plane, tuple(trays)
 
     def on_joints(self, msg):
         with self.lock:
@@ -458,7 +493,7 @@ class MotionNode(Node):
             self._planner = CuroboPlanner(
                 os.path.join(share, "tiangong2pro_with_hands.urdf"),
                 os.path.join(share, "tienkung_curobo.yml"))
-        self._planner.trays = self.task_trays or ()  # load() rebuilds the planner if the set changed
+        self._planner.table, self._planner.trays = self._world()
         return self._planner
 
     def _wait_joints(self, timeout=5.0):
@@ -470,12 +505,13 @@ class MotionNode(Node):
             time.sleep(PERIOD)
         return False
 
-    def _leave_colliding_home(self):
+    def _leave_colliding_home(self, planner):
         """Bring an arm that hangs at home up in front of the chest by joints (robot.RAISE_STEPS).
 
         At home the forearm spheres are inside the thigh, and cuRobo will not plan from a state in collision.
-        Only when every joint of the arm is near home: these joint moves are not collision-checked, and from
-        a working pose they could sweep the arm through the table.
+        Only when every joint of the arm is near home: from a working pose the same joint moves could sweep
+        the arm through the table. Once the arm is out of the thigh, a step that would enter an object is
+        skipped and the plan that follows goes around it.
         """
         for arm, names in ARM_JOINTS.items():
             q = self.joints(names)
@@ -483,9 +519,58 @@ class MotionNode(Node):
                 continue
             self.get_logger().info(f"{arm} arm at home, raising it in front of the chest")
             for i, step in enumerate(raise_steps(arm)):
+                with self.lock:
+                    snapshot = dict(self.q)
+                try:
+                    blocked = planner.segment_blocked(snapshot, names, step)
+                except Exception:
+                    self.get_logger().error(traceback.format_exc())
+                    blocked = False
+                if blocked:
+                    self.get_logger().info(
+                        f"{arm} raise stops before step {i + 1}: an object is on that joint path")
+                    break
                 ok, err, msg = self.move_joints(names, step, tol=0.1)
                 if not ok:
                     raise RuntimeError(f"{arm} arm stopped on raise step {i + 1}: {msg} (err {err:.3f})")
+
+    def _other_arm_to_ready(self, planner, arm, why):
+        """Move the arm that is not planned for to the ready pose, when it may be in the way. True if it moved.
+
+        The planner holds the other arm still. On the bench most failed approaches had it raised in front of the
+        chest at the start, or stretched out over the table after its own task, and the same approach planned once
+        it was back at ready. Not when its hand is closed: it may hold an object, and only brain knows.
+        """
+        other = next(a for a in ARM_JOINTS if a != arm)
+        q = self.joints(ARM_JOINTS[other])
+        if any(v is None for v in q):
+            return False
+        off = max(abs(v - r) for v, r in zip(q, ready_pose(other)))
+        if off <= OTHER_READY_TOL:
+            return False
+        fingers = self._finger_pos(other)
+        if fingers is None or min(fingers[:5]) < OPEN_FINGER:
+            self.get_logger().info(f"move_tcp {arm}: {why}; the {other} arm is {off:.2f} rad off ready, "
+                                   f"but its hand is not open, so it stays")
+            return False
+        self.get_logger().info(f"move_tcp {arm}: {why}; moving the {other} arm to ready ({off:.2f} rad off) "
+                               f"and planning again")
+        with self.lock:
+            snapshot = dict(self.q)
+        try:
+            names, waypoints, dt = planner.plan(other, None, snapshot, "ready")
+        except Unreachable as e:
+            # Seen right after the start raise, both forearms in front of the chest: the failure brain gets is
+            # the first one, about its own arm.
+            self.get_logger().info(f"move_tcp {arm}: the {other} arm stays: {e}")
+            return False
+        known = [(n, i) for i, n in enumerate(names) if n in JOINTS]
+        waypoints = [[w[i] for _, i in known] for w in waypoints]
+        ok, err, msg = self.follow([n for n, _ in known], waypoints, dt, tol=0.01, max_time=0.0,
+                                   held=ARM_JOINTS[arm])
+        if not (ok or (msg == "timeout" and err <= READY_TOL)):
+            raise RuntimeError(f"the {other} arm did not reach ready: {msg} (err {err:.3f})")
+        return True
 
     def tcp_error(self, arm, target):
         """Position (m) and rotation (rad) of the TCP tf against the goal, or (None, None)."""
@@ -506,6 +591,14 @@ class MotionNode(Node):
         dot = min(1.0, abs(r.x * o.x + r.y * o.y + r.z * o.z + r.w * o.w))
         return pos, 2.0 * math.acos(dot)
 
+    def _refused(self, g, mode, message, detail=""):
+        """A failed MoveTcp before any motion, logged with its goal: brain only sees the message."""
+        p, o = g.target.position, g.target.orientation
+        self.get_logger().warn(
+            f"move_tcp {g.arm} {mode} failed: {message}; goal ({p.x:.3f}, {p.y:.3f}, {p.z:.3f}) "
+            f"xyzw ({o.x:.3f}, {o.y:.3f}, {o.z:.3f}, {o.w:.3f})" + (f"; {detail}" if detail else ""))
+        return MoveTcp.Result(success=False, message=message)
+
     def move_tcp(self, g):
         if g.arm not in ARM_JOINTS:
             return MoveTcp.Result(success=False, message=f"unknown arm {g.arm}")
@@ -520,28 +613,51 @@ class MotionNode(Node):
         with self._tcp_lock:
             try:
                 if not self._wait_joints():
-                    return MoveTcp.Result(success=False, message="no /joint_states")
-                self._leave_colliding_home()
+                    return self._refused(g, mode, "no /joint_states")
                 planner = self._planner_obj()
+                if planner.table is None:
+                    # Without it the world has no table, and a plan goes through it. brain looks before it moves.
+                    return self._refused(g, mode, "no table plane from perception yet")
                 with self.lock:
                     snapshot = dict(self.q)
+                    planner.objects = self.scene_objects
                 note = planner.load(snapshot)
                 if note != "curobo already loaded":
                     self.get_logger().info(note)
-                names, waypoints, dt = planner.plan(
-                    g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol)
+                # Every object, including the one this goal will grasp. The raise is not aimed at it yet.
+                planner.sync_world(None)
+                self._leave_colliding_home(planner)
+                planner.table, planner.trays = self._world()
+                with self.lock:
+                    snapshot = dict(self.q)
+                    planner.objects = self.scene_objects
+                try:
+                    names, waypoints, dt = planner.plan(
+                        g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol)
+                except Unreachable as e:
+                    if mode != "direct" or not self._other_arm_to_ready(planner, g.arm, e):
+                        raise
+                    with self.lock:
+                        snapshot = dict(self.q)
+                    names, waypoints, dt = planner.plan(
+                        g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol)
+                    planner.scene_note += ", after the other arm went to ready"
             except Unreachable as e:
-                return MoveTcp.Result(success=False, message=f"unreachable: {e}")
+                try:
+                    report = planner.start_report(snapshot)
+                except Exception as err:  # the report must not hide the failure it explains
+                    report = f"no report: {err!r}"
+                return self._refused(g, mode, f"unreachable: {e}", f"start {report}; {planner.scene_note}")
             except Exception as e:
                 self.get_logger().error(traceback.format_exc())
-                return MoveTcp.Result(success=False, message=f"planner: {e}")
+                return self._refused(g, mode, f"planner: {e}")
             if self.cancelled():
                 return MoveTcp.Result(success=False, message='cancelled')
             known = [(n, i) for i, n in enumerate(names) if n in JOINTS]
             names = [n for n, _ in known]
             waypoints = [[q[i] for _, i in known] for q in waypoints]
             self.get_logger().info(f"move_tcp {g.arm} {mode}: {len(waypoints)} waypoints, {len(names)} joints, "
-                                   f"start moved {planner.start_moved:.3f} rad")
+                                   f"start moved {planner.start_moved:.3f} rad, {planner.scene_note}")
             other = next(joints for arm, joints in ARM_JOINTS.items() if arm != g.arm)
             ok, err, msg = self.follow(names, waypoints, dt, tol=0.01, max_time=g.max_time, held=other)
         if mode == "ready":  # the goal is joints, the target pose is not used

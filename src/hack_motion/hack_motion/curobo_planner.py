@@ -9,9 +9,12 @@ so a fresh container does not pay the cold Warp compile inside the task.
 import copy
 import math
 import time
+from types import SimpleNamespace
 
 from .curobo_robot import load_robot_cfg
-from .robot import ARM_JOINTS, JOINTS, TCP_LINK, plan_limits, ready_pose, table_scene
+from .robot import (
+    ARM_JOINTS, CUBOID_CACHE, JOINTS, TCP_LINK, clearance_z, fingertip, footprint_gap, on_the_way, plan_limits,
+    ready_pose, sphere_cuboid_overlap, spheres_hit, world_scene)
 
 
 LOCK_TOL = 0.02  # rad
@@ -27,10 +30,22 @@ START_CLEAR_MAX = 0.08  # rad: a farther jump is a different pose, and a held ob
 # A 45° hand rises as two TCP-axis steps. Past 0.14 m that pair has no plan: the 0.15 m
 # lift of the soap dish reports the start or the end in collision, while 0.12 m still plans.
 LEAN_STEP = 0.12
+NEAR_CUBOID = 0.01  # m: a sphere this close to a tray counts as in it, about cuRobo's collision activation distance
+UNDER_FINGERS = 0.05  # m: a straight descent that fails may go into objects whose footprint is this close to the
+#                       goal fingertips. The grasped one can be measured off its true footprint, or a rim grasp sits
+#                       past it; on the bench such descents failed with the start free.
 
 
 class Unreachable(Exception):
     pass
+
+
+def _with_z(target, z):
+    """The same pose with a different TCP height. A ROS message and a namespace both have position and orientation."""
+    o = target.orientation
+    return SimpleNamespace(
+        position=SimpleNamespace(x=float(target.position.x), y=float(target.position.y), z=float(z)),
+        orientation=SimpleNamespace(x=float(o.x), y=float(o.y), z=float(o.z), w=float(o.w)))
 
 
 def _flag(success, any_ok=False):
@@ -66,8 +81,12 @@ class CuroboPlanner:
         self.mp = None
         self.joint_names = []
         self.locks = {}  # lock_joints the current planner was built with
-        self.trays = ()  # trays of this task for the next build (motion_node, from /sim/task)
-        self.world_trays = ()  # trays the current planner was built with
+        self.table = None  # table plane (a, b, c, d) in pelvis. motion_node, from perception
+        self.trays = ()  # tray tuples (robot.TRAY_SIZE) of this task that perception has seen. motion_node
+        self.objects = ()  # detected neighbours, (id, x, y, z, yaw, sx, sy, sz, top_z). motion_node, from perception
+        self.left_out = ()  # ids the last sync_world kept out of the world, the object under the fingertips
+        self._scene = None  # cuboid dict the collision world currently holds
+        self.scene_note = ""  # what the last plan put in the world, for the move log
         self.start_moved = 0.0  # rad, how far the last plan moved its start state off the self-collision buffer
         self.ready_note = ""  # how the last `ready` plan was found, when not the plain way
 
@@ -86,14 +105,14 @@ class CuroboPlanner:
             moved = [name for name, value in self.locks.items()
                      if lock_positions and lock_positions.get(name) is not None
                      and abs(lock_positions[name] - value) > LOCK_TOL]
-            if not moved and self.world_trays == self.trays:
+            if not moved:
                 return "curobo already loaded"
             self.mp = None
             import gc
             import torch
             gc.collect()  # the old solvers hold CUDA graphs and buffers
             torch.cuda.empty_cache()
-            reason = f"locked joints moved: {moved}; trays {list(self.trays)}; "
+            reason = f"locked joints moved: {moved}; "
         else:
             reason = ""
         import curobo.runtime as runtime  # torch_util reads this copy, not curobo._src.runtime
@@ -105,9 +124,13 @@ class CuroboPlanner:
         self.locks = {name: float(v) for name, v in (cfg["kinematics"].get("lock_joints") or {}).items()}
         self._build_self_check(cfg["kinematics"])
         t0 = time.perf_counter()
-        self.world_trays = self.trays
+        # The cache is allocated here and never grown: update_world writes poses into it, and the CUDA graph keeps
+        # those buffers. More cuboids than the cache raises inside cuRobo instead of rebuilding the planner.
+        scene, _ = world_scene(self.table, self.trays, self.objects)
+        self._scene = scene
         self.mp = MotionPlanner(MotionPlannerCfg.create(
-            robot=copy.deepcopy(cfg), scene_model=table_scene(self.trays), use_cuda_graph=graphs != "off"))
+            robot=copy.deepcopy(cfg), scene_model=scene, collision_cache={"cuboid": CUBOID_CACHE},
+            use_cuda_graph=graphs != "off"))
         self.joint_names = list(self.mp.joint_names)
         torch.cuda.synchronize()
         return (f"{reason}curobo ready in {time.perf_counter() - t0:.1f} s, "
@@ -154,7 +177,9 @@ class CuroboPlanner:
         """Return (joint names, waypoints [N x dof], dt or None).
 
         `direct` is one IK solution, then a collision-free joint-space path to it. A straight line in joint
-        space can pass through the body, and the motors stall against it.
+        space can pass through the body, and the motors stall against it. When that fails and a neighbour stands
+        on the way, one more try goes above the neighbour and down to the goal. A goal whose own pose is inside
+        a cuboid stays unreachable: the fingers are not driven through it.
         `linear` is a Cartesian trajectory. The caller retimes either path to the 0.8 rad/s motor limit.
         dt is None only when the TCP is already at the goal and the waypoint is the current joints.
         """
@@ -163,35 +188,254 @@ class CuroboPlanner:
         if mode not in ("direct", "linear", "ready"):
             raise RuntimeError(f"unknown mode {mode}")
         if mode == "ready":
+            # No objects: the hand may still hold one, or sit by the one it let go, and a start inside a cuboid
+            # does not plan. main had no objects in the world for this move either.
+            self.sync_world(None, objects=False)
             return self._plan_ready(arm, q_by_name)
-        goal, state = self._goal(arm, target, q_by_name)
+        self.sync_world(target)
         if mode == "direct":
-            if self._already(goal, state, arm, pos_tol, rot_tol):
-                q = state.position.detach().reshape(-1).tolist()
-                return list(self.joint_names), [q], None
-            for _ in range(IK_TRIES):
-                result = self.mp.ik_solver.solve_pose(
-                    goal, current_state=state, return_seeds=self.mp.ik_solver.config.num_seeds)
-                # position_error is the worse of the two hands, and cuRobo stops at 5 mm. MoveTcp asks for one
-                # hand, and the other hand is only held so it does not swing through the body.
-                solutions = self._ranked(result, goal, arm, state, pos_tol, rot_tol)
-                if solutions:
-                    break
-            if not solutions:
-                raise Unreachable(self._fail(result, goal, arm))
-            from curobo.types import JointState
-            for solution in solutions[:MAX_PATHS]:
-                goal_js = JointState.from_position(
-                    solution.detach().clone().reshape(1, -1), joint_names=self.joint_names)
-                traj = self.mp.plan_cspace(goal_js, state)
-                if traj is not None and _flag(traj.success, any_ok=True):
-                    return self._trajectory(traj)
-            traj = self.mp.plan_pose(goal, state)  # free to end at any solution, not one fixed in advance
+            try:
+                return self._plan_direct(arm, target, q_by_name, pos_tol, rot_tol)
+            except Unreachable:
+                detour = self._plan_detour(arm, target, q_by_name, pos_tol, rot_tol)
+                if detour is None:
+                    raise
+                return detour
+        goal, state = self._goal(arm, target, q_by_name)
+        try:
+            return self._plan_linear(arm, goal, state)
+        except Unreachable as failed:
+            touching = self._touching(q_by_name)
+            trays = set(self._tray_names())
+            tcp_z = self._tcp_z(arm, goal, state)
+            rising = float(target.position.z) >= tcp_z + 0.01
+            if not touching and float(target.position.z) <= tcp_z - 0.01:
+                return self._descend_past_objects(arm, goal, state, target, failed)
+            if not touching or not (rising or set(touching) <= trays):
+                raise
+            # cuRobo plans nothing from a start in collision. A hand that let go in a tray is inside a solid block
+            # here, the trays being hollow in the scene; a hand at a low grasp is within a centimetre of the table
+            # or of the object it holds. A move up, or out of a tray, goes away from them: plan it without them.
+            result = self._without(touching, lambda: self._plan_linear(arm, goal, state))
+            self.scene_note += f", planned without {', '.join(touching)} (the start touches them)"
+            return result
+
+    def _plan_direct(self, arm, target, q_by_name, pos_tol, rot_tol):
+        """One collision-free path to `target`. No second attempt above the neighbours."""
+        goal, state = self._goal(arm, target, q_by_name)
+        if self._already(goal, state, arm, pos_tol, rot_tol):
+            q = state.position.detach().reshape(-1).tolist()
+            return list(self.joint_names), [q], None
+        result = None
+        solutions = []
+        for _ in range(IK_TRIES):
+            result = self.mp.ik_solver.solve_pose(
+                goal, current_state=state, return_seeds=self.mp.ik_solver.config.num_seeds)
+            # position_error is the worse of the two hands, and cuRobo stops at 5 mm. MoveTcp asks for one
+            # hand, and the other hand is only held so it does not swing through the body.
+            solutions = self._ranked(result, goal, arm, state, pos_tol, rot_tol)
+            if solutions:
+                break
+        from curobo.types import JointState
+        for solution in solutions[:MAX_PATHS]:
+            goal_js = JointState.from_position(
+                solution.detach().clone().reshape(1, -1), joint_names=self.joint_names)
+            traj = self.mp.plan_cspace(goal_js, state)
             if traj is not None and _flag(traj.success, any_ok=True):
                 return self._trajectory(traj)
-            start = [round(v, 3) for v in state.position.detach().reshape(-1).tolist()]
-            raise Unreachable(f"no collision-free joint path to {min(len(solutions), MAX_PATHS)} IK solutions from {start}")
-        return self._plan_linear(arm, goal, state)
+        # Batch IK can miss the one pose that comes over a neighbour. The trajectory optimiser searches
+        # configurations and the path together, so it still gets a try when every seed was in collision.
+        traj = self.mp.plan_pose(goal, state)
+        if traj is not None and _flag(traj.success, any_ok=True):
+            return self._trajectory(traj)
+        if not solutions:
+            raise Unreachable(self._fail(result, goal, arm))
+        start = [round(v, 3) for v in state.position.detach().reshape(-1).tolist()]
+        raise Unreachable(
+            f"no collision-free joint path to {min(len(solutions), MAX_PATHS)} IK solutions from {start}")
+
+    def _plan_detour(self, arm, target, q_by_name, pos_tol, rot_tol):
+        """Above the neighbours that stand between here and the goal, then down to it. None when that is no use.
+
+        The waypoint keeps the goal's x, y and orientation, so the second leg is a descent onto the grasp.
+        A pose that is itself inside a cuboid still fails here, and the caller reports the first error.
+        """
+        goal, state = self._goal(arm, target, q_by_name)
+        z = self._clearance(arm, goal, state, target)
+        if z is None:
+            return None
+        via = _with_z(target, z)
+        try:
+            names, way, dt = self._plan_direct(arm, via, q_by_name, pos_tol, rot_tol)
+        except Unreachable as e:
+            self.scene_note = f"{self.scene_note}; detour via failed: {e}"
+            return None
+        if dt is None or len(way) < 2:
+            self.scene_note = f"{self.scene_note}; detour via did not move"
+            return None
+        q_via = dict(q_by_name)
+        q_via.update(zip(names, way[-1]))
+        try:
+            names2, way2, _ = self._plan_direct(arm, target, q_via, pos_tol, rot_tol)
+        except Unreachable as e:
+            self.scene_note = f"{self.scene_note}; detour down failed: {e}"
+            return None
+        if set(names) != set(names2) or len(way2) < 2:
+            return None
+        if names != names2:
+            index = {name: i for i, name in enumerate(names2)}
+            way2 = [[q[index[name]] for name in names] for q in way2]
+        self.scene_note = f"{self.scene_note}, detour"
+        return names, way + way2[1:], dt
+
+    def _clearance(self, arm, goal, state, target):
+        """TCP z of the detour waypoint, or None when no neighbour stands on the straight line."""
+        link = TCP_LINK[arm]
+        i = goal.tool_frames.index(link)
+        start = self.mp.compute_kinematics(state).tool_poses.position[0, 0, i].detach().tolist()
+        end = (target.position.x, target.position.y, target.position.z)
+        skipped = set(self.left_out)
+        tops = [obj[8] for obj in self.objects
+                if obj[0] not in skipped and on_the_way(obj, start, end)]
+        return clearance_z(tops, start[2], end[2])
+
+    def sync_world(self, target=None, objects=True):
+        """Write the current objects into the collision world.
+
+        With a target, the object under its fingertips stays out: the fingers have to enter it.
+        Without one, every object stays. The joint raise checks that, before a goal exists.
+        Rebuilding the planner for a new set of boxes costs seconds and recaptures the CUDA graph. The cuboid
+        cache is fixed at load, and update_world only rewrites those tensors, which the captured graph already reads.
+        """
+        near = None
+        if target is not None:
+            position = target.position
+            orientation = target.orientation
+            near = fingertip((position.x, position.y, position.z),
+                             (orientation.x, orientation.y, orientation.z, orientation.w))
+        scene, left_out = world_scene(self.table, self.trays, self.objects if objects else (), near)
+        self.left_out = tuple(left_out)
+        n = len(scene["cuboid"]) - 1 - len(self.trays)
+        note = ("" if self.table else "no table, ") + f"trays {[t[0] for t in self.trays]}, {n} objects"
+        note += f", left out {list(left_out)}" if left_out else ""
+        if scene == self._scene:
+            self.scene_note = note
+            return
+        from curobo._src.geom.types import SceneCfg
+
+        t0 = time.perf_counter()
+        self.mp.update_world(SceneCfg.create(scene))
+        self._scene = scene
+        self.scene_note = f"{note}, world updated in {time.perf_counter() - t0:.2f} s"
+
+    def segment_blocked(self, q_by_name, names, target):
+        """True when this straight joint move would enter an object, and the start can already be planned from.
+
+        Home is inside the thigh, so those first steps have to run: cuRobo will not plan from there. Once the
+        arm is clear of itself, a later step that meets an object is refused and the MoveTcp plan goes around it.
+        """
+        cuboids = self._object_cuboids()
+        if not cuboids or self.mp is None:
+            return False
+        if any(q_by_name.get(name) is None for name in list(self.joint_names) + list(names)):
+            return False
+        q = self._joints_tensor(q_by_name)
+        if not bool(self._clear_of_self(q)[0].item()):
+            return False
+        start = [q_by_name[name] for name in names]
+        for i in range(1, 9):
+            t = i / 8.0
+            pose = dict(q_by_name)
+            for name, a, b in zip(names, start, target):
+                pose[name] = a + (b - a) * t
+            if spheres_hit(self._sphere_rows(pose), cuboids):
+                return True
+        return False
+
+    def _object_cuboids(self):
+        """Objects only. The table and the trays are what the joint raise was built to stay clear of."""
+        if not self._scene:
+            return {}
+        skip = {"table", "no_table"} | set(self._tray_names())
+        return {name: cub for name, cub in self._scene["cuboid"].items() if name not in skip}
+
+    def _tray_names(self):
+        """Trays the collision world holds now."""
+        return [t[0] for t in self.trays if self._scene and t[0] in self._scene["cuboid"]]
+
+    def _joints_tensor(self, q_by_name):
+        import torch
+        return torch.tensor([[float(q_by_name[name]) for name in self.joint_names]],
+                            device="cuda", dtype=torch.float32)
+
+    def _sphere_rows(self, q_by_name):
+        from curobo.types import JointState
+        state = JointState.from_position(self._joints_tensor(q_by_name), joint_names=self.joint_names)
+        sph = self.mp.compute_kinematics(state).robot_spheres.detach().reshape(-1, 4)
+        return [tuple(float(v) for v in row) for row in sph.cpu().tolist()]
+
+    def _touching(self, q_by_name):
+        """Cuboids of the world that a robot sphere is in or within NEAR_CUBOID of, at these joints."""
+        if not self._scene or any(q_by_name.get(n) is None for n in self.joint_names):
+            return []
+        rows = [row for row in self._sphere_rows(q_by_name) if row[3] > 0.0]
+        return [name for name, cub in self._scene["cuboid"].items() if name != "no_table"
+                and any(sphere_cuboid_overlap((x, y, z), r, cub["dims"], cub["pose"]) > -NEAR_CUBOID
+                        for x, y, z, r in rows)]
+
+    def _under_fingers(self, target):
+        """[(gap m, name)] of the objects in the world by the goal fingertips, nearest first."""
+        p, o = target.position, target.orientation
+        tip = fingertip((p.x, p.y, p.z), (o.x, o.y, o.z, o.w))
+        in_world = self._scene["cuboid"] if self._scene else {}
+        return sorted((footprint_gap(obj, tip, self.table), obj[0]) for obj in self.objects
+                      if obj[0] in in_world and obj[0] not in self.left_out)
+
+    def _descend_past_objects(self, arm, goal, state, target, failed):
+        """A straight descent from a free start failed: try it without the objects right under the fingertips."""
+        near = self._under_fingers(target)
+        self.scene_note += ", by the fingertips: " + (
+            ", ".join(f"{name} {gap * 1000:+.0f} mm" for gap, name in near[:3]) or "no objects")
+        names = [name for gap, name in near if gap <= UNDER_FINGERS]
+        if not names:
+            raise failed
+        result = self._without(names, lambda: self._plan_linear(arm, goal, state))
+        self.scene_note += f", descended without {', '.join(names)}"
+        return result
+
+    def _tcp_z(self, arm, goal, state):
+        """Height of this arm's TCP in pelvis at `state`."""
+        i = goal.tool_frames.index(TCP_LINK[arm])
+        return float(self.mp.compute_kinematics(state).tool_poses.position[0, 0, i, 2].item())
+
+    def start_report(self, q_by_name):
+        """Why a start may not plan: self-collision overlap, and the nearest robot link to each cuboid. One line.
+
+        Overlaps are in mm, positive inside. cuRobo already counts a sphere within about a centimetre as touching.
+        """
+        if self.mp is None or not self._scene or any(q_by_name.get(n) is None for n in self.joint_names):
+            return "no report: planner or joints missing"
+        q = self._joints_tensor(q_by_name)
+        own = float(self._self_overlap(q)[0].item()) - START_CLEARANCE  # the plain cuRobo self-collision overlap
+        rows = self._sphere_rows(q_by_name)
+        kin = self._self_kin.config.kinematics_config
+        index = kin.link_sphere_idx_map.tolist()
+        links = {i: name for name, i in kin.link_name_to_idx_map.items()}
+        near = []
+        for name, cub in self._scene["cuboid"].items():
+            if name == "no_table":
+                continue
+            best, link = -math.inf, "?"
+            for i, (x, y, z, r) in enumerate(rows):
+                if r <= 0.0:
+                    continue
+                d = sphere_cuboid_overlap((x, y, z), r, cub["dims"], cub["pose"])
+                if d > best:
+                    best, link = d, links.get(index[i], "?") if i < len(index) else "?"
+            near.append((best, name, link))
+        near.sort(reverse=True)
+        parts = [f"{name} {best * 1e3:+.0f} mm ({link})" for best, name, link in near[:3]]
+        return f"self {own * 1e3:+.1f} mm; nearest: " + (", ".join(parts) if parts else "empty world")
 
     def _plan_ready(self, arm, q_by_name):
         """A collision-free joint path that puts `arm` and body_yaw back to robot.ready_pose.
@@ -221,10 +465,10 @@ class CuroboPlanner:
             torch.tensor([[want[n] for n in self.joint_names]], device=q.device, dtype=q.dtype),
             joint_names=self.joint_names)
         traj = self.mp.plan_cspace(goal_js, state)
-        if (traj is None or not _flag(traj.success, any_ok=True)) and self.world_trays:
+        if (traj is None or not _flag(traj.success, any_ok=True)) and self._tray_names():
             # The trays are solid blocks here and hollow in the scene: a hand can rest inside one (the left hand
             # 0.8 cm into tray_center on 2026-11-07), and then no state of that robot is free. Leave without them.
-            traj = self._without_trays(lambda: self.mp.plan_cspace(goal_js, state))
+            traj = self._without(self._tray_names(), lambda: self.mp.plan_cspace(goal_js, state))
             if traj is not None and _flag(traj.success, any_ok=True):
                 self.ready_note = "planned without the trays"
         if traj is None or not _flag(traj.success, any_ok=True):
@@ -232,15 +476,16 @@ class CuroboPlanner:
             raise Unreachable(f"no collision-free joint path to the ready {arm} arm from {start}")
         return self._trajectory(traj)
 
-    def _without_trays(self, plan):
+    def _without(self, names, plan):
+        """Run `plan` with these cuboids switched off in the collision world."""
         checker = self.mp.scene_collision_checker
         try:
-            for name in self.world_trays:
+            for name in names:
                 checker.enable_obstacle(name, False)
             self.mp.graph_planner.reset_buffer()  # it keeps node feasibility from the old scene
             return plan()
         finally:
-            for name in self.world_trays:
+            for name in names:
                 checker.enable_obstacle(name, True)
             self.mp.graph_planner.reset_buffer()
 

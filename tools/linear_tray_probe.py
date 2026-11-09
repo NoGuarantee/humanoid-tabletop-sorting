@@ -17,7 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src" / "hack_motion"))
 
 from hack_motion.curobo_planner import CuroboPlanner, Unreachable  # noqa: E402
-from hack_motion.robot import ARM_JOINTS, TRAYS, raise_steps, table_scene, tray_rim  # noqa: E402
+from hack_motion.robot import ARM_JOINTS, raise_steps  # noqa: E402
+from scene_measured import TRAYS, table_scene, tray_rim, use  # noqa: E402
 
 ROBOT = ROOT / "src" / "hack_motion" / "robot"
 GOAL = ("right", 0.40, -0.35, 0.30, 0.0)
@@ -148,7 +149,7 @@ def main():
     sets = [(), tuple(sorted(TRAYS))]
     for trays in sets:
         p = CuroboPlanner(str(ROBOT / "tiangong2pro_with_hands.urdf"), str(ROBOT / "tienkung_curobo.yml"))
-        p.trays = trays
+        use(p, trays)
         print(p.load(None), flush=True)
         scene = table_scene(trays)
         q = raised(p)

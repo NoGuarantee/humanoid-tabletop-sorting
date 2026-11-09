@@ -64,9 +64,14 @@ class Skills:
             return 'joints', MoveJoints.Goal(
                 joints=['head_pitch_joint', 'head_yaw_joint', 'body_yaw_joint'],
                 positions=[0.4, 0.0, 0.0])
+        if phase == State.OPEN_HANDS:  # at the start: the previous layout may have left a hand shut
+            return 'hand', Hand.Goal(hand=effect.arm, preset='open', force=0.0)
+        if phase == State.ARMS_READY:  # then up off the table and whatever the new layout put under the hand
+            return 'tcp', MoveTcp.Goal(arm=effect.arm, target=Pose(), mode='ready')
         if phase == State.OPEN:
             obj = next(o for o in scene.objects if (o.name or o.track_id) == effect.target.id)
-            candidates = plan_grasps(obj, scene, self.db)
+            container = next((x for x in scene.containers if x.id == effect.destination and x.kind == 'tray'), None)
+            candidates = plan_grasps(obj, scene, self.db, container)
             if not candidates:
                 raise ValueError('no_grasp_candidates')
             self.grasp = candidates[min(attempt - 1, len(candidates) - 1)]

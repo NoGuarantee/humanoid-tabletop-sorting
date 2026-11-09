@@ -15,6 +15,7 @@ NEXT = {State.OPEN: State.APPROACH, State.APPROACH: State.DESCEND, State.DESCEND
         State.RELEASE: State.RETREAT}
 
 
+
 def _enter(c, state, effects):
     assert c.active is None and not c.blocked and c.state != State.DONE
     c.state = state
@@ -22,7 +23,8 @@ def _enter(c, state, effects):
         c.history[c.target.id].lift_attempts += 1
     c.serial += 1
     c.active = Operation(c.serial, state, c.sim, c.wall)
-    effects.append(Effect('RUN', c.serial, state, c.target, c.destination, c.slot))
+    arm = c.start_steps[0][1] if c.start_steps else ''
+    effects.append(Effect('RUN', c.serial, state, c.target, c.destination, c.slot, arm))
 
 
 def _may_have_moved(c, op):
@@ -61,6 +63,31 @@ def _stop(c, effects, reason):
         c.state = State.CANCELLING
         c.cancel_wall = c.wall
         effects.append(Effect('CANCEL', c.active.id))
+
+
+def _free_hands(c, effects, raise_arms=False):
+    """Open both hands, then VERIFY_EMPTY. raise_arms: look at the table and raise both arms to ready in between.
+
+    Hands first: motion keeps an arm whose hand is shut where it is. The look comes before the arms: motion refuses
+    to plan without the table plane from a perception scene (eval 2026-11-09, ARMS_READY right after the start).
+    """
+    c.start_steps = [(State.OPEN_HANDS, 'left'), (State.OPEN_HANDS, 'right')]
+    if raise_arms:
+        c.start_steps += [(State.LOOK_TABLE, ''), (State.OBSERVE, ''),
+                          (State.ARMS_READY, 'left'), (State.ARMS_READY, 'right')]
+    _enter(c, c.start_steps[0][0], effects)
+
+
+def _let_go(c, effects):
+    """The lift never confirmed: put the object down where it is and go on with the others.
+
+    Ending the mission instead kept the hand shut on the sink, and the next two layouts could not start (eval
+    --layouts 3, 2026-11-09). An object that never left the table costs nothing (SCORING, 2 November); one that
+    did costs -10 out of a tray, in the hand or not, so letting go never loses points.
+    """
+    c.history[c.target.id].attempts = c.config.max_attempts
+    c.last_recovery = 'lift_unconfirmed'
+    _free_hands(c, effects)
 
 
 def _recover(c, effects, reason):
@@ -177,7 +204,7 @@ def transition(context: Context, event: Event):
             if e.kind == 'RESULT':
                 _may_have_moved(c, op)
             if (e.kind == 'RESULT' and not e.ok and not e.stopped
-                    and c.state not in VERIFY | {State.OBSERVE, State.DESTINATION}):
+                    and c.state not in VERIFY | {State.OBSERVE, State.DESTINATION, State.OPEN_HANDS}):
                 _stop(c, effects, 'execution_failed_stop_unconfirmed')
             else:
                 c.active = None
@@ -187,6 +214,12 @@ def transition(context: Context, event: Event):
 
 def _result(c, e, op, effects):
     state = c.state
+    if c.start_steps:
+        # Steps that free the hands (see _free_hands). Done or not, VERIFY_EMPTY measures the hands after them and
+        # ends the mission if one still holds something.
+        c.start_steps = c.start_steps[1:]
+        _enter(c, c.start_steps[0][0] if c.start_steps else State.VERIFY_EMPTY, effects)
+        return
     if state == State.BACK_OFF:
         # Up or not, look again: a plan from a low arm fails on its own and spends the recovery budget.
         if e.kind == 'REJECTED' or not e.ok:
@@ -230,7 +263,14 @@ def _result(c, e, op, effects):
         ev = evidence(c, e.data, op.sim_start)
         if ev is None or ev.hand == Hand.UNKNOWN:
             c.hand = Hand.UNKNOWN
-            if state == State.RECOVER and c.recoveries < c.config.max_recoveries:
+            if state == State.VERIFY_EMPTY and not c.start_cleared:
+                # The previous layout leaves the robot as it was. A hand shut on a sink read UNKNOWN and two
+                # layouts ended 6 s after the start (eval --layouts 3, 2026-11-09). An opened hand still pressed on
+                # the new layout (fingers 1.32 1.39 past open, the rest creeping) read UNKNOWN again: raise the arms
+                # too, then measure again.
+                c.start_cleared = True
+                _free_hands(c, effects, raise_arms=True)
+            elif state == State.RECOVER and c.recoveries < c.config.max_recoveries:
                 # A hand still settling after a failed move: measure again, within the recovery budget.
                 c.recoveries += 1
                 c.last_recovery = 'hand_unknown'
@@ -239,6 +279,16 @@ def _result(c, e, op, effects):
                 # Nothing is lifted yet; RECOVER measures the hand again and backs off. Ending here cost the
                 # rest of the mission twice over a finger pushed past its range (eval 2026-11-08).
                 _recover(c, effects, 'hand_unknown')
+            elif c.unknown_frees < c.config.max_unknown_frees:
+                # Open both hands and raise both arms, then go on with the others. Ending here lost 222 s after
+                # an open hand pressed on a box it never closed on (eval --layouts 3, 2026-11-09). A lifted object
+                # that falls costs -10, as it does left in the hand at the end; over the tray it lands inside.
+                c.unknown_frees += 1
+                c.last_recovery = 'hand_unknown_freed'
+                if c.target is not None and state == State.VERIFY_PLACE:
+                    c.history[c.target.id].released = True  # let go over the tray: it may be in it
+                c.arm_low = False
+                _free_hands(c, effects, raise_arms=True)
             else:
                 _done(c, effects, 'physical_unknown')
             return
@@ -281,7 +331,7 @@ def _result(c, e, op, effects):
             elif h.lift_attempts < c.config.max_attempts:
                 _enter(c, State.LIFT, effects)
             else:
-                _done(c, effects, 'lift_unconfirmed')
+                _let_go(c, effects)
         elif ev.hand == Hand.EMPTY:
             _recover(c, effects, 'object_lost' if state != State.VERIFY_GRASP else 'empty_grasp')
         elif state == State.VERIFY_GRASP:
@@ -291,7 +341,7 @@ def _result(c, e, op, effects):
                 if c.history[c.target.id].lift_attempts < c.config.max_attempts:
                     _enter(c, State.LIFT, effects)
                 else:
-                    _done(c, effects, 'lift_unconfirmed')
+                    _let_go(c, effects)
             else:
                 c.history[c.target.id].lift = Lift.LIFTED
                 _enter(c, State.REORIENT if c.spec.variant == 'lying' else State.DESTINATION, effects)

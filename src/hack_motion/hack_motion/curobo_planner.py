@@ -31,6 +31,7 @@ START_CLEAR_MAX = 0.08  # rad: a farther jump is a different pose, and a held ob
 # lift of the soap dish reports the start or the end in collision, while 0.12 m still plans.
 LEAN_STEP = 0.12
 NEAR_CUBOID = 0.01  # m: a sphere this close to a tray counts as in it, about cuRobo's collision activation distance
+READY_LIFT = 0.08  # m: a hand left in the table or a tray goes this far straight up before the joint path to ready
 UNDER_FINGERS = 0.05  # m: a straight descent that fails may go into objects whose footprint is this close to the
 #                       goal fingertips. The grasped one can be measured off its true footprint, or a rim grasp sits
 #                       past it; on the bench such descents failed with the start free.
@@ -464,6 +465,17 @@ class CuroboPlanner:
         goal_js = JointState.from_position(
             torch.tensor([[want[n] for n in self.joint_names]], device=q.device, dtype=q.dtype),
             joint_names=self.joint_names)
+        traj = self._ready_cspace(goal_js, state)
+        if traj is not None:
+            return self._trajectory(traj)
+        lifted = self._ready_after_lift(arm, q_by_name, state, goal_js)
+        if lifted is not None:
+            return lifted
+        start = [round(v, 3) for v in q.reshape(-1).tolist()]
+        raise Unreachable(f"no collision-free joint path to the ready {arm} arm from {start}")
+
+    def _ready_cspace(self, goal_js, state):
+        """plan_cspace to ready, then once more without the trays. None when neither plans."""
         traj = self.mp.plan_cspace(goal_js, state)
         if (traj is None or not _flag(traj.success, any_ok=True)) and self._tray_names():
             # The trays are solid blocks here and hollow in the scene: a hand can rest inside one (the left hand
@@ -471,10 +483,36 @@ class CuroboPlanner:
             traj = self._without(self._tray_names(), lambda: self.mp.plan_cspace(goal_js, state))
             if traj is not None and _flag(traj.success, any_ok=True):
                 self.ready_note = "planned without the trays"
-        if traj is None or not _flag(traj.success, any_ok=True):
-            start = [round(v, 3) for v in q.reshape(-1).tolist()]
-            raise Unreachable(f"no collision-free joint path to the ready {arm} arm from {start}")
-        return self._trajectory(traj)
+        return traj if traj is not None and _flag(traj.success, any_ok=True) else None
+
+    def _ready_after_lift(self, arm, q_by_name, state, goal_js):
+        """READY_LIFT straight up out of the cuboids the start touches, then the joint path to ready. None if no use.
+
+        The robot is not reset between layouts, and the next one can start with a hand lying on the table: the left
+        palm 2.7 cm into the table and 5.1 cm into tray_center, and neither arm planned to ready, so the layout scored
+        nothing (eval --layouts 3, 2026-11-09). Switching the table off for the whole joint path could sweep the arm
+        through it; only the vertical leg goes without it, as a linear lift does.
+        """
+        touching = self._touching(q_by_name)
+        if not touching:
+            return None
+        goal = self.mp.compute_kinematics(state).tool_poses.clone().as_goal()
+        i = goal.tool_frames.index(TCP_LINK[arm])
+        goal.position[0, 0, i, 0, 2] += READY_LIFT
+        try:
+            names, up, dt = self._without(touching, lambda: self._plan_linear(arm, goal, state))
+        except Unreachable:
+            return None
+        traj = self._ready_cspace(goal_js, self._chain_state(names, up[-1], state))
+        if traj is None:
+            return None
+        rest_names, rest, _ = self._trajectory(traj)
+        if rest_names != names:  # both come from the same motion generator; map by name all the same
+            by_name = [dict(zip(rest_names, w)) for w in rest]
+            rest = [[w.get(n, up[-1][k]) for k, n in enumerate(names)] for w in by_name]
+        self.ready_note = ", ".join(filter(None, (
+            f"lifted {READY_LIFT * 100:.0f} cm out of {', '.join(touching)} first", self.ready_note)))
+        return names, up + rest, dt
 
     def _without(self, names, plan):
         """Run `plan` with these cuboids switched off in the collision world."""

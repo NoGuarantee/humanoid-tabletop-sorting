@@ -508,14 +508,37 @@ def plan_grasps(obj, scene, db):
     return out
 
 
+def place_point(container, inset, margin):
+    """Drop point in the tray opening, `inset` from the centre towards the robot (pelvis origin).
+
+    The side trays lie at the edge of the reach: above tray_left (y 0.69) the left arm got only to y 0.63-0.65 and
+    TRANSFER failed with the object in the hand (eval --layouts 3, 2026-11-09). The shift stays `margin` inside the
+    footprint `size` turned by the tray yaw; an unknown size gives the centre.
+    """
+    c = container.pose.position
+    d = math.hypot(c.x, c.y)
+    if d < 1e-6 or inset <= 0.0:
+        return c.x, c.y
+    dx, dy = -c.x / d * inset, -c.y / d * inset
+    o = container.pose.orientation
+    yaw = math.atan2(2.0 * (o.w * o.z + o.x * o.y), 1.0 - 2.0 * (o.y * o.y + o.z * o.z))
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    lx, ly = cy * dx + sy * dy, -sy * dx + cy * dy  # into the tray frame
+    hx = max(0.0, container.size.x / 2.0 - margin)
+    hy = max(0.0, container.size.y / 2.0 - margin)
+    lx, ly = max(-hx, min(hx, lx)), max(-hy, min(hy, ly))
+    return c.x + cy * lx - sy * ly, c.y + sy * lx + cy * ly
+
+
 def plan_place(arm, container, db):
-    """Drop above the centre of a tray. Tubes into slots: TODO (milestone M4)."""
+    """Drop above a tray, a little towards the robot from its centre. Tubes into slots: TODO (milestone M4)."""
     p = db.get("place", {})
     c = container.pose.position
+    x, y = place_point(container, p.get("inset", 0.0), p.get("rim_margin", 0.06))
     q = top_down(0.0)
     above = c.z + p.get("approach_height", 0.20)  # fingertips above the opening; tcp_at raises the palm
     return PlacePlan(arm=arm,
-                     approach=tcp_at(c.x, c.y, above, q),
-                     release=tcp_at(c.x, c.y, c.z + p.get("release_height", 0.10), q),
-                     retreat=tcp_at(c.x, c.y, above, q),
+                     approach=tcp_at(x, y, above, q),
+                     release=tcp_at(x, y, c.z + p.get("release_height", 0.10), q),
+                     retreat=tcp_at(x, y, above, q),
                      waist_yaw=0.0)

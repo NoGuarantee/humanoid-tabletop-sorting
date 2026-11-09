@@ -7,6 +7,8 @@ from typing import Optional
 class State(str, Enum):
     WAIT = 'WAIT'
     VERIFY_EMPTY = 'VERIFY_EMPTY'
+    OPEN_HANDS = 'OPEN_HANDS'
+    ARMS_READY = 'ARMS_READY'
     LOOK_TABLE = 'LOOK_TABLE'
     OBSERVE = 'OBSERVE'
     OPEN = 'OPEN'
@@ -155,6 +157,9 @@ class Context:
     arm_out: bool = False
     # RETREAT is done; the look that follows checks the placement (VERIFY_PLACE) instead of a new OBSERVE.
     place_look: bool = False
+    # Start steps still to run, (OPEN_HANDS | ARMS_READY, arm) one per operation, and whether they already ran.
+    start_steps: list = field(default_factory=list)
+    start_cleared: bool = False
     last_recovery: str = ''
     reason: str = ''
     blocked: bool = False
@@ -178,3 +183,5 @@ class Effect:
     target: Optional[Object] = None
     destination: str = ''
     slot: Optional[int] = None
+    # OPEN_HANDS / ARMS_READY: the hand to open, the arm to raise.
+    arm: str = ''

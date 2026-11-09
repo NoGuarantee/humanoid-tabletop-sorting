@@ -43,3 +43,5 @@ by_name:
 place:
   approach_height: 0.20  # above the tray opening centre
   release_height: 0.10
+  inset: 0.06       # drop point from the tray centre towards the robot: side trays are at the edge of the reach
+  rim_margin: 0.06  # the drop point stays this far inside the tray footprint

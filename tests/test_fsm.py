@@ -101,6 +101,7 @@ class MissionTests(unittest.TestCase):
             with self.subTest(state=state):
                 f = Fake()
                 f.until(state)
+                f.c.start_cleared = True  # an unknown hand at the start is opened and raised first: see the test below
                 n = len(f.commands)
                 f.answer(Evidence(f.sim, source='fake'))
                 # Before the lift an unknown hand is measured again in RECOVER, still without motion.
@@ -108,6 +109,41 @@ class MissionTests(unittest.TestCase):
                 self.assertEqual([e.phase for e in f.commands[n:]],
                                  [State.RECOVER] if state == State.VERIFY_GRASP else [])
                 self.assertEqual(f.c.hand, Hand.UNKNOWN)
+
+    def test_unknown_hands_at_the_start_are_opened_and_raised_once(self):
+        f = Fake()
+        self.assertEqual(f.c.state, State.VERIFY_EMPTY)
+        n = len(f.commands)
+        f.answer(Evidence(f.sim, source='fake'))
+        f.answer(ok=False, stopped=False)  # a hand that did not open is left to VERIFY_EMPTY
+        for _ in range(5):
+            f.answer()
+        # motion plans nothing without the table plane from a scene: look before raising the arms
+        self.assertEqual([(e.phase, e.arm) for e in f.commands[n:]],
+                         [(State.OPEN_HANDS, 'left'), (State.OPEN_HANDS, 'right'), (State.LOOK_TABLE, ''),
+                          (State.OBSERVE, ''), (State.ARMS_READY, 'left'), (State.ARMS_READY, 'right'),
+                          (State.VERIFY_EMPTY, '')])
+        f.answer(Evidence(f.sim, source='fake'))
+        self.assertEqual(f.c.state, State.DONE)
+        self.assertEqual(f.c.reason, 'physical_unknown')
+
+    def test_arm_that_cannot_reach_ready_is_left_to_the_check(self):
+        f = Fake()
+        f.answer(Evidence(f.sim, source='fake'))
+        for _ in range(4):
+            f.answer()
+        self.assertEqual(f.c.state, State.ARMS_READY)
+        f.send(Event('REJECTED', f.c.active.id, 'Unreachable', ok=False, stopped=True))
+        self.assertEqual((f.c.state, f.commands[-1].arm), (State.ARMS_READY, 'right'))
+
+    def test_opened_hands_continue_the_mission(self):
+        f = Fake()
+        f.answer(Evidence(f.sim, source='fake'))
+        f.until(State.LOOK_TABLE)
+        plain = Fake().run()
+        c = f.run()
+        self.assertEqual((c.reason, sorted(i for i, h in c.history.items() if h.placed)),
+                         (plain.reason, sorted(i for i, h in plain.history.items() if h.placed)))
 
     def test_loss_after_lift_keeps_history_and_reobserves(self):
         f = Fake()
@@ -138,9 +174,21 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(f.c.state, State.LIFT)
         self.assertEqual(f.c.history['a'].lift_attempts, 2)
         f.answer()
+        n = len(f.commands)
         f.answer(Evidence(f.sim, Hand.HOLDING, 'a', lifted=False, source='measured_contact'))
-        self.assertEqual(f.c.reason, 'lift_unconfirmed')
+        # Not done with the hand shut on it: the object is put down where it is and never picked again.
+        self.assertEqual([(e.phase, e.arm) for e in f.commands[n:]], [(State.OPEN_HANDS, 'left')])
+        self.assertEqual(f.c.last_recovery, 'lift_unconfirmed')
+        f.answer()
+        f.answer()
+        self.assertEqual(f.c.state, State.VERIFY_EMPTY)
+        f.answer()
+        self.assertNotEqual(f.c.state, State.DONE)
+        self.assertEqual(f.c.history['a'].attempts, f.c.config.max_attempts)
         self.assertFalse(any(e.phase == State.RELEASE for e in f.commands))
+        c = f.run()
+        self.assertFalse(c.history['a'].placed)
+        self.assertTrue(c.history['b'].placed)
 
     def test_retreat_precedes_visual_placement(self):
         f = Fake()

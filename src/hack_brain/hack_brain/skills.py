@@ -22,6 +22,9 @@ from .grasp_planner import FINGERTIP, flat_hold_point, plan_grasps, plan_place, 
 # 2 cm was too far: a later descent timed out 1.86 cm short, still against the object, and the fingers
 # closed on nothing. 1.5 cm keeps the arrived attempt and rejects that one.
 GRASP_POS_TOL = 0.015
+# Head yaw for a side look. The side trays sit near the 43 degree edge of the 86 degree head camera straight ahead;
+# turned 0.6 rad (34 degrees) the frame covers from -9 to 77 degrees.
+HEAD_SIDE_YAW = 0.6
 # Pre-grasp and above-tray poses are in free air, and the linear move after them plans from the measured pose.
 # An approach that stopped 1.01 cm off was rejected at the 1 cm default and cost the attempt (eval 2026-11-08).
 FREE_POS_TOL = 0.02
@@ -63,7 +66,7 @@ class Skills:
         if phase == State.LOOK_TABLE:
             return 'joints', MoveJoints.Goal(
                 joints=['head_pitch_joint', 'head_yaw_joint', 'body_yaw_joint'],
-                positions=[0.4, 0.0, 0.0])
+                positions=[0.4, {'left': HEAD_SIDE_YAW, 'right': -HEAD_SIDE_YAW}.get(effect.arm, 0.0), 0.0])
         if phase == State.OPEN_HANDS:  # at the start: the previous layout may have left a hand shut
             return 'hand', Hand.Goal(hand=effect.arm, preset='open', force=0.0)
         if phase == State.ARMS_READY:  # then up off the table and whatever the new layout put under the hand

@@ -1,9 +1,9 @@
 import unittest
 from dataclasses import replace
-from hack_brain.context import Context, Config, Event, Evidence, Hand, Lift, Object, Scene, State
+from hack_brain.context import Context, Config, Container, Event, Evidence, Hand, Lift, Object, Scene, State
 from hack_brain.fsm import transition
 from hack_brain.policies import destinations
-from hack_brain.task import parse_task
+from hack_brain.task import TaskSpec, parse_task
 from fakes import Fake, sort_spec, tubes_spec
 
 
@@ -311,6 +311,34 @@ class MissionTests(unittest.TestCase):
         c = f.run()
         self.assertEqual([x.target.id for x in f.commands if x.phase == State.OPEN], ['b'])
         self.assertNotIn('a', [k for k, h in c.history.items() if h.attempts])
+
+    def test_trays_out_of_view_are_looked_for_to_the_side(self):
+        spec = TaskSpec('sort3', 'sort', categories={'figure': 'tray_left', 'dish': 'tray_right', 'box': 'tray_center'},
+                        objects={'a': 'figure', **{str(i): 'dish' for i in range(8)}})
+        f = Fake(spec=spec, objects=[Object('a', 'figure', name='a', side='left')])
+        center, left = Container('tray_center', 'tray'), Container('tray_left', 'tray', side='left')
+        f.until(State.OBSERVE)
+        f.answer(Scene(f.sim, f.objects, (center,)))
+        self.assertEqual((f.c.state, f.commands[-1].arm), (State.LOOK_TABLE, 'left'))
+        f.answer()
+        f.answer(Scene(f.sim, (), (center, left)))  # clients add the trays seen before
+        self.assertEqual((f.c.state, f.commands[-1].arm), (State.LOOK_TABLE, 'right'))
+        f.answer()
+        f.answer(Scene(f.sim, (), (center, left)))  # nothing on the right either: it is not looked for again
+        self.assertEqual((f.c.state, f.commands[-1].arm), (State.LOOK_TABLE, ''))
+        f.answer()
+        f.answer(Scene(f.sim, f.objects, (center, left)))
+        self.assertEqual((f.c.state, f.commands[-1].target.id), (State.OPEN, 'a'))
+        self.assertEqual(f.c.looked_sides, {'left', 'right', ''})
+
+    def test_no_side_look_for_the_disabled_arm(self):
+        spec = TaskSpec('sort2', 'sort', categories={'figure': 'tray_left', 'dish': 'tray_right'},
+                        objects={'a': 'figure', **{str(i): 'dish' for i in range(8)}})
+        f = Fake(spec=spec, objects=[Object('a', 'figure', name='a', side='left')])
+        f.c.disabled_arm = 'right'
+        f.until(State.OBSERVE)
+        f.answer(Scene(f.sim, f.objects, (Container('tray_left', 'tray', side='left'),)))
+        self.assertEqual(f.c.state, State.OPEN)
 
     def test_wrong_destination_not_success(self):
         f = Fake()

@@ -170,6 +170,10 @@ class Context:
     start_steps: list = field(default_factory=list)
     start_cleared: bool = False
     disabled_arm: str = ''  # a hand that stays shut after every free: the mission goes on with the other one
+    # LOOK_TABLE with the head turned to this side ('left' | 'right') to find a tray cut off by the frame; the
+    # sides already looked at, once per mission (clients remember the trays a look showed).
+    look_side: str = ''
+    looked_sides: set = field(default_factory=set)
     unknown_frees: int = 0
     last_recovery: str = ''
     reason: str = ''
@@ -194,5 +198,5 @@ class Effect:
     target: Optional[Object] = None
     destination: str = ''
     slot: Optional[int] = None
-    # OPEN_HANDS / ARMS_READY: the hand to open, the arm to raise.
+    # OPEN_HANDS / ARMS_READY: the hand to open, the arm to raise. LOOK_TABLE: the side to turn the head to.
     arm: str = ''

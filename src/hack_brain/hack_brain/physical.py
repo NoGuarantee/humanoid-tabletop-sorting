@@ -31,6 +31,9 @@ class PhysicalVerifier:
         self.target_id = ''
         self.arm = None
         self.closure = None
+        # Last closing target per arm. OPEN clears self.closure for the new grasp, but the other hand may
+        # still be shut on nothing after a slipped attempt; VERIFY_EMPTY needs its target to read it empty.
+        self.closures = {}
         self.baseline = None
         self.contact_seen = False
         self.lifted = False
@@ -39,6 +42,7 @@ class PhysicalVerifier:
 
     def closing(self, target, arm, closure, now):
         self.target_id, self.arm, self.closure = target.id, arm, tuple(closure)
+        self.closures[arm] = self.closure
         self.baseline = self.tcp(arm, now)
         self.contact_seen = self.lifted = self.contact_lost = False
         self.unsure_since = None
@@ -46,7 +50,10 @@ class PhysicalVerifier:
     def read(self, c, scene=None):
         since = c.active.sim_start
         if c.state == State.VERIFY_EMPTY:
-            hands = [self.measurements.hand(side,c.sim,since) for side in ('left','right')]
+            # A hand closed to its target with nothing in it is empty too: the right hand left shut by a slipped
+            # cartridge read UNKNOWN here after the left placed it, and ended the mission with 261 s left
+            # (eval 2026-11-09).
+            hands = [self.measurements.hand(side,c.sim,since,self.closures.get(side)) for side in ('left','right')]
             if all(h is not None and h[1] == 'EMPTY' for h in hands):
                 return Evidence(min(h[0] for h in hands), Hand.EMPTY, source='measured_open_hands')
             return None

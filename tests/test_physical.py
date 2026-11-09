@@ -185,5 +185,18 @@ class EvidenceTests(unittest.TestCase):
         fill(self.m,'left');self.assertIsNone(self.v.read(self.c))
         fill(self.m,'right');self.assertEqual(self.v.read(self.c).hand,Hand.EMPTY)
 
+    def test_hand_closed_on_nothing_reads_empty_after_the_other_arm_placed(self):
+        # The left pinch slipped and stayed shut; the next attempt went with the right arm (OPEN clears closure).
+        self.v.closure=None;self.v.arm='right'
+        self.c.state=State.VERIFY_EMPTY
+        fill(self.m,'left',1,self.target)
+        fill(self.m,'right')
+        self.assertEqual(self.v.read(self.c).hand,Hand.EMPTY)
+
+    def test_hand_shut_on_an_object_is_not_empty(self):
+        self.c.state=State.VERIFY_EMPTY
+        self.contact();fill(self.m,'right')
+        self.assertIsNone(self.v.read(self.c))
+
 
 if __name__=='__main__': unittest.main()

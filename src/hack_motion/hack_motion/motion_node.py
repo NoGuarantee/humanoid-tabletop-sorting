@@ -6,6 +6,7 @@ MoveTcp:    cuRobo (parameter `planner`, default curobo). `direct` is one IK sol
             joint-space path to it, `linear` is a Cartesian trajectory. The reported error is the TF of
             the TCP, not the joint error.
 """
+import copy
 import math
 import json
 import os
@@ -612,15 +613,47 @@ class MotionNode(Node):
             raise RuntimeError(f"the {other} arm did not reach ready: {msg} (err {err:.3f})")
         return True
 
-    def tcp_error(self, arm, target):
-        """Position (m) and rotation (rad) of the TCP tf against the goal, or (None, None)."""
-        tf = None
+    def tcp_tf(self, arm):
+        """The TCP transform in `pelvis`, or None when tf has none within a second."""
         for _ in range(20):
             try:
-                tf = self.tf_buffer.lookup_transform("pelvis", TCP_LINK[arm], rclpy.time.Time())
-                break
+                return self.tf_buffer.lookup_transform("pelvis", TCP_LINK[arm], rclpy.time.Time())
             except Exception:
                 time.sleep(0.05)
+        return None
+
+    def _carry(self, g):
+        """Holding an object: straight up to the goal height over where the TCP is, then straight across.
+
+        A joint-space path from the grasp rolls the hand on the way, and a pinch lets go: the cartridge fell
+        at the end of a direct TRANSFER (2026-11-09). Each leg keeps the goal orientation. When a straight leg
+        has no plan or stops short, the rest goes as `direct`, which is what TRANSFER did before.
+        """
+        tf = self.tcp_tf(g.arm)
+        legs = []
+        if tf is not None and tf.transform.translation.z < g.target.position.z - 0.01:
+            up = copy.deepcopy(g.target)
+            up.position.x = tf.transform.translation.x
+            up.position.y = tf.transform.translation.y
+            legs.append(up)
+        legs.append(g.target)
+        for target in legs:
+            leg = MoveTcp.Goal(arm=g.arm, target=target, mode="linear", pos_tol=g.pos_tol, rot_tol=g.rot_tol,
+                               max_time=g.max_time)
+            result = self.move_tcp(leg)
+            if self.cancelled():
+                return MoveTcp.Result(success=False, message='cancelled')
+            if not result.success:
+                self.get_logger().warn(f"move_tcp {g.arm} carry: straight leg {result.message}, the rest direct")
+                break
+        else:
+            return result
+        return self.move_tcp(MoveTcp.Goal(arm=g.arm, target=g.target, mode="direct", pos_tol=g.pos_tol,
+                                          rot_tol=g.rot_tol, max_time=g.max_time))
+
+    def tcp_error(self, arm, target):
+        """Position (m) and rotation (rad) of the TCP tf against the goal, or (None, None)."""
+        tf = self.tcp_tf(arm)
         if tf is None:
             return None, None
         t = tf.transform.translation
@@ -646,8 +679,10 @@ class MotionNode(Node):
         if backend != "curobo":
             return MoveTcp.Result(success=False, message=f"not_implemented: planner {backend}")
         mode = g.mode or "direct"
-        if mode not in ("direct", "linear", "ready"):
+        if mode not in ("direct", "linear", "ready", "carry"):
             return MoveTcp.Result(success=False, message=f"unknown mode {mode}")
+        if mode == "carry":
+            return self._carry(g)
         pos_tol = g.pos_tol or 0.01
         rot_tol = g.rot_tol or 0.1
         with self._tcp_lock:

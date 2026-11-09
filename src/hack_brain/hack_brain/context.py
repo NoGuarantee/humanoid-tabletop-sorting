@@ -126,6 +126,9 @@ class Config:
     # Perception finds 1-3 of the trays per call: an empty answer is looked at again before giving up.
     max_empty_observations: int = 2
     min_confidence: float = 0.6
+    # Names left untouched: `skip: true` in grasp_db.yaml. Lifted and dropped is -10, untouched is 0 (SCORING.md).
+    # Not a ROS parameter: brain_node fills it from the grasp db.
+    skip_names: frozenset = frozenset()
 
 
 @dataclass

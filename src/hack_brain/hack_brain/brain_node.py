@@ -17,7 +17,7 @@ from std_msgs.msg import Empty, String
 from .clients import Clients
 from .context import Config, Context, Event, State
 from .fsm import transition
-from .grasp_planner import load_db
+from .grasp_planner import load_db, skip_names
 from .task import parse_task
 
 
@@ -28,19 +28,24 @@ class Brain(Node):
         self.sequence = itertools.count()
         self.clock_seen = threading.Event()
         self.done_attempts = 0
-        values = {}
+        self.declare_parameter('grasp_db', os.path.join(
+            get_package_share_directory('hack_brain'), 'config', 'grasp_db.yaml'))
+        db = load_db(self.get_parameter('grasp_db').value)
+        values = {'skip_names': skip_names(db)}
         for name in Config.__dataclass_fields__:
+            if name in values:
+                continue
             self.declare_parameter(name, getattr(Config(), name))
             values[name] = self.get_parameter(name).value
         self.mission_context = Context(config=Config(**values))
-        self.declare_parameter('grasp_db', os.path.join(
-            get_package_share_directory('hack_brain'), 'config', 'grasp_db.yaml'))
+        if values['skip_names']:
+            self.get_logger().info('left untouched: ' + ', '.join(sorted(values['skip_names'])))
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
                              reliability=ReliabilityPolicy.RELIABLE)
         self.create_subscription(String, '/sim/task', lambda m: self.emit(Event('TASK', data=m.data)), latched)
         self.create_subscription(Clock, '/clock', lambda m: self.clock_seen.set(), 10)
         self.done_pub = self.create_publisher(Empty, '/sim/task/done', 10)
-        self.adapters = Clients(self, self.emit, load_db(self.get_parameter('grasp_db').value))
+        self.adapters = Clients(self, self.emit, db)
         self.get_logger().info('capabilities: ' + self.adapters.unavailable)
 
     def emit(self, event):

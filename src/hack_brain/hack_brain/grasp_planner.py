@@ -124,6 +124,11 @@ def load_db(path):
         return yaml.safe_load(f)
 
 
+def skip_names(db):
+    """Objects with `skip: true` under by_name: brain does not pick them."""
+    return frozenset(n for n, p in (db.get("by_name") or {}).items() if p and p.get("skip"))
+
+
 def params_for(db, name, category):
     p = dict(db.get("default", {}))
     p.update(db.get("by_category", {}).get(category, {}))

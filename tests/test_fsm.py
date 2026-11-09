@@ -279,6 +279,12 @@ class MissionTests(unittest.TestCase):
         f.answer()
         self.assertEqual(f.c.target.id, 'b')
 
+    def test_skipped_name_is_never_picked(self):
+        f = Fake(config=Config(skip_names=frozenset({'a'})))
+        c = f.run()
+        self.assertEqual([x.target.id for x in f.commands if x.phase == State.OPEN], ['b'])
+        self.assertNotIn('a', [k for k, h in c.history.items() if h.attempts])
+
     def test_wrong_destination_not_success(self):
         f = Fake()
         f.until(State.VERIFY_PLACE)

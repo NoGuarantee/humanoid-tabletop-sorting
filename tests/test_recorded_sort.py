@@ -303,6 +303,7 @@ class RecordedClientTests(unittest.TestCase):
         self.client.execute_motion = Mock()
         self.client.motion_wait = None
         self.client.next_model_request = 0.
+        self.client.model_pose_error = ''
         self.effect = Effect('RUN', 7, State.OPEN, Object(RHINO['object_name'], 'figure', name=RHINO['object_name']), 'blue')
         self.context = Context(state=State.OPEN, sim=10.1, active=Operation(7, State.OPEN, 9.9, 0))
         self.context.history[self.effect.target.id] = History(attempts=1)
@@ -351,6 +352,19 @@ class RecordedClientTests(unittest.TestCase):
         self.client.poll_model_pose(self.context)
         self.client.execute_motion.assert_not_called()
         self.assertEqual(self.events[-1].kind, 'REJECTED')
+
+    def test_pending_poll_does_not_erase_ambiguous_pose_failure(self):
+        data = observation()
+        data['objects'].append(deepcopy(data['objects'][0]))
+        self.response(data)
+        self.client.poll_model_pose(self.context)
+        reason = self.client.model_pose_error
+        self.assertIn('ambiguous', reason)
+        self.client.model_future = Future()
+        self.client.model_future.set_result(NS(success=False, message='{"status":"awaiting_fresh_pose"}'))
+        self.client.poll_model_pose(self.context)
+        self.assertEqual(self.client.model_pose_error, reason)
+        self.client.execute_motion.assert_not_called()
 
     def test_pose_expires_while_waiting_for_action_server(self):
         self.client.skills.needs_model_pose.return_value = True

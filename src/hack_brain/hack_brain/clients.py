@@ -298,7 +298,8 @@ class Clients:
                 if response.success:
                     data = payload
                     observed_pose(data, context.sim, int(context.active.sim_start * 1e9), object_name=effect.target.name)
-                else:
+                elif payload.get('status') != 'awaiting_fresh_pose' or not self.model_pose_error:
+                    # A later pending poll must not erase the actual pose rejection.
                     self.model_pose_error = payload.get('status', 'unsuccessful_response')
             except Exception as exc:
                 self.model_pose_error = str(exc)

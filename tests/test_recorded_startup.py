@@ -68,8 +68,10 @@ class RecordedStartupTests(unittest.TestCase):
             self.assertEqual(launch()['NSSR_RECORDED_GRASPS'],'false')
             bundle = root/'weights'/('rgbd-'+DIGEST[:12]);bundle.mkdir();(bundle/'bundle.json').write_text('{}')
             result=launch()
-            self.assertEqual(result['NSSR_RECORDED_GRASPS'],'true')
+            self.assertEqual(result['NSSR_RECORDED_GRASPS'],'false')
             self.assertEqual(result['NSSR_RECORDED_OBJECTS'],'philips')
+            self.assertEqual(result['NSSR_RGBD_ON_DEMAND'],'true')
+            self.assertEqual(launch(NSSR_RECORDED_GRASPS='true')['NSSR_RECORDED_GRASPS'],'true')
             self.assertEqual(launch(NSSR_RECORDED_GRASPS='false')['NSSR_RECORDED_GRASPS'],'false')
             self.assertEqual(launch(NSSR_RECORDED_OBJECTS='brother')['NSSR_RECORDED_OBJECTS'],'brother')
 

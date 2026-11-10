@@ -14,6 +14,7 @@ from .geometry import transform_matrix
 from .rgbd_frames import CAMERAS, PairBuffer, decode_pair, decode_view, stamp_ns
 from .rgbd_response import response
 from .rgbd_worker import PoseWorker, is_fresh
+from .rgbd_robot_filter import JointStateBuffer
 
 INPUT_AGE_NS = 350_000_000
 SCENE_AGE_NS = 1_000_000_000
@@ -26,7 +27,7 @@ WORKER_JOB_LIMIT_S = 20.
 
 class ModelPoseService:
     def __init__(self, node, tf, model_dir, pool_override, model_poses, torch_threads, *, lock, clear_baseline,
-                 on_demand=False, device='cpu'):
+                 on_demand=False, device='cpu', robot_self_filter=False):
         if pool_override not in (0, 4, 6):
             raise ValueError("rgbd_pool must be 0 (from task), 4 or 6")
         if not 1 <= torch_threads <= 4:
@@ -39,7 +40,9 @@ class ModelPoseService:
         self.lock = lock
         self.clear_baseline = clear_baseline
         self.on_demand = on_demand
-        self.worker_config = model_dir, model_poses, torch_threads, device
+        self.robot_self_filter=bool(robot_self_filter)
+        self.robot_joints=JointStateBuffer() if self.robot_self_filter else None
+        self.worker_config = model_dir, model_poses, torch_threads, device, self.robot_self_filter
         self.worker = PoseWorker(*self.worker_config)
         self.worker_restarts = 0
         self.state = "worker_loading"
@@ -57,6 +60,11 @@ class ModelPoseService:
         self._init_diagnostics()
         self.pump_group = MutuallyExclusiveCallbackGroup()
         self.calls = MutuallyExclusiveCallbackGroup()
+        if self.robot_self_filter:
+            from sensor_msgs.msg import JointState
+            self.joint_group=MutuallyExclusiveCallbackGroup()
+            self.joint_subscription=node.create_subscription(JointState,'/joint_states',self.store_joint_state,50,
+                                                             callback_group=self.joint_group)
         threshold = JumpThreshold(min_forward=None, min_backward=Duration(nanoseconds=-1), on_clock_change=True)
         self.clock_jump = node.get_clock().create_jump_callback(threshold, post_callback=self.reset_on_clock_jump)
         self.timer = node.create_timer(.05, self.pump, callback_group=self.pump_group,
@@ -128,6 +136,7 @@ class ModelPoseService:
         self.pose_consumed = False
         self.minimum_pose_stamp_ns = 0
         self.want_pose = False
+        if getattr(self,'robot_joints',None) is not None:self.robot_joints.clear()
         self._diag_frame_received = self._diag_frame_stamp = self._diag_pair_stamp = None
 
     def reset_on_clock_jump(self, _jump):
@@ -182,6 +191,21 @@ class ModelPoseService:
 
     def now_ns(self):
         return self.node.get_clock().now().nanoseconds
+
+    def store_joint_state(self,msg):
+        with self.lock:
+            self.robot_joints.add(stamp_ns(msg.header),list(msg.name),list(msg.position))
+
+    def bind_robot_state(self,sensors,views,key):
+        with self.lock:
+            if key[0]!=self.generation:raise ValueError('robot_filter_epoch_changed')
+            witness=self.robot_joints.at(key[1])
+            witness['generation']=key[0]
+        for camera,sensor,view in zip(CAMERAS,sensors,views):
+            if sensor is not None:
+                sensor.update(camera=camera,stamp_ns=key[1],robot_joint_state=dict(witness),
+                              optical_frame_id=view['depth'].header.frame_id)
+        return sensors
 
     def pool(self):
         source = self.task.get("objects_from") if isinstance(self.task, dict) else None
@@ -344,6 +368,8 @@ class ModelPoseService:
             else:
                 sensors = [None if view is None else
                            dict(decode_view(view), T=self.transform_at(view["depth"].header)) for view in views]
+            if getattr(self,'robot_self_filter',False):
+                sensors=self.bind_robot_state(sensors,views,key)
         except (TransformException, ValueError) as exc:
             # The matching TF or next complete exposure may arrive before the next pump.
             self._diag_pump_stage = 'decode_tf_unavailable'

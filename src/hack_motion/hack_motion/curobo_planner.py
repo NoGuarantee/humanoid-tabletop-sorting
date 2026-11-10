@@ -207,9 +207,14 @@ class CuroboPlanner:
         self.sync_world(target)
         held = self._held(q_by_name)
         if not held:
-            return self._plan_in_world(arm, target, q_by_name, mode, pos_tol, rot_tol)
-        result = self._without(held, lambda: self._plan_in_world(arm, target, q_by_name, mode, pos_tol, rot_tol))
-        self.scene_note += f", without {', '.join(held)} (carried, the start touches them)"
+            result = self._plan_in_world(arm, target, q_by_name, mode, pos_tol, rot_tol)
+        else:
+            result = self._without(held, lambda: self._plan_in_world(arm, target, q_by_name, mode, pos_tol, rot_tol))
+            self.scene_note += f", without {', '.join(held)} (carried, the start touches them)"
+        if keep_orientation and self.carrying and mode == 'linear':
+            goal, state = self._goal(arm, target, q_by_name)
+            if self._max_turn(arm, result, goal, state, False) > rot_tol:
+                raise Unreachable('recorded carry linear path changes the object orientation')
         return result
 
     def _held(self, q_by_name):

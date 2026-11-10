@@ -136,6 +136,7 @@ class Config:
     # Not a ROS parameter: brain_node fills it from the grasp db.
     skip_names: frozenset = frozenset()
     postlift_names: frozenset = frozenset()  # recorded profiles with a separate closure above the table
+    recorded_arms: tuple = ()  # (object name, demonstrated hands); tray side does not forbid a cross-table carry
     # (name, floor) pairs: `min_confidence` under by_name in grasp_db.yaml, below min_confidence for a name whose
     # size sits far from every other category in its pool. Filled by brain_node like skip_names.
     confidence_floors: tuple = ()

@@ -299,7 +299,7 @@ class Clients:
                 try:
                     self.skills.prepare_recorded(effect, self.scenes['table'], data, context.sim,
                                                  int(context.active.sim_start * 1e9),
-                                                 context.history[effect.target.id].attempts)
+                                                 context.history[effect.target.id].attempts, context.disabled_arm)
                     self.node.get_logger().info('recorded grasp: ' + json.dumps({
                         'object': effect.target.name, 'profile': self.skills.grasp.profile_key,
                         'arm': self.skills.grasp.arm, 'phase': effect.phase.value,

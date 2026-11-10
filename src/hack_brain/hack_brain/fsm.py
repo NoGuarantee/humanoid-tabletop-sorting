@@ -60,14 +60,15 @@ def _side_to_look(c, scene):
     """The side of a tray the task names and no look has shown, not looked at yet; '' when there is none.
 
     The head camera straight ahead cut off the side trays: perception saw only tray_center, and the objects for the
-    others were never picked (eval 2026-11-09). tray_left is on the left (TASKS.md). A side whose arm is disabled is
-    not worth the look: nothing goes to its tray."""
+    others were never picked (eval 2026-11-09). A recorded hand can also carry
+    across the table, so its opposite tray remains relevant with one arm disabled."""
     if c.spec is None or c.spec.kind != 'sort':
         return ''
     seen = {x.id for x in scene.containers if x.kind == 'tray'}
+    cross_table = any(any(arm != c.disabled_arm for arm in arms) for _, arms in c.config.recorded_arms)
     for tray in sorted(set(c.spec.categories.values()) - seen):
         side = 'left' if 'left' in tray else 'right' if 'right' in tray else ''
-        if side and side not in c.looked_sides and side != c.disabled_arm:
+        if side and side not in c.looked_sides and (side != c.disabled_arm or cross_table):
             return side
     return ''
 

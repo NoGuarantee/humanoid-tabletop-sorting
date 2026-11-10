@@ -67,11 +67,11 @@ class Skills:
         return (effect.phase in (State.OPEN, State.DESCEND) and effect.target is not None
                 and recorded_grasps.uses_recorded(self.db, effect.target.name))
 
-    def prepare_recorded(self, effect, scene, data, now, after_stamp_ns, attempt=1):
+    def prepare_recorded(self, effect, scene, data, now, after_stamp_ns, attempt=1, disabled_arm=''):
         obj = next(o for o in scene.objects if (o.name or o.track_id) == effect.target.id)
         container = next((x for x in scene.containers if x.id == effect.destination and x.kind == 'tray'), None)
         key = self.grasp.profile_key if effect.phase == State.DESCEND else None
-        cand = recorded_grasps.candidate(data, now, obj, container, self.db, after_stamp_ns, attempt, key)
+        cand = recorded_grasps.candidate(data, now, obj, container, self.db, after_stamp_ns, attempt, key, disabled_arm)
         self.grasp = recorded_grasps.refreshed(self.grasp, cand) if effect.phase == State.DESCEND else cand
 
     def command(self, effect, scene, attempt=1):

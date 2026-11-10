@@ -1,0 +1,148 @@
+{
+  "source": "outputs/grasp_pr9_live_20261108/episode71/live_review/trial02",
+  "source_sha256": {
+    "request.json": "4a83785260c426643f8e096e28600749864c9112a265b63591b681729bb2776f",
+    "result.json": "267aba5d7aca06584024694dad4b5bf9b59809b63e35afb3f5ba7790a2d23df9",
+    "source_manifest.json": "f69d8a17e988902982818fbee97dfd8cefcc2b525c17b2bcabd4e79246ce9fb1"
+  },
+  "request": {
+    "schema": "hack_grasp.request/v1",
+    "object_name": "Schleich_African_Black_Rhino",
+    "destination_id": "tray_left",
+    "profile_id": "Schleich_African_Black_Rhino_catalog_1881683ee5d6fbca_yaw_040_preopen_1c9c167d329c_native_refinement_t72_2_postclosing_contact_v3_yaw_040",
+    "max_attempts": 1,
+    "timeout_s": 300.0,
+    "wall_timeout_s": 480.0,
+    "hand_effort_limit_ratio": 0.6,
+    "placement_yaw_preference_rad": -1.47215,
+    "placement_approach_clearance_m": 0.04,
+    "test_lift_m": 0.047
+  },
+  "observation": {
+    "schema": "hack_perception.model_poses/v1",
+    "status": "ok",
+    "frame_id": "pelvis",
+    "stamp_ns": 85519998088,
+    "exposure_key": {
+      "session_id": "524df9ff307341ec8bb23d953ce50c25",
+      "epoch": 1,
+      "stamp_ns": 85519998088
+    },
+    "objects": [
+      {
+        "name": "Schleich_African_Black_Rhino",
+        "category": "figure",
+        "pose_status": "ok",
+        "T_pelvis_object": [
+          [
+            -0.9953361669001661,
+            -0.06271796423644606,
+            -0.07329646527986877,
+            0.397862859210213
+          ],
+          [
+            0.06278240665584767,
+            -0.9980262190524033,
+            0.00142670896291991,
+            -0.17031053846294125
+          ],
+          [
+            -0.07324127439488491,
+            -0.0031816734592021194,
+            0.997309176072803,
+            -0.15254472923887372
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "center_pelvis_m": [
+          0.39528473887392795,
+          -0.17233287300177805,
+          -0.12302121977257152
+        ],
+        "size_model_m": [
+          0.03978482324630022,
+          0.1286103242635727,
+          0.05932414312301262
+        ],
+        "orientation_mode": "full",
+        "detector_score": 0.9679514765739441,
+        "depth_points": 1300,
+        "fit_rmse_m": 0.0006163461260440617,
+        "depth_supported_views": 2,
+        "instances": {
+          "cam_head": 8,
+          "cam_torso": 3
+        },
+        "exposure_key": {
+          "session_id": "524df9ff307341ec8bb23d953ce50c25",
+          "epoch": 1,
+          "stamp_ns": 85519998088
+        }
+      }
+    ]
+  },
+  "destination": {
+    "id": "tray_left",
+    "kind": "tray",
+    "color": "red",
+    "center_pelvis_m": [
+      0.34734769532782145,
+      0.6902458498979296,
+      -0.08380033739222442
+    ],
+    "yaw_rad": -4.8726110435382e-07,
+    "size_m": [
+      0.22,
+      0.32,
+      0.07
+    ],
+    "T_pelvis_opening": [
+      [
+        0.9975614755046964,
+        4.872611043061852e-07,
+        -0.0697932846959899,
+        0.34734769532782145
+      ],
+      [
+        -1.4617862172757791e-06,
+        0.9999999999021606,
+        -1.3911947485333524e-05,
+        0.6902458498979296
+      ],
+      [
+        0.0697932846823826,
+        1.3980045722240164e-05,
+        0.9975614754078078,
+        -0.08380033739222442
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "exposure_key": {
+      "session_id": "524df9ff307341ec8bb23d953ce50c25",
+      "epoch": 1,
+      "stamp_ns": 85519998088
+    }
+  },
+  "outcome": {
+    "success": false,
+    "reason": "release_not_over_observed_destination",
+    "flags": {
+      "contact_observed": true,
+      "lift_confirmed": true,
+      "hold_confirmed": true,
+      "carry_completed": true,
+      "released": null,
+      "stable_placement_confirmed": null
+    }
+  }
+}

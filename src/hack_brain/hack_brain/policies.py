@@ -54,8 +54,11 @@ def select(c, scene):
             continue
         if c.spec.kind == 'sort' and destination_in_scene(c, scene, obj) is None:
             continue
-        if c.disabled_arm and arm_for(scene, obj, destinations(c.spec, obj)) == c.disabled_arm:
-            continue
+        if c.disabled_arm:
+            arms = dict(c.config.recorded_arms).get(obj.name)
+            if (arms is not None and not any(a != c.disabled_arm for a in arms)
+                    or arms is None and arm_for(scene, obj, destinations(c.spec, obj)) == c.disabled_arm):
+                continue
         candidates.append(obj)
     # Known lifted objects deserve recovery priority. No geometric identity guesses.
     candidates.sort(key=lambda o: (c.history.get(o.id, History()).lift != Lift.LIFTED, o.id))

@@ -79,6 +79,7 @@ class PerceptionNode(Node):
         pool = self.declare_parameter("rgbd_pool", 0).value
         enable_poses = self.declare_parameter("rgbd_enable_model_poses", False).value
         on_demand = self.declare_parameter("rgbd_on_demand", False).value
+        robot_self_filter = self.declare_parameter('rgbd_robot_self_filter', False).value
         device = self.declare_parameter("rgbd_device", os.environ.get('NSSR_RGBD_DEVICE', 'cpu')).value
         self.declare_parameter("rgbd_model_names", "", ParameterDescriptor(read_only=True))
         torch_threads = self.declare_parameter("rgbd_torch_threads", 2).value
@@ -88,7 +89,7 @@ class PerceptionNode(Node):
 
                 self.model_poses = ModelPoseService(self, self.tf, model_dir, pool, enable_poses, torch_threads,
                                                     lock=self.lock, clear_baseline=self.clear_baseline,
-                                                    on_demand=on_demand, device=device)
+                                                    on_demand=on_demand, device=device, robot_self_filter=robot_self_filter)
             except Exception as e:
                 self.get_logger().error(f"could not enable RGB-D model pose service: {e!r}")
         camera_qos = QoSProfile(depth=2, reliability=ReliabilityPolicy.RELIABLE)
@@ -400,12 +401,19 @@ class PerceptionNode(Node):
         timing['trays'] = trays
 
 
+def perception_executor(node):
+    # Main uses eight workers for blocking Perceive and camera/clock delivery.
+    # The additional high-rate encoder reader makes four-worker dispatch
+    # starve fresh camera/clock callbacks. Two workers preserve the concurrent
+    # sensor/TF delivery needed by legacy Perceive's blocking waits.
+    filtered = node.model_poses is not None and node.model_poses.robot_self_filter
+    return MultiThreadedExecutor(num_threads=2 if filtered else 8, context=node.context)
+
+
 def main():
     rclpy.init()
     node = PerceptionNode()
-    # Perceive, the RGB-D pump, the cameras, /tf and /clock each hold a thread at times. With 4, /clock and camera
-    # frames once stopped for over 10 s while a Perceive call waited on them (eval 2026-11-08).
-    executor = MultiThreadedExecutor(num_threads=8)
+    executor = perception_executor(node)
     executor.add_node(node)
     try:
         executor.spin()

@@ -150,6 +150,12 @@
     "commit": "e5da24ff94559913d3545d87e889f31fd71659c9",
     "episode": "E71",
     "catalog_sha256": "d462e15e3c23a754353bc682930cd548a73883a3ecef8aded79c7b082c6a5bbf",
-    "result_sha256": "267aba5d7aca06584024694dad4b5bf9b59809b63e35afb3f5ba7790a2d23df9"
+    "result_sha256": "267aba5d7aca06584024694dad4b5bf9b59809b63e35afb3f5ba7790a2d23df9",
+    "request_sha256": "4a83785260c426643f8e096e28600749864c9112a265b63591b681729bb2776f"
+  },
+  "placement": {
+    "yaw_preference_rad": -1.47215,
+    "approach_clearance_m": 0.04,
+    "release_clearance_m": 0.035
   }
 }

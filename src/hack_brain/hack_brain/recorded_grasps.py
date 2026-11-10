@@ -8,6 +8,8 @@ from geometry_msgs.msg import Quaternion
 
 from hack_motion.recorded_grasp import PROFILES
 from hack_motion.robot import _quat_wxyz
+from hack_motion.recorded_geometry import axis_angle
+from hack_motion.recorded_carry import _minimum_rotating_support
 from .grasp_planner import GraspCandidate, PlacePlan, choose_arm, matrix_from_quat, pose, tcp_from_local
 
 
@@ -32,6 +34,11 @@ def evaluation_db(db, enabled, selection='rhino,brother,philips,nescafe'):
 def postlift_names(db):
     return frozenset(name for name, entry in db.get('by_name', {}).items()
                      if entry and any('postlift' in PROFILES[key] for key in entry.get('recorded_profiles', [])))
+
+
+def recorded_arms(db):
+    return tuple((name, tuple(sorted({PROFILES[key]['hand'] for key in entry['recorded_profiles']})))
+                 for name, entry in db.get('by_name', {}).items() if entry and entry.get('recorded_profiles'))
 
 
 @dataclass
@@ -78,18 +85,25 @@ def targets(object_pose, profile):
     return result
 
 
-def candidate(data, now_s, obj, container, db, after_stamp_ns, attempt=1, profile_key=None):
+def candidate(data, now_s, obj, container, db, after_stamp_ns, attempt=1, profile_key=None, disabled_arm=''):
     world = observed_pose(data, now_s, after_stamp_ns, object_name=obj.name)
     if container is None:
         raise ValueError('recorded_profile_requires_observed_destination')
     side = choose_arm(obj, container)
     keys = db.get('by_name', {}).get(obj.name, {}).get('recorded_profiles', [])
-    choices = [PROFILES[key] for key in keys if PROFILES[key]['hand'] == side and PROFILES[key]['object_name'] == obj.name]
+    choices = [PROFILES[key] for key in keys
+               if PROFILES[key]['hand'] != disabled_arm and PROFILES[key]['object_name'] == obj.name]
     if profile_key:
         choices = [p for p in choices if p['key'] == profile_key]
+    else:
+        # PR9 E71 physically carried right -> tray_left. Prefer the task's side
+        # when demonstrated, but do not invent or require its mirrored grasp.
+        preferred = [p for p in choices if p['hand'] == side]
+        choices = preferred or choices
     if not choices:
         raise ValueError('no_recorded_profile_for_object_and_arm: ' + obj.name + '/' + side)
     profile = choices[min(max(attempt - 1, 0), len(choices) - 1)]
+    side = profile['hand']
     row = next(o for o in data['objects'] if o.get('name') == obj.name)
     center, size = np.asarray(row['center_pelvis_m']), np.asarray(row['size_model_m'])
     if (center.shape != (3,) or size.shape != (3,) or not np.isfinite(center).all()
@@ -129,14 +143,14 @@ def refreshed(previous, current):
 
 
 def place(grasp, container, db):
-    """Put the whole fitted object above the opening while retaining the grasp orientation.
+    """Put the whole fitted object above the opening, applying the recorded placement yaw.
 
     A rigid object-to-hand offset is an assumption, not proof that contact survived the carry.
     Main's contact monitor and post-release RGB-D verifier still decide the outcome.
     """
     p = db.get('place', {})
-    q = grasp.grasp.orientation
-    tcp_rotation = np.asarray(matrix_from_quat(q))
+    initial_rotation = np.asarray(matrix_from_quat(grasp.grasp.orientation))
+    settings = PROFILES[grasp.profile_key].get('placement', {})
     tray_rotation = np.asarray(matrix_from_quat(container.pose.orientation))
     origin = np.array([getattr(container.pose.position, k) for k in 'xyz'])
     size = np.array([getattr(container.size, k) for k in 'xy'])
@@ -145,6 +159,12 @@ def place(grasp, container, db):
             or not np.allclose(tray_rotation.T @ tray_rotation, np.eye(3), atol=1e-6)
             or abs(np.linalg.det(tray_rotation) - 1) > 1e-6):
         raise ValueError('invalid_destination_geometry')
+    # E71 uses a deliberate common yaw about the measured opening normal.
+    # This changes neither the learned grasp nor the object-to-hand transform.
+    angle = settings.get('yaw_preference_rad', 0.)
+    tcp_rotation = axis_angle(tray_rotation[:, 2], angle)[:3, :3] @ initial_rotation
+    w, x, y, z = _quat_wxyz(tcp_rotation)
+    q = Quaternion(x=float(x), y=float(y), z=float(z), w=float(w))
     corners = np.asarray(grasp.corners_in_tcp) @ tcp_rotation.T @ tray_rotation
     margin = max(.015, p.get('recorded_rim_margin', .015))
     room = size / 2 - np.max(np.abs(corners[:, :2]), axis=0) - margin
@@ -159,5 +179,14 @@ def place(grasp, container, db):
         center = origin + tray_rotation @ [*xy, height - np.min(corners[:, 2])]
         return tcp_from_local(center, grasp.center_in_tcp, q)
 
-    approach = at_height(p.get('approach_height', .20))
-    return PlacePlan(grasp.arm, approach, at_height(p.get('release_height', .10)), deepcopy(approach), 0.)
+    release_height = settings.get('release_clearance_m', p.get('release_height', .10))
+    approach_height = release_height + settings['approach_clearance_m'] if 'approach_clearance_m' in settings else p.get('approach_height', .20)
+    release, approach = at_height(release_height), at_height(approach_height)
+    points = np.asarray(grasp.corners_in_tcp) + grasp.center_in_tcp
+    initial_floor = np.min(points @ initial_rotation[2])
+    final_floor = np.min(points @ tcp_rotation[2])
+    swept_floor = _minimum_rotating_support(points, initial_rotation, tcp_rotation, np.array([0., 0., 1.]))
+    lift_z = grasp.lift.position.z
+    required_floor = max(lift_z + initial_floor, approach.position.z + final_floor)
+    approach.position.z = max(lift_z, approach.position.z, required_floor - swept_floor)
+    return PlacePlan(grasp.arm, approach, release, deepcopy(approach), 0.)

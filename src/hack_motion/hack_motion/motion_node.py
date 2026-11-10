@@ -31,6 +31,7 @@ from tf2_ros import Buffer, TransformListener
 
 from .curobo_planner import Unreachable
 from .recorded_grasp import HAND_TARGETS, hand_steps, profile_for_preset
+from .recorded_carry import carry_waypoints, pose_matrix, with_matrix
 from .robot import (ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, READY_STEP, TCP_LINK, TRAY_IDS, VERTICAL, clip,
                     raise_steps, ready_pose, tilt, top_down, yaw)
 
@@ -706,7 +707,8 @@ class MotionNode(Node):
                 self.carrying = False
 
     def _carry_legs(self, g, tf):
-        fixed = g.mode == 'carry_fixed'
+        if g.mode == 'carry_fixed':
+            return self._recorded_carry_legs(g, tf)
         legs = []
         if tf is not None and tf.transform.translation.z < g.target.position.z - 0.01:
             up = copy.deepcopy(g.target)
@@ -715,7 +717,7 @@ class MotionNode(Node):
             legs.append(up)
         legs.append(g.target)
         for target in legs:
-            leg = MoveTcp.Goal(arm=g.arm, target=target, mode="linear_fixed" if fixed else "linear",
+            leg = MoveTcp.Goal(arm=g.arm, target=target, mode="linear",
                                pos_tol=g.pos_tol, rot_tol=g.rot_tol, max_time=g.max_time)
             result = self.move_tcp(leg)
             if self.cancelled():
@@ -725,8 +727,41 @@ class MotionNode(Node):
                 break
         else:
             return result
-        return self.move_tcp(MoveTcp.Goal(arm=g.arm, target=g.target, mode="direct_fixed" if fixed else "direct",
+        return self.move_tcp(MoveTcp.Goal(arm=g.arm, target=g.target, mode="direct",
                                           pos_tol=g.pos_tol, rot_tol=g.rot_tol, max_time=g.max_time))
+
+    def _recorded_carry_legs(self, g, tf):
+        if tf is None:
+            return MoveTcp.Result(success=False, message='recorded_carry_requires_measured_tcp')
+        stamp = tf.header.stamp.sec + tf.header.stamp.nanosec * 1e-9
+        if not -.05 <= self.now() - stamp <= .5:
+            return MoveTcp.Result(success=False, message='recorded_carry_tcp_stale')
+        start = copy.deepcopy(g.target)
+        for k in 'xyz':
+            setattr(start.position, k, getattr(tf.transform.translation, k))
+        start.orientation = copy.deepcopy(tf.transform.rotation)
+        try:
+            waypoints = carry_waypoints(pose_matrix(start), pose_matrix(g.target))
+        except ValueError as exc:
+            return MoveTcp.Result(success=False, message=str(exc))
+        for matrix in waypoints:
+            if self.cancelled():
+                return MoveTcp.Result(success=False, message='cancelled')
+            target = with_matrix(g.target, matrix)
+            result = self.move_tcp(MoveTcp.Goal(arm=g.arm, target=target, mode='linear_fixed',
+                                  pos_tol=g.pos_tol, rot_tol=g.rot_tol, max_time=g.max_time))
+            if self.cancelled():
+                return MoveTcp.Result(success=False, message='cancelled')
+            if not result.success:
+                # Retry only this bounded segment; never turn a failed first
+                # leg into one unchecked rotation all the way to the tray.
+                result = self.move_tcp(MoveTcp.Goal(arm=g.arm, target=target, mode='direct_fixed',
+                                      pos_tol=g.pos_tol, rot_tol=g.rot_tol, max_time=g.max_time))
+                if self.cancelled():
+                    return MoveTcp.Result(success=False, message='cancelled')
+                if not result.success:
+                    return result
+        return result
 
     def _keep_yaw(self, g, rot_tol):
         """A vertical `linear` move of a top-down hand keeps the hand's yaw instead of the goal's.

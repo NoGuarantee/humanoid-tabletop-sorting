@@ -94,22 +94,29 @@ class RecordedSortTests(unittest.TestCase):
         for heading in (-1., .4, 1.2):
             t = tray(yaw=heading)
             plan = skills_module.place_for(g, t, {'place': {'inset': .20}})
-            r = np.asarray(planner.matrix_from_quat(g.grasp.orientation))
+            r = np.asarray(planner.matrix_from_quat(plan.release.orientation))
             tr = np.asarray(planner.matrix_from_quat(t.pose.orientation))
             origin = np.array([getattr(t.pose.position, k) for k in 'xyz'])
-            for target, height in [(plan.approach, .20), (plan.release, .10), (plan.retreat, .20)]:
+            for target in (plan.approach, plan.release, plan.retreat):
                 tcp = np.array([getattr(target.position, k) for k in 'xyz'])
                 center = tcp + r @ g.center_in_tcp
                 corners = (center + np.asarray(g.corners_in_tcp) @ r.T - origin) @ tr
                 self.assertLessEqual(abs(corners[:, 0]).max(), t.size.x/2 - .015 + 1e-10)
                 self.assertLessEqual(abs(corners[:, 1]).max(), t.size.y/2 - .015 + 1e-10)
-                self.assertAlmostEqual(corners[:, 2].min(), height)
-                self.assertEqual(target.orientation, g.grasp.orientation)
+                if target is plan.release:
+                    self.assertAlmostEqual(corners[:, 2].min(), .035)
+                else:
+                    self.assertGreaterEqual(corners[:, 2].min(), .075 - 1e-10)
+                self.assertEqual(target.orientation, plan.release.orientation)
+            from hack_motion.recorded_geometry import axis_angle
+            expected = axis_angle(tr[:, 2], -1.47215)[:3, :3] @ planner.matrix_from_quat(g.grasp.orientation)
+            np.testing.assert_allclose(r, expected, atol=1e-12)
 
-    def test_rejects_left_arm_small_tray_reset_and_pose_jump_before_contact(self):
-        for t in (tray(y=.5), tray(size=(.10, .10))):
-            with self.assertRaises(ValueError):
-                pick.candidate(observation(), 10.1, detected(), t, DB, 0)
+    def test_rejects_disabled_hand_small_tray_reset_and_pose_jump_before_contact(self):
+        with self.assertRaisesRegex(ValueError, 'no_recorded_profile'):
+            pick.candidate(observation(), 10.1, detected(), tray(.5), DB, 0, disabled_arm='right')
+        with self.assertRaisesRegex(ValueError, 'does_not_fit'):
+            pick.candidate(observation(), 10.1, detected(), tray(size=(.10, .10)), DB, 0)
         before = pick.candidate(observation(), 10.1, detected(), tray(), DB, 0)
         for reset, shift in [(True, 0.), (False, .04)]:
             data = observation()
@@ -134,8 +141,9 @@ class RecordedSortTests(unittest.TestCase):
         for key in PROFILES:
             with self.subTest(profile=key):
                 self.run_sort_profile(key)
+                self.run_sort_profile(key, opposite_tray=True)
 
-    def run_sort_profile(self, key):
+    def run_sort_profile(self, key, opposite_tray=False):
         from hack_brain.context import Config, Object, State
         from hack_brain.fsm import VERIFY
         from fakes import Fake, sort_spec
@@ -146,9 +154,12 @@ class RecordedSortTests(unittest.TestCase):
         spec = sort_spec()
         spec.categories['figure'] = 'red'  # destination comes from the task, not a recorded blue/right tray ID
         obj = Object(name, 'figure', name=name, side=side)
-        f = Fake(spec=spec, objects=[obj], config=Config(postlift_names=pick.postlift_names(db)))
+        f = Fake(spec=spec, objects=[obj], config=Config(postlift_names=pick.postlift_names(db),
+                                                       recorded_arms=pick.recorded_arms(db)))
         skills = skills_module.Skills(db)
         destination = tray(y=.5 if side == 'left' else -.5)
+        if opposite_tray:
+            destination.pose.position.y *= -1
         destination.id = 'red'
         scene = NS(objects=[detected(name, side)], containers=[destination])
         goals, observed = [], []
@@ -218,8 +229,8 @@ class RecordedSortTests(unittest.TestCase):
                 pick.refreshed(first, second)
         for key in ('philips_right', 'nescafe_right'):
             p = PROFILES[key]
-            with self.assertRaisesRegex(ValueError, 'no_recorded_profile'):
-                pick.candidate(observation(p['object_name']), 10.1, detected(p['object_name'], 'left'), tray(.5), DB, 0)
+            grasp = pick.candidate(observation(p['object_name']), 10.1, detected(p['object_name'], 'left'), tray(.5), DB, 0)
+            self.assertEqual(grasp.arm, 'right')
 
     def test_model_response_selects_exact_object_not_first_pose(self):
         data = observation()
@@ -496,7 +507,7 @@ class RecordedCarryTests(unittest.TestCase):
         method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == '_carry_legs')
         namespace = dict(MoveTcp=NS(Goal=NS, Result=NS), copy=NS(deepcopy=deepcopy))
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), 'exec'), namespace)
-        for mode in ('carry', 'carry_fixed'):
+        for mode in ('carry',):
             for failed_leg in (None, 1, 2):
                 sent = []
                 def move(goal):

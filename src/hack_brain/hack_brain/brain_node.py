@@ -36,9 +36,9 @@ class Brain(Node):
         if self.get_parameter('recorded_grasps').value:
             from .recorded_grasps import evaluation_db
             db = evaluation_db(db, True, self.get_parameter('recorded_objects').value)
-        from .recorded_grasps import postlift_names
+        from .recorded_grasps import postlift_names, recorded_arms
         values = {'skip_names': skip_names(db), 'confidence_floors': confidence_floors(db),
-                  'postlift_names': postlift_names(db)}
+                  'postlift_names': postlift_names(db), 'recorded_arms': recorded_arms(db)}
         for name in Config.__dataclass_fields__:
             if name in values:
                 continue

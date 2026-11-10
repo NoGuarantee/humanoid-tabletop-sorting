@@ -64,6 +64,11 @@ def convert(key, data, source):
     if 'postlift_closure_ratios' in data:
         profile['postlift'] = dict(positions={side: data['postlift_closure_ratios']},
                                   duration_s=data['postlift_closure_duration_s'], settle_s=.5, steps=40)
+    if key.startswith('philips_'):
+        # Source box_pick_plan._carry clears the observed rim by 15 cm.
+        # Main's generic 20 cm makes this tilted TCP unreachable on seed 7.
+        # Retain main's release clearance; native floor seating is not copied.
+        profile['placement'] = dict(carry_clearance_m=.15)
     return profile
 
 

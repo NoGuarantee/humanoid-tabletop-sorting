@@ -517,6 +517,9 @@
         "motion": "main MoveTcp planning and tracking; native world and joint paths are not replayed",
         "placement": "main observed-tray placement; native measured seating is not reproduced",
         "native_seat_before_release": false
+      },
+      "placement": {
+        "carry_clearance_m": 0.15
       }
     },
     {
@@ -690,6 +693,9 @@
         "motion": "main MoveTcp planning and tracking; native world and joint paths are not replayed",
         "placement": "main observed-tray placement; native measured seating is not reproduced",
         "native_seat_before_release": false
+      },
+      "placement": {
+        "carry_clearance_m": 0.15
       }
     },
     {

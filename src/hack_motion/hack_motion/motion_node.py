@@ -885,7 +885,11 @@ class MotionNode(Node):
                         g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol,
                         keep_orientation=keep_orientation, contact_object=contact)
                 except Unreachable as e:
-                    if mode != "direct" or not self._other_arm_to_ready(planner, g.arm, e):
+                    # READY also resets the shared body yaw. Holding the other
+                    # arm's joints does not hold its TCP in pelvis: a fallback
+                    # must not silently swing a recorded grasp with the torso.
+                    if (mode != "direct" or (keep_orientation and planner.carrying)
+                            or not self._other_arm_to_ready(planner, g.arm, e)):
                         raise
                     with self.lock:
                         snapshot = dict(self.q)

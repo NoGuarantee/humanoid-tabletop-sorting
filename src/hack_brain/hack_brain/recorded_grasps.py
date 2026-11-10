@@ -233,7 +233,9 @@ def place(grasp, container, db):
         return tcp_from_local(center, grasp.center_in_tcp, q)
 
     release_height = settings.get('release_clearance_m', p.get('release_height', .10))
-    approach_height = release_height + settings['approach_clearance_m'] if 'approach_clearance_m' in settings else p.get('approach_height', .20)
+    approach_height = (settings['carry_clearance_m'] if 'carry_clearance_m' in settings else
+                       release_height + settings['approach_clearance_m'] if 'approach_clearance_m' in settings else
+                       p.get('approach_height', .20))
     release, approach = at_height(release_height), at_height(approach_height)
     points = np.asarray(grasp.corners_in_tcp) + grasp.center_in_tcp
     initial_floor = np.min(points @ initial_rotation[2])

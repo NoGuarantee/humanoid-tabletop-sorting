@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace as NS
 import unittest
+from contextlib import nullcontext
+from unittest.mock import Mock
 
 import numpy as np
 
@@ -29,6 +31,39 @@ def method(file, name, **namespace):
 
 
 class PR9TransferTests(unittest.TestCase):
+    def test_philips_carry_reuses_native_rim_clearance_without_changing_release(self):
+        for key in ('philips_right', 'philips_right_turn180'):
+            name = base.PROFILES[key]['object_name']
+            container = base.tray(y=0., yaw=0.)
+            g = base.pick.candidate(base.observation(name), 10.1, base.detected(name),
+                                    container, base.DB, 0, profile_key=key)
+            p = base.pick.place(g, container, {'place': {'approach_height': .20, 'release_height': .10}})
+            points = np.asarray(g.corners_in_tcp) + g.center_in_tcp
+            for target, clearance in ((p.approach, .15), (p.release, .10)):
+                matrix = pose_matrix(target)
+                low = (points @ matrix[:3, :3].T + matrix[:3, 3])[:, 2].min()
+                self.assertAlmostEqual(low-container.pose.position.z, clearance)
+
+    def test_failed_fixed_carry_cannot_repark_other_arm_and_swing_shared_torso(self):
+        class Unreachable(RuntimeError): pass
+        execute = method('motion_node.py', 'move_tcp', Unreachable=Unreachable,
+                         ARM_JOINTS={'right': ['r'], 'left': ['l']}, json=json,
+                         contact_object=lambda *a: '', traceback=__import__('traceback'))
+        def blocked(*args, **kwargs): raise Unreachable('unreachable carry height')
+        for fixed, carrying in ((True, True), (True, False), (False, True)):
+            repark = Mock(return_value=False)
+            planner = NS(table=[0, 0, 1, 0], trays=[], load=lambda _: 'curobo already loaded',
+                         sync_world=lambda _: None, plan=blocked, start_report=lambda _: 'clear', scene_note='')
+            node = NS(get_parameter=lambda _: NS(value='curobo'), lock=nullcontext(), _tcp_lock=nullcontext(),
+                      _wait_joints=lambda: True, _planner_obj=lambda: planner, q={}, scene_objects=[],
+                      carrying=carrying, _leave_colliding_home=lambda *a: None,
+                      _world=lambda: ([0, 0, 1, 0], []), now=lambda: 10., _other_arm_to_ready=repark,
+                      _refused=lambda *args: NS(success=False), get_logger=Mock())
+            goal = NS(arm='right', mode='direct_fixed' if fixed else 'direct', pos_tol=.005, rot_tol=.05,
+                      target=base.planner.pose(.4, .1, .378, base.planner.quat_from_rpy(0, 0, 0)))
+            self.assertFalse(execute(node, goal).success)
+            self.assertEqual(repark.call_count, 0 if fixed and carrying else 1)
+
     def test_e71_real_pose_uses_right_hand_left_tray_and_recorded_heading(self):
         f = json.loads((ROOT / 'tests/fixtures/rhino_e71_transfer.json').read_text())
         profile, pick = base.RHINO, base.pick

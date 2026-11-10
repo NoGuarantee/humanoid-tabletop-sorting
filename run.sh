@@ -4,7 +4,7 @@
 cd "$(dirname "$0")" || exit 1
 if [ -f weights/.rgbd-ready ] && [ -f weights/rgbd-b33b2debe3c1/bundle.json ]; then
     export NSSR_RGBD_MODEL_DIR="${NSSR_RGBD_MODEL_DIR:-$PWD/weights/rgbd-b33b2debe3c1}"
-    # Seed 7 still rejects ambiguous Philips identities before OPEN (ROADMAP).
+    # Full ROS lift/carry/release qualification is tracked in ROADMAP.
     # Enable by default only after full-placement qualification on all three seeds.
     export NSSR_RECORDED_GRASPS="${NSSR_RECORDED_GRASPS:-false}"
     export NSSR_RECORDED_OBJECTS="${NSSR_RECORDED_OBJECTS:-philips}"

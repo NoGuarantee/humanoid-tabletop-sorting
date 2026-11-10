@@ -1,7 +1,7 @@
 # Moves the TCP of one arm (left_tcp_link / right_tcp_link) to a pose in `pelvis`.
 string arm                 # left | right
 geometry_msgs/Pose target
-string mode                # direct (joint-space) | linear (straight line in Cartesian space) | ready (arm to the side, off the table and out of the head camera view; target unused) | carry (holding an object: linear up to the target height, then linear across; direct when a leg fails)
+string mode                # direct | linear | ready | carry. *_fixed variants keep requested yaw and reject carry fallback paths outside rot_tol.
 float32 pos_tol            # metres, 0 = default 0.01
 float32 rot_tol            # radians, 0 = default 0.1
 float32 max_time           # seconds of sim time, 0 = default

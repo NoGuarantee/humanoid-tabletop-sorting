@@ -19,6 +19,10 @@
 
 План и распределение работ: [docs/ROADMAP.md](docs/ROADMAP.md).
 
+Для проверки записанных захватов Brother, Philips, Nescafé и Rhino есть режим
+`recorded_grasps:=true` в той же миссии: [профили, исходные результаты и запуск](docs/RECORDED_SORT.md).
+Он выключен по умолчанию; полный ROS-цикл этих профилей на стенде ещё не подтверждён.
+
 ## Как устроено решение
 
 Конвейер из трёх узлов ROS 2, без обучаемой политики. Камера головы и глубина дают стол, ящики и объекты в системе
@@ -149,7 +153,7 @@ setup.sh             установка cuRobo и torch
 ## Проверка без симулятора
 
 ```bash
-PYTHONPATH=src/hack_brain:tests python3 -m unittest discover -s tests -v
+PYTHONPATH=src/hack_brain:src/hack_motion:src/hack_perception:tests python3 -m unittest discover -s tests -v
 python3 tools/fake_mission.py
 bash tools/check_rules.sh
 ```

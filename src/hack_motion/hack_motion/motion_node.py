@@ -30,7 +30,7 @@ from std_msgs.msg import String
 from tf2_ros import Buffer, TransformListener
 
 from .curobo_planner import Unreachable
-from .recorded_grasp import HAND_TARGETS, RHINO, hand_steps
+from .recorded_grasp import HAND_TARGETS, hand_steps, profile_for_preset
 from .robot import (ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, READY_STEP, TCP_LINK, TRAY_IDS, VERTICAL, clip,
                     raise_steps, ready_pose, tilt, top_down, yaw)
 
@@ -443,30 +443,38 @@ class MotionNode(Node):
         return res
 
     def recorded_hand(self, handle, target):
-        """Run E71's simultaneous schedule under the normal motor/action lock."""
+        """Run a named profile's finger schedule under the normal motor/action lock."""
         goal = handle.request
+        profile = profile_for_preset(goal.preset)
         force = float(goal.force)
-        if goal.hand != RHINO['hand'] or not math.isfinite(force) or not 0 < force <= .6:
+        # Hand.force is float32: an encoded 0.6 becomes 0.6000000238 in Python.
+        if goal.hand != profile['hand'] or not math.isfinite(force) or not 0 < force <= profile['effort_limit'] + 1e-7:
             return Hand.Result(success=False)
+        force = min(force, profile['effort_limit'])
+        self.hand_holds[goal.hand] = None
         if not self._set_hand_limit(goal.hand, force) or not self._set_hand_speed(goal.hand, 1.0):
             return Hand.Result(success=False)
         wall_deadline = time.monotonic() + 30.
+        start = last = self.now()
+        elapsed = 0.
         for positions, duration in hand_steps(goal.preset):
-            start = self.now()
+            now = self.now()
             sample = self._finger_sample(goal.hand)
-            if (self.cancelled() or sample is None or abs(start - sample[0]) > .5
+            if (self.cancelled() or now < last or sample is None or abs(now - sample[0]) > .5
                     or not all(math.isfinite(p) for p in sample[1])):
                 return Hand.Result(success=False)
+            elapsed += duration
             self._command_fingers(goal.hand, positions)
             while rclpy.ok():
                 now = self.now()
                 sample = self._finger_sample(goal.hand)
-                if (self.cancelled() or now < start or time.monotonic() >= wall_deadline
+                if (self.cancelled() or now < last or time.monotonic() >= wall_deadline
                         or sample is None or abs(now - sample[0]) > .5
                         or not all(math.isfinite(p) for p in sample[1])):
                     return Hand.Result(success=False)
                 handle.publish_feedback(Hand.Feedback(position=sample[1]))
-                if now - start >= duration:
+                last = now
+                if now - start >= elapsed:
                     break
                 time.sleep(PERIOD)
             else:
@@ -476,7 +484,10 @@ class MotionNode(Node):
         positions = [float(p) for p in state.position[:6]]
         efforts = [float(e) for e in state.effort[:6]]
         detected = len(efforts) == 6 and any(
-            t < .9 and p > t + .05 and e > .1 for p, t, e in zip(positions, target, efforts))
+            t < .9 and p > t + .05 and e > .1 for p, t, e in zip(positions[:4], target[:4], efforts[:4]))
+        self.hand_holds[goal.hand] = bool(detected)
+        self.get_logger().info(f"recorded hand {goal.hand} {goal.preset}: "
+                               f"position {positions}, effort {efforts}, contact {detected}")
         return Hand.Result(success=True, object_detected=detected, position=positions, effort=efforts)
 
     def _finger_pos(self, side):
@@ -695,6 +706,7 @@ class MotionNode(Node):
                 self.carrying = False
 
     def _carry_legs(self, g, tf):
+        fixed = g.mode == 'carry_fixed'
         legs = []
         if tf is not None and tf.transform.translation.z < g.target.position.z - 0.01:
             up = copy.deepcopy(g.target)
@@ -703,8 +715,8 @@ class MotionNode(Node):
             legs.append(up)
         legs.append(g.target)
         for target in legs:
-            leg = MoveTcp.Goal(arm=g.arm, target=target, mode="linear", pos_tol=g.pos_tol, rot_tol=g.rot_tol,
-                               max_time=g.max_time)
+            leg = MoveTcp.Goal(arm=g.arm, target=target, mode="linear_fixed" if fixed else "linear",
+                               pos_tol=g.pos_tol, rot_tol=g.rot_tol, max_time=g.max_time)
             result = self.move_tcp(leg)
             if self.cancelled():
                 return MoveTcp.Result(success=False, message='cancelled')
@@ -713,8 +725,8 @@ class MotionNode(Node):
                 break
         else:
             return result
-        return self.move_tcp(MoveTcp.Goal(arm=g.arm, target=g.target, mode="direct", pos_tol=g.pos_tol,
-                                          rot_tol=g.rot_tol, max_time=g.max_time))
+        return self.move_tcp(MoveTcp.Goal(arm=g.arm, target=g.target, mode="direct_fixed" if fixed else "direct",
+                                          pos_tol=g.pos_tol, rot_tol=g.rot_tol, max_time=g.max_time))
 
     def _keep_yaw(self, g, rot_tol):
         """A vertical `linear` move of a top-down hand keeps the hand's yaw instead of the goal's.
@@ -774,13 +786,16 @@ class MotionNode(Node):
         if backend != "curobo":
             return MoveTcp.Result(success=False, message=f"not_implemented: planner {backend}")
         mode = g.mode or "direct"
+        keep_orientation = mode in ('direct_fixed', 'linear_fixed', 'carry_fixed')
+        if keep_orientation:
+            mode = mode.removesuffix('_fixed')
         if mode not in ("direct", "linear", "ready", "carry"):
             return MoveTcp.Result(success=False, message=f"unknown mode {mode}")
         if mode == "carry":
             return self._carry(g)
         pos_tol = g.pos_tol or 0.01
         rot_tol = g.rot_tol or 0.1
-        if mode == "linear":
+        if mode == "linear" and not keep_orientation:
             g = self._keep_yaw(g, rot_tol)
         free_yaw = False
         with self._tcp_lock:
@@ -808,14 +823,16 @@ class MotionNode(Node):
                     planner.carrying = self.carrying
                 try:
                     names, waypoints, dt = planner.plan(
-                        g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol)
+                        g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol,
+                        keep_orientation=keep_orientation)
                 except Unreachable as e:
                     if mode != "direct" or not self._other_arm_to_ready(planner, g.arm, e):
                         raise
                     with self.lock:
                         snapshot = dict(self.q)
                     names, waypoints, dt = planner.plan(
-                        g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol)
+                        g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol,
+                        keep_orientation=keep_orientation)
                     planner.scene_note += ", after the other arm went to ready"
             except Unreachable as e:
                 try:

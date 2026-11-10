@@ -183,7 +183,7 @@ class CuroboPlanner:
         return {"ik_s": round(ik_s, 2), "warmup_s": round(warm_s, 2), "ik_ok": ok,
                 "ik_pos_mm": None if err is None else round(err * 1e3, 3), "cspace_ok": cspace_ok}
 
-    def plan(self, arm, target, q_by_name, mode, pos_tol=0.01, rot_tol=0.1):
+    def plan(self, arm, target, q_by_name, mode, pos_tol=0.01, rot_tol=0.1, keep_orientation=False):
         """Return (joint names, waypoints [N x dof], dt or None).
 
         `direct` is one IK solution, then a collision-free joint-space path to it. A straight line in joint
@@ -198,6 +198,7 @@ class CuroboPlanner:
         if mode not in ("direct", "linear", "ready"):
             raise RuntimeError(f"unknown mode {mode}")
         self.free_yaw = False
+        self.keep_orientation = keep_orientation
         if mode == "ready":
             # No objects: the hand may still hold one, or sit by the one it let go, and a start inside a cuboid
             # does not plan. main had no objects in the world for this move either.
@@ -267,10 +268,13 @@ class CuroboPlanner:
         A path that tips the hand more than CARRY_TURN is not taken.
         """
         notes = []
-        tries = [False, True] if tilt(_xyzw(target)) <= VERTICAL else [False]
+        strict = getattr(self, 'keep_orientation', False)
+        tries = [False, True] if not strict and tilt(_xyzw(target)) <= VERTICAL else [False]
         for free_yaw in tries:
             try:
                 plan, turn = self._plan_level(arm, target, q_by_name, free_yaw)
+                if strict and turn > rot_tol:
+                    raise Unreachable('recorded carry changes the object orientation')
             except Unreachable as e:
                 notes.append(f"level{' any yaw' if free_yaw else ''}: {e}")
                 continue
@@ -286,6 +290,8 @@ class CuroboPlanner:
                 raise
         goal, state = self._goal(arm, target, q_by_name)
         turn = self._max_turn(arm, plan, goal, state, False)
+        if strict and turn > rot_tol:
+            raise Unreachable('recorded carry fallback changes the object orientation')
         self.scene_note += f"; {'; '.join(notes)}; the joint path turns the hand {math.degrees(turn):.0f} deg"
         return plan
 

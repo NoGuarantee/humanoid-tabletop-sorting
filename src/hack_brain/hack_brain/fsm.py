@@ -6,10 +6,11 @@ from .context import Context, Effect, Event, Hand, History, Lift, Operation, Sce
 from .policies import destination_in_scene, required_capabilities, select
 from .verification import evidence, fresh, placement
 
-VERIFY = {State.VERIFY_EMPTY, State.VERIFY_GRASP, State.VERIFY_LIFT, State.VERIFY_REORIENT,
+VERIFY = {State.VERIFY_EMPTY, State.VERIFY_GRASP, State.VERIFY_LIFT, State.VERIFY_TIGHTEN, State.VERIFY_REORIENT,
           State.VERIFY_HOLD, State.VERIFY_TRANSFER, State.VERIFY_PLACE, State.RECOVER}
 NEXT = {State.OPEN: State.APPROACH, State.APPROACH: State.DESCEND, State.DESCEND: State.CLOSE,
         State.CLOSE: State.VERIFY_GRASP, State.LIFT: State.VERIFY_LIFT,
+        State.TIGHTEN: State.VERIFY_TIGHTEN,
         State.REORIENT: State.VERIFY_REORIENT, State.TRANSFER: State.VERIFY_HOLD,
         State.LOWER: State.RELEASE, State.INSERT: State.RELEASE,
         State.RELEASE: State.RETREAT}
@@ -19,12 +20,20 @@ NEXT = {State.OPEN: State.APPROACH, State.APPROACH: State.DESCEND, State.DESCEND
 def _enter(c, state, effects):
     assert c.active is None and not c.blocked and c.state != State.DONE
     c.state = state
+    if state == State.OPEN:
+        c.history[c.target.id].postlift_done = False
     if state == State.LIFT:
         c.history[c.target.id].lift_attempts += 1
     c.serial += 1
     c.active = Operation(c.serial, state, c.sim, c.wall)
     arm = c.look_side if state == State.LOOK_TABLE else c.start_steps[0][1] if c.start_steps else ''
     effects.append(Effect('RUN', c.serial, state, c.target, c.destination, c.slot, arm))
+
+
+def _after_lift(c):
+    if c.target.name in c.config.postlift_names and not c.history[c.target.id].postlift_done:
+        return State.TIGHTEN
+    return State.REORIENT if c.spec.variant == 'lying' and not c.reoriented else State.DESTINATION
 
 
 def _may_have_moved(c, op):
@@ -252,6 +261,9 @@ def _result(c, e, op, effects):
         return
     if state == State.LIFT and e.kind == 'RESULT' and e.ok:
         c.arm_low = False
+    if state in (State.TIGHTEN, State.VERIFY_TIGHTEN) and (e.kind == 'REJECTED' or not e.ok):
+        _done(c, effects, 'postlift_closure_failed')
+        return
     if e.kind == 'REJECTED' or not e.ok:
         if state in VERIFY:
             c.hand = Hand.UNKNOWN
@@ -284,6 +296,14 @@ def _result(c, e, op, effects):
         return
     if state in VERIFY:
         ev = evidence(c, e.data, op.sim_start)
+        if state == State.VERIFY_TIGHTEN:
+            if ev is None or ev.hand != Hand.HOLDING or not ev.lifted:
+                _done(c, effects, 'postlift_closure_unconfirmed')
+            else:
+                c.hand = ev.hand
+                c.history[c.target.id].postlift_done = True
+                _enter(c, _after_lift(c), effects)
+            return
         if ev is None or ev.hand == Hand.UNKNOWN:
             c.hand = Hand.UNKNOWN
             if state == State.VERIFY_EMPTY and not c.start_cleared:
@@ -357,8 +377,7 @@ def _result(c, e, op, effects):
                 else:
                     _look(c, effects)
             elif h.lift == Lift.LIFTED:
-                _enter(c, State.REORIENT if c.spec.variant == 'lying' and not c.reoriented
-                       else State.DESTINATION, effects)
+                _enter(c, _after_lift(c), effects)
             elif h.lift_attempts < c.config.max_attempts:
                 _enter(c, State.LIFT, effects)
             else:
@@ -375,7 +394,7 @@ def _result(c, e, op, effects):
                     _let_go(c, effects)
             else:
                 c.history[c.target.id].lift = Lift.LIFTED
-                _enter(c, State.REORIENT if c.spec.variant == 'lying' else State.DESTINATION, effects)
+                _enter(c, _after_lift(c), effects)
         elif state == State.VERIFY_REORIENT:
             if not ev.upright:
                 _done(c, effects, 'orientation_unconfirmed')

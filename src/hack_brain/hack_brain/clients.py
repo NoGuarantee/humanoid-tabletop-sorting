@@ -164,6 +164,10 @@ class Clients:
             self.verifier.unsure_since = None
         if effect.phase == State.CLOSE:
             self.verifier.closing(effect.target, goal.hand, HAND_PRESETS[goal.preset], now)
+        if effect.phase == State.TIGHTEN:
+            self.verifier.closure = tuple(HAND_PRESETS[goal.preset])
+            self.verifier.closures[goal.hand] = self.verifier.closure
+            self.verifier.unsure_since = None
         self.stop_resources = {effect.op_id: stop_resource(name, goal)}
         self.transport.send(effect.op_id, self.actions[name], goal)
 
@@ -223,7 +227,7 @@ class Clients:
         self.poll_scene(context)
         v = self.verifier
         if (v.contact_seen and context.target and context.hand.value == 'HOLDING'
-                and context.state not in (State.RELEASE,State.RETREAT,State.VERIFY_PLACE,State.CANCELLING,State.DONE)):
+                and context.state not in (State.TIGHTEN,State.RELEASE,State.RETREAT,State.VERIFY_PLACE,State.CANCELLING,State.DONE)):
             sample = self.measurements.hand(v.arm,context.sim,context.sim-.6,v.closure)
             if sample is not None and sample[1] == 'HOLDING':
                 v.unsure_since = None
@@ -287,14 +291,19 @@ class Clients:
                 response = future.result()
                 if response.success:
                     data = json.loads(response.message)
-                    observed_pose(data, context.sim, int(context.active.sim_start * 1e9))
+                    observed_pose(data, context.sim, int(context.active.sim_start * 1e9), object_name=effect.target.name)
             except Exception:
                 data = None
             if data is not None:
                 self.model_pending = None
                 try:
                     self.skills.prepare_recorded(effect, self.scenes['table'], data, context.sim,
-                                                 int(context.active.sim_start * 1e9))
+                                                 int(context.active.sim_start * 1e9),
+                                                 context.history[effect.target.id].attempts)
+                    self.node.get_logger().info('recorded grasp: ' + json.dumps({
+                        'object': effect.target.name, 'profile': self.skills.grasp.profile_key,
+                        'arm': self.skills.grasp.arm, 'phase': effect.phase.value,
+                        'destination': effect.destination, 'exposure': self.skills.grasp.exposure}))
                     self.execute_motion(effect, context)
                 except Exception as exc:
                     self.emit(Event('REJECTED', effect.op_id, repr(exc), ok=False, stopped=True))

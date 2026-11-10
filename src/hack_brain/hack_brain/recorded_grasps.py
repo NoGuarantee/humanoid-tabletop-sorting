@@ -6,22 +6,32 @@ from itertools import product
 import numpy as np
 from geometry_msgs.msg import Quaternion
 
-from hack_motion.recorded_grasp import CLOSE, PRESHAPE, RHINO
+from hack_motion.recorded_grasp import PROFILES
 from hack_motion.robot import _quat_wxyz
 from .grasp_planner import GraspCandidate, PlacePlan, choose_arm, matrix_from_quat, pose, tcp_from_local
 
 
 def uses_recorded(db, name):
-    return db.get('by_name', {}).get(name, {}).get('recorded_profile') == 'rhino_e71'
+    return bool(db.get('by_name', {}).get(name, {}).get('recorded_profiles'))
 
 
-def evaluation_db(db, enabled):
+def evaluation_db(db, enabled, selection='rhino,brother,philips,nescafe'):
     """Opt in to a full mission trial; default skip stays until bench qualification."""
     result = deepcopy(db)
     if enabled:
-        result.setdefault('by_name', {}).setdefault(RHINO['object_name'], {}).update(
-            skip=False, recorded_profile='rhino_e71')
+        families = {s.strip() for s in selection.split(',') if s.strip()}
+        known = {p['family'] for p in PROFILES.values()}
+        if not families or families - known:
+            raise ValueError('unknown or empty recorded_objects selection')
+        for name in {p['object_name'] for p in PROFILES.values() if p['family'] in families}:
+            keys = [key for key, p in PROFILES.items() if p['object_name'] == name]
+            result.setdefault('by_name', {}).setdefault(name, {}).update(skip=False, recorded_profiles=keys)
     return result
+
+
+def postlift_names(db):
+    return frozenset(name for name, entry in db.get('by_name', {}).items()
+                     if entry and any('postlift' in PROFILES[key] for key in entry.get('recorded_profiles', [])))
 
 
 @dataclass
@@ -29,6 +39,7 @@ class RecordedGrasp(GraspCandidate):
     center_in_tcp: tuple = ()
     corners_in_tcp: tuple = ()  # offsets from the object's centre, expressed in TCP axes
     exposure: dict = None
+    profile_key: str = ''
 
 
 def transform(value):
@@ -41,7 +52,7 @@ def transform(value):
     return matrix
 
 
-def observed_pose(data, now_s, after_stamp_ns=0):
+def observed_pose(data, now_s, after_stamp_ns=0, *, object_name):
     """Accept one fresh canonical model pose, with an exposure shared by its scene."""
     key = data.get('exposure_key', {})
     stamp = data.get('stamp_ns', 0)
@@ -51,48 +62,59 @@ def observed_pose(data, now_s, after_stamp_ns=0):
             or key.get('stamp_ns') != stamp or not key.get('session_id')
             or type(key.get('epoch')) is not int):
         raise ValueError('invalid or stale model pose response')
-    matches = [obj for obj in data.get('objects', []) if obj.get('name') == RHINO['object_name']]
+    matches = [obj for obj in data.get('objects', []) if obj.get('name') == object_name]
     if len(matches) != 1 or matches[0].get('pose_status') != 'ok' or matches[0].get('exposure_key') != key:
-        raise ValueError('Rhino canonical pose unavailable or ambiguous')
+        raise ValueError('canonical pose unavailable or ambiguous: ' + object_name)
     return transform(matches[0]['T_pelvis_object'])
 
 
-def targets(object_pose):
+def targets(object_pose, profile):
     world = transform(object_pose)
     result = {}
     for phase in ('pregrasp', 'approach', 'tcp'):
-        tcp = world @ transform(RHINO['T_reference_' + phase]['right'])
+        tcp = world @ transform(profile['T_reference_' + phase][profile['hand']])
         w, x, y, z = _quat_wxyz(tcp[:3, :3])
         result[phase] = pose(*tcp[:3, 3], Quaternion(x=float(x), y=float(y), z=float(z), w=float(w)))
     return result
 
 
-def candidate(data, now_s, obj, container, db, after_stamp_ns):
-    world = observed_pose(data, now_s, after_stamp_ns)
-    if container is None or choose_arm(obj, container) != RHINO['hand']:
-        raise ValueError('recorded_profile_requires_right_arm_and_observed_destination')
-    row = next(o for o in data['objects'] if o.get('name') == RHINO['object_name'])
+def candidate(data, now_s, obj, container, db, after_stamp_ns, attempt=1, profile_key=None):
+    world = observed_pose(data, now_s, after_stamp_ns, object_name=obj.name)
+    if container is None:
+        raise ValueError('recorded_profile_requires_observed_destination')
+    side = choose_arm(obj, container)
+    keys = db.get('by_name', {}).get(obj.name, {}).get('recorded_profiles', [])
+    choices = [PROFILES[key] for key in keys if PROFILES[key]['hand'] == side and PROFILES[key]['object_name'] == obj.name]
+    if profile_key:
+        choices = [p for p in choices if p['key'] == profile_key]
+    if not choices:
+        raise ValueError('no_recorded_profile_for_object_and_arm: ' + obj.name + '/' + side)
+    profile = choices[min(max(attempt - 1, 0), len(choices) - 1)]
+    row = next(o for o in data['objects'] if o.get('name') == obj.name)
     center, size = np.asarray(row['center_pelvis_m']), np.asarray(row['size_model_m'])
     if (center.shape != (3,) or size.shape != (3,) or not np.isfinite(center).all()
             or not np.isfinite(size).all() or np.min(size) <= 0):
         raise ValueError('recorded_object_bounds_unavailable')
-    tcp = world @ transform(RHINO['T_reference_tcp']['right'])
-    poses = targets(world)
+    tcp = world @ transform(profile['T_reference_tcp'][side])
+    poses = targets(world, profile)
     lift = deepcopy(poses['tcp'])
     # Main verifies a measured rise >= 5 cm; the 47 mm diagnostic lift is not a sorting lift.
-    lift.position.z += .12
+    lift.position.z += profile['lift_m']
     center_tcp = tcp[:3, :3].T @ (center - tcp[:3, 3])
     corners = np.asarray(list(product((-.5, .5), repeat=3))) * size
     corners_tcp = corners @ world[:3, :3].T @ tcp[:3, :3]
-    result = RecordedGrasp('right', poses['pregrasp'], poses['tcp'], lift, CLOSE,
-                           RHINO['effort_limit'], 1., PRESHAPE, True,
-                           tuple(center_tcp), tuple(map(tuple, corners_tcp)), dict(data['exposure_key']))
+    key = profile['key']
+    result = RecordedGrasp(side, poses['pregrasp'], poses['tcp'], lift, key + '_close',
+                           profile['effort_limit'], 1., key + '_preshape', True,
+                           tuple(center_tcp), tuple(map(tuple, corners_tcp)), dict(data['exposure_key']), key)
     place(result, container, db)  # reject a known footprint mismatch before touching the object
     return result
 
 
 def refreshed(previous, current):
     """A pregrasp does not license descent after a reset or a large pose change."""
+    if previous.profile_key != current.profile_key or previous.arm != current.arm:
+        raise ValueError('recorded_profile_changed_after_pregrasp')
     if any(previous.exposure[k] != current.exposure[k] for k in ('session_id', 'epoch')):
         raise ValueError('recorded_pose_episode_changed')
     if current.exposure['stamp_ns'] <= previous.exposure['stamp_ns']:

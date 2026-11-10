@@ -12,7 +12,7 @@ import json
 
 import numpy as np
 
-from hack_motion.recorded_grasp import RHINO, PRESHAPE, CLOSE, hand_steps
+from hack_motion.recorded_grasp import RHINO, PRESHAPE, CLOSE, PROFILES, hand_steps, profile_for_preset
 
 
 with patch.dict('sys.modules', {'geometry_msgs.msg': NS(Pose=NS, Point=NS, Quaternion=NS), 'yaml': NS()}):
@@ -21,11 +21,11 @@ with patch.dict('sys.modules', {'geometry_msgs.msg': NS(Pose=NS, Point=NS, Quate
     skills_module = importlib.import_module('hack_brain.skills')
 
 
-def observation():
+def observation(name=RHINO['object_name']):
     key = dict(session_id='test', epoch=1, stamp_ns=10_000_000_000)
     return dict(schema='hack_perception.model_poses/v1', status='ok', frame_id='pelvis',
                 stamp_ns=key['stamp_ns'], exposure_key=key,
-                objects=[dict(name=RHINO['object_name'], pose_status='ok', exposure_key=key.copy(),
+                objects=[dict(name=name, pose_status='ok', exposure_key=key.copy(),
                               center_pelvis_m=[0., 0., 0.], size_model_m=[.18, .08, .10],
                               T_pelvis_object=np.eye(4).tolist())])
 
@@ -35,14 +35,17 @@ def tray(y=-.5, yaw=.4, size=(.32, .25)):
               size=NS(x=size[0], y=size[1], z=.07))
 
 
-def detected():
-    return NS(name=RHINO['object_name'], track_id='rhino', category='figure', center=NS(x=.4, y=-.2, z=.05))
+def detected(name=RHINO['object_name'], side='right'):
+    return NS(name=name, track_id='object', category='figure', center=NS(x=.4, y=.2 if side == 'left' else -.2, z=.05))
+
+
+DB = pick.evaluation_db({}, True)
 
 
 class RecordedSortTests(unittest.TestCase):
     def test_targets_rotate_and_translate_in_object_frame(self):
         world = np.array([[0., -1., 0., .4], [1., 0., 0., -.3], [0., 0., 1., -.1], [0., 0., 0., 1.]])
-        result = pick.targets(world)
+        result = pick.targets(world, RHINO)
         for stage in result:
             expected = world @ np.asarray(RHINO['T_reference_' + stage]['right'])
             actual = result[stage]
@@ -50,7 +53,7 @@ class RecordedSortTests(unittest.TestCase):
             np.testing.assert_allclose(planner.matrix_from_quat(actual.orientation), expected[:3, :3], atol=1e-12)
 
     def test_pose_rejects_stale_ambiguous_reflected_and_mixed_exposure(self):
-        np.testing.assert_array_equal(pick.observed_pose(observation(), 10.1), np.eye(4))
+        np.testing.assert_array_equal(pick.observed_pose(observation(), 10.1, object_name=RHINO['object_name']), np.eye(4))
         invalid = []
         stale = observation()
         stale['stamp_ns'] = 1
@@ -69,9 +72,9 @@ class RecordedSortTests(unittest.TestCase):
         invalid.append(unknown)
         for data in invalid:
             with self.subTest(data=data), self.assertRaises(ValueError):
-                pick.observed_pose(data, 10.1)
+                pick.observed_pose(data, 10.1, object_name=RHINO['object_name'])
         with self.assertRaises(ValueError):
-            pick.observed_pose(observation(), 10.1, 10_000_000_000)
+            pick.observed_pose(observation(), 10.1, 10_000_000_000, object_name=RHINO['object_name'])
 
     def test_schedule_preserves_simultaneous_closure_and_timing(self):
         steps = hand_steps(CLOSE)
@@ -86,7 +89,7 @@ class RecordedSortTests(unittest.TestCase):
     def test_whole_object_lands_inside_rotated_tray_with_tcp_offset(self):
         data = observation()
         data['objects'][0]['center_pelvis_m'] = [.03, -.02, .04]  # model origin is not its centre
-        g = pick.candidate(data, 10.1, detected(), tray(), {}, 0)
+        g = pick.candidate(data, 10.1, detected(), tray(), DB, 0)
         self.assertAlmostEqual(g.lift.position.z - g.grasp.position.z, .12)
         for heading in (-1., .4, 1.2):
             t = tray(yaw=heading)
@@ -106,8 +109,8 @@ class RecordedSortTests(unittest.TestCase):
     def test_rejects_left_arm_small_tray_reset_and_pose_jump_before_contact(self):
         for t in (tray(y=.5), tray(size=(.10, .10))):
             with self.assertRaises(ValueError):
-                pick.candidate(observation(), 10.1, detected(), t, {}, 0)
-        before = pick.candidate(observation(), 10.1, detected(), tray(), {}, 0)
+                pick.candidate(observation(), 10.1, detected(), t, DB, 0)
+        before = pick.candidate(observation(), 10.1, detected(), tray(), DB, 0)
         for reset, shift in [(True, 0.), (False, .04)]:
             data = observation()
             data['stamp_ns'] += 1
@@ -115,7 +118,7 @@ class RecordedSortTests(unittest.TestCase):
             data['exposure_key']['epoch'] += int(reset)
             data['objects'][0]['exposure_key'] = data['exposure_key'].copy()
             data['objects'][0]['T_pelvis_object'][0][3] += shift
-            after = pick.candidate(data, 10.1, detected(), tray(), {}, 0)
+            after = pick.candidate(data, 10.1, detected(), tray(), DB, 0)
             with self.assertRaises(ValueError):
                 pick.refreshed(before, after)
 
@@ -128,17 +131,26 @@ class RecordedSortTests(unittest.TestCase):
         self.assertTrue(pick.uses_recorded(enabled, RHINO['object_name']))
 
     def test_normal_fsm_runs_through_task_destination_release_and_verification(self):
-        from hack_brain.context import Object, State
+        for key in PROFILES:
+            with self.subTest(profile=key):
+                self.run_sort_profile(key)
+
+    def run_sort_profile(self, key):
+        from hack_brain.context import Config, Object, State
         from hack_brain.fsm import VERIFY
         from fakes import Fake, sort_spec
+        profile = PROFILES[key]
+        name, side = profile['object_name'], profile['hand']
+        db = pick.evaluation_db({}, True)
+        db['by_name'][name]['recorded_profiles'] = [key]
         spec = sort_spec()
         spec.categories['figure'] = 'red'  # destination comes from the task, not a recorded blue/right tray ID
-        obj = Object(RHINO['object_name'], 'figure', name=RHINO['object_name'], side='right')
-        f = Fake(spec=spec, objects=[obj])
-        skills = skills_module.Skills(pick.evaluation_db({}, True))
-        destination = tray()
+        obj = Object(name, 'figure', name=name, side=side)
+        f = Fake(spec=spec, objects=[obj], config=Config(postlift_names=pick.postlift_names(db)))
+        skills = skills_module.Skills(db)
+        destination = tray(y=.5 if side == 'left' else -.5)
         destination.id = 'red'
-        scene = NS(objects=[detected()], containers=[destination])
+        scene = NS(objects=[detected(name, side)], containers=[destination])
         goals, observed = [], []
         stubs = NS(Hand=NS(Goal=NS), MoveTcp=NS(Goal=NS), MoveJoints=NS(Goal=NS))
         with patch.dict('sys.modules', {'hack_interfaces.action': stubs}):
@@ -151,25 +163,96 @@ class RecordedSortTests(unittest.TestCase):
                 effect = f.commands[-1]
                 if phase not in VERIFY and phase not in (State.OBSERVE, State.DESTINATION):
                     if skills.needs_model_pose(effect):
-                        data = observation()
+                        data = observation(name)
                         data['stamp_ns'] = int((f.sim - .01) * 1e9)
                         data['exposure_key']['stamp_ns'] = data['stamp_ns']
                         data['objects'][0]['exposure_key'] = data['exposure_key'].copy()
                         skills.prepare_recorded(effect, scene, data, f.sim, int(f.c.active.sim_start*1e9))
-                    name, goal = skills.command(effect, scene)
-                    goals.append((phase, name, goal))
+                    action, goal = skills.command(effect, scene)
+                    goals.append((phase, action, goal))
                 # Explicit fake sensor evidence drives the FSM; this is not a physical validation.
                 f.answer()
         self.assertEqual(f.c.state, State.DONE)
         self.assertTrue(f.c.history[obj.id].placed)
         transfer = next(g for p, _, g in goals if p == State.TRANSFER)
-        self.assertEqual(transfer.mode, 'carry')
+        self.assertEqual(transfer.mode, 'carry_fixed')
+        self.assertEqual(transfer.arm, side)
         self.assertTrue(all(e.destination == 'red' for e in f.commands if e.phase == State.TRANSFER))
-        self.assertEqual(next(g.preset for p, _, g in goals if p == State.CLOSE), CLOSE)
-        self.assertEqual(next(g.preset for p, _, g in goals if p == State.RELEASE), 'open')
+        self.assertEqual(next(g.preset for p, _, g in goals if p == State.CLOSE), key + '_close')
+        self.assertEqual(next(g.preset for p, _, g in goals if p == State.RELEASE),
+                         key + '_release' if 'release' in profile else 'open')
+        if 'postlift' in profile:
+            self.assertEqual(next(g.preset for p, _, g in goals if p == State.TIGHTEN), key + '_postlift')
+            self.assertLess(observed.index(State.VERIFY_LIFT), observed.index(State.TIGHTEN))
+            self.assertLess(observed.index(State.VERIFY_TIGHTEN), observed.index(State.TRANSFER))
+        else:
+            self.assertNotIn(State.TIGHTEN, observed)
         self.assertEqual([p for p in observed if p in (State.LIFT, State.TRANSFER, State.LOWER,
                          State.RELEASE, State.RETREAT, State.VERIFY_PLACE)],
                          [State.LIFT, State.TRANSFER, State.LOWER, State.RELEASE, State.RETREAT, State.VERIFY_PLACE])
+
+    def test_selected_objects_only_and_original_db_unchanged(self):
+        original = {'by_name': {p['object_name']: {'skip': True} for p in PROFILES.values()}}
+        for family in ('rhino', 'brother', 'philips', 'nescafe'):
+            db = pick.evaluation_db(original, True, family)
+            for p in PROFILES.values():
+                self.assertEqual(pick.uses_recorded(db, p['object_name']), p['family'] == family)
+                self.assertTrue(original['by_name'][p['object_name']]['skip'])
+        self.assertEqual(pick.evaluation_db(original, False), original)
+        for selected in ('', 'mouse', 'brother,typo'):
+            with self.assertRaises(ValueError):
+                pick.evaluation_db(original, True, selected)
+
+    def test_retry_uses_other_recorded_pose_and_descent_keeps_it(self):
+        for key in ('brother_left_wide', 'philips_right', 'nescafe_right'):
+            p = PROFILES[key]
+            name, side = p['object_name'], p['hand']
+            data = observation(name)
+            obj, container = detected(name, side), tray(.5 if side == 'left' else -.5)
+            first = pick.candidate(data, 10.1, obj, container, DB, 0, attempt=1)
+            second = pick.candidate(data, 10.1, obj, container, DB, 0, attempt=2)
+            self.assertNotEqual(first.profile_key, second.profile_key)
+            same = pick.candidate(data, 10.1, obj, container, DB, 0, attempt=1, profile_key=second.profile_key)
+            self.assertEqual(same.profile_key, second.profile_key)
+            with self.assertRaises(ValueError):
+                pick.refreshed(first, second)
+        for key in ('philips_right', 'nescafe_right'):
+            p = PROFILES[key]
+            with self.assertRaisesRegex(ValueError, 'no_recorded_profile'):
+                pick.candidate(observation(p['object_name']), 10.1, detected(p['object_name'], 'left'), tray(.5), DB, 0)
+
+    def test_model_response_selects_exact_object_not_first_pose(self):
+        data = observation()
+        name = PROFILES['nescafe_right']['object_name']
+        other = observation(name)['objects'][0]
+        other['T_pelvis_object'][0][3] = .33
+        data['objects'].append(other)
+        self.assertEqual(pick.observed_pose(data, 10.1, object_name=name)[0, 3], .33)
+        with self.assertRaises(ValueError):
+            pick.observed_pose(data, 10.1, object_name='missing')
+
+    def test_imported_geometry_reconstructs_source_and_six_actuator_commands(self):
+        from scipy.spatial.transform import Rotation
+        def matrix(p):
+            t = np.eye(4)
+            t[:3, :3] = Rotation.from_quat([*p[4:], p[3]]).as_matrix()
+            t[:3, 3] = p[:3]
+            return t
+        sources = json.loads(Path(__file__).with_name('recorded_grasp_sources.json').read_text())
+        self.assertEqual(len(sources), len(PROFILES) - 1)
+        for row in sources:
+            with self.subTest(profile=row['key']):
+                profile = PROFILES[row['key']]
+                side = row['arm_side']
+                for phase, source in [('tcp', 'target'), ('pregrasp', 'pregrasp')]:
+                    reconstructed = matrix(row['object_pose_world_wxyz']) @ profile['T_reference_' + phase][side]
+                    np.testing.assert_allclose(reconstructed, matrix(row[source + '_tcp_pose_world_wxyz']), atol=1e-12)
+                self.assertEqual(profile['preshape'][side], row['pregrasp_ratios'])
+                self.assertEqual(profile['closure']['positions'][side], row['closed_ratios'])
+                self.assertAlmostEqual(sum(dt for _, dt in hand_steps(row['key'] + '_close')),
+                                       row['closure_duration_s'] + row['closure_settle_s'])
+                if 'postlift' in profile:
+                    self.assertEqual(profile['postlift']['positions'][side], row['postlift_closure_ratios'])
 
 
 def client_type():
@@ -192,14 +275,17 @@ def client_type():
 
 class RecordedClientTests(unittest.TestCase):
     def setUp(self):
-        from hack_brain.context import Context, Effect, Object, Operation, State
+        from hack_brain.context import Context, Effect, History, Object, Operation, State
         self.State = State
         cls = client_type()
         self.client = cls.__new__(cls)
+        self.client.node = Mock()
         self.events = []
         self.client.emit = self.events.append
         self.client.skills = Mock()
         self.client.skills.grasp.exposure = observation()['exposure_key']
+        self.client.skills.grasp.profile_key = 'rhino_e71'
+        self.client.skills.grasp.arm = 'right'
         self.client.scenes = {'table': object()}
         self.client.model_cli = Mock()
         self.client.model_cli.service_is_ready.return_value = True
@@ -208,6 +294,7 @@ class RecordedClientTests(unittest.TestCase):
         self.client.next_model_request = 0.
         self.effect = Effect('RUN', 7, State.OPEN, Object(RHINO['object_name'], 'figure', name=RHINO['object_name']), 'blue')
         self.context = Context(state=State.OPEN, sim=10.1, active=Operation(7, State.OPEN, 9.9, 0))
+        self.context.history[self.effect.target.id] = History(attempts=1)
         self.client.model_pending = self.effect
         self.future = Future()
         self.client.model_future = self.future
@@ -261,10 +348,29 @@ class RecordedClientTests(unittest.TestCase):
         self.client.actions['hand'].server_is_ready.assert_not_called()
         self.assertEqual(self.events[-1].data, 'recorded_pose_expired_before_motion')
 
+    def test_postlift_updates_contact_target_without_erasing_lift_evidence(self):
+        from dataclasses import replace
+        self.client.skills.needs_model_pose.return_value = False
+        self.client.actions = {'hand': Mock()}
+        self.client.actions['hand'].server_is_ready.return_value = True
+        self.client.transport = Mock()
+        self.client.verifier = NS(closure=None, closures={}, baseline=(9., (0., 0., .1)),
+                                  contact_seen=True, lifted=True, contact_lost=False, unsure_since=10.)
+        effect = replace(self.effect, phase=self.State.TIGHTEN)
+        self.client.send_motion(effect, 'hand', NS(hand='right', preset='nescafe_right_postlift'), 10.1)
+        v = self.client.verifier
+        self.assertEqual(v.closure, tuple(PROFILES['nescafe_right']['postlift']['positions']['right']))
+        self.assertEqual(v.closures['right'], v.closure)
+        self.assertEqual(v.baseline, (9., (0., 0., .1)))
+        self.assertTrue(v.contact_seen and v.lifted)
+        self.assertFalse(v.contact_lost)
+        self.assertIsNone(v.unsure_since)
+        self.client.transport.send.assert_called_once()
+
 
 class RecordedHandTests(unittest.TestCase):
     """Run the actual action method with a deterministic clock and measured hand."""
-    def run_hand(self, *, side='right', cancel_at=None, stale=False, force_ok=True, force=.6):
+    def run_hand(self, *, side='right', preset=CLOSE, cancel_at=None, stale=False, force_ok=True, force=.6):
         import math
         import threading
         from hack_motion.recorded_grasp import HAND_TARGETS
@@ -277,18 +383,18 @@ class RecordedHandTests(unittest.TestCase):
         def sleep(dt):
             clock[0] += dt
         state = NS(position=[.4]*6, effort=[.2]*6)
-        node = NS(lock=threading.Lock(), hand_state={'right':state},
+        node = NS(lock=threading.Lock(), get_logger=Mock(), hand_state={'right':state, 'left':state}, hand_holds={'left':None, 'right':None},
                   now=lambda: clock[0], _set_hand_limit=lambda *_: force_ok,
                   _set_hand_speed=lambda *_: True,
                   _finger_sample=lambda _: (0. if stale else clock[0], list(state.position)),
                   _command_fingers=lambda _, values: sent.append(list(values)),
                   cancelled=lambda: cancel_at is not None and clock[0] >= cancel_at)
-        namespace = dict(Hand=NS(Result=NS, Feedback=NS), RHINO=RHINO, HAND_TARGETS=HAND_TARGETS,
+        namespace = dict(Hand=NS(Result=NS, Feedback=NS), profile_for_preset=profile_for_preset, HAND_TARGETS=HAND_TARGETS,
                          hand_steps=hand_steps, math=math, time=NS(monotonic=lambda:clock[0], sleep=sleep),
                          PERIOD=.05, rclpy=NS(ok=lambda:True))
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), 'exec'), namespace)
-        goal = NS(request=NS(hand=side, preset=CLOSE, force=force), publish_feedback=lambda _:None)
-        return namespace['recorded_hand'](node, goal, HAND_TARGETS[CLOSE]), sent, clock[0]
+        goal = NS(request=NS(hand=side, preset=preset, force=force), publish_feedback=lambda _:None)
+        return namespace['recorded_hand'](node, goal, HAND_TARGETS[preset]), sent, clock[0]
 
     def test_action_emits_all_steps_and_waits_for_settle(self):
         result, sent, end = self.run_hand()
@@ -296,6 +402,12 @@ class RecordedHandTests(unittest.TestCase):
         self.assertEqual(len(sent), 13)
         np.testing.assert_allclose(sent[-1], RHINO['closure']['positions']['right'])
         self.assertGreaterEqual(end, 13.)
+        self.assertLess(end, 13.06)
+
+    def test_ros_float32_force_is_accepted_at_profile_limit(self):
+        result, sent, _ = self.run_hand(force=float(np.float32(.6)))
+        self.assertTrue(result.success)
+        self.assertTrue(sent)
 
     def test_left_stale_and_failed_force_send_no_finger_commands(self):
         for options in ({'side':'left'}, {'stale':True}, {'force_ok':False}, {'force':0.},
@@ -310,3 +422,124 @@ class RecordedHandTests(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertGreater(len(sent), 0)
         self.assertLess(len(sent), 12)
+
+    def test_brother_left_release_opens_flexion_before_thumb_rotation(self):
+        key = 'brother_left_wide'
+        steps = hand_steps(key + '_release')
+        self.assertTrue(all(p[5] == PROFILES[key]['closure']['positions']['left'][5] for p, _ in steps[:30]))
+        np.testing.assert_allclose(steps[29][0][:5], [1.]*5)
+        np.testing.assert_allclose(steps[-1][0], [1.]*6)
+        result, sent, _ = self.run_hand(side='left', preset=key + '_release')
+        self.assertTrue(result.success)
+        np.testing.assert_allclose(sent[-1], [1.]*6)
+        result, sent, _ = self.run_hand(side='right', preset=key + '_release')
+        self.assertFalse(result.success)
+        self.assertEqual(sent, [])
+
+    def test_postlift_reaches_recorded_target_and_is_cancellable(self):
+        result, sent, _ = self.run_hand(preset='nescafe_right_postlift')
+        self.assertTrue(result.success)
+        np.testing.assert_allclose(sent[-1], [.44]*4 + [.59, .1])
+        result, sent, _ = self.run_hand(preset='nescafe_right_postlift', cancel_at=10.3)
+        self.assertFalse(result.success)
+        self.assertLess(len(sent), 40)
+
+
+class PostliftMissionTests(unittest.TestCase):
+    def mission(self):
+        from hack_brain.context import Config, Object
+        from fakes import Fake
+        name = PROFILES['nescafe_right']['object_name']
+        return Fake(objects=[Object(name, 'figure', name=name)], config=Config(postlift_names=frozenset({name})))
+
+    def test_failed_squeeze_cannot_proceed_to_carry(self):
+        from hack_brain.context import State
+        for phase in (State.TIGHTEN, State.VERIFY_TIGHTEN):
+            f = self.mission()
+            f.until(phase)
+            f.answer('failed', ok=False)
+            self.assertEqual(f.c.state, State.DONE)
+            self.assertEqual(f.c.reason, 'postlift_closure_failed')
+            self.assertFalse(any(e.phase == State.TRANSFER for e in f.commands))
+
+    def test_unconfirmed_squeeze_cannot_proceed_to_carry(self):
+        from hack_brain.context import Evidence, Hand, State
+        for hand, lifted, stale in [(Hand.EMPTY, True, False), (Hand.UNKNOWN, True, False),
+                                     (Hand.HOLDING, False, False), (Hand.HOLDING, True, True)]:
+            f = self.mission()
+            f.until(State.VERIFY_TIGHTEN)
+            f.answer(Evidence(f.sim - int(stale)*5, hand, f.c.target.id, lifted=lifted, source='fake'))
+            self.assertEqual(f.c.reason, 'postlift_closure_unconfirmed')
+            self.assertFalse(any(e.phase == State.TRANSFER for e in f.commands))
+
+    def test_recover_after_lift_tightens_once_before_carry(self):
+        from hack_brain.context import Evidence, Hand, State
+        f = self.mission()
+        f.until(State.LIFT)
+        f.answer('timeout', ok=False)
+        self.assertEqual(f.c.state, State.RECOVER)
+        f.answer(Evidence(f.sim, Hand.HOLDING, f.c.target.id, lifted=True, source='fake'))
+        self.assertEqual(f.c.state, State.TIGHTEN)
+        f.until(State.TRANSFER)
+        f.answer('unreachable', ok=False)
+        self.assertEqual(f.c.state, State.RECOVER)
+        f.answer(Evidence(f.sim, Hand.HOLDING, f.c.target.id, lifted=True, source='fake'))
+        self.assertEqual(f.c.state, State.DESTINATION)
+        f.run()
+        self.assertEqual(sum(e.phase == State.TIGHTEN for e in f.commands), 1)
+
+
+class RecordedCarryTests(unittest.TestCase):
+    def test_carry_propagates_orientation_requirement_to_both_legs_and_fallback(self):
+        source = Path(__file__).resolve().parents[1] / 'src/hack_motion/hack_motion/motion_node.py'
+        tree = ast.parse(source.read_text())
+        method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == '_carry_legs')
+        namespace = dict(MoveTcp=NS(Goal=NS, Result=NS), copy=NS(deepcopy=deepcopy))
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), 'exec'), namespace)
+        for mode in ('carry', 'carry_fixed'):
+            for failed_leg in (None, 1, 2):
+                sent = []
+                def move(goal):
+                    sent.append(goal)
+                    return NS(success=len(sent) != failed_leg, message='test')
+                node = NS(move_tcp=move, cancelled=lambda:False, get_logger=Mock())
+                goal = NS(arm='right', target=planner.pose(.5, -.4, .5, planner.quat_from_rpy(0., 0., .3)),
+                          mode=mode, pos_tol=.005, rot_tol=.05, max_time=0.)
+                tf = NS(transform=NS(translation=NS(x=.3, y=-.2, z=.1)))
+                result = namespace['_carry_legs'](node, goal, tf)
+                self.assertTrue(result.success)
+                suffix = '_fixed' if mode == 'carry_fixed' else ''
+                expected = ['linear' + suffix]*2 if failed_leg is None else ['linear' + suffix]*failed_leg + ['direct' + suffix]
+                self.assertEqual([g.mode for g in sent], expected)
+                self.assertTrue(all(g.target.orientation == goal.target.orientation for g in sent))
+
+    def plan_carry(self, *, strict, level_turn=None, fallback_turn=.1):
+        import math
+        source = Path(__file__).resolve().parents[1] / 'src/hack_motion/hack_motion/curobo_planner.py'
+        tree = ast.parse(source.read_text())
+        method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == '_plan_carry')
+        class Unreachable(RuntimeError):
+            pass
+        calls = []
+        def level(arm, target, state, free_yaw):
+            calls.append(free_yaw)
+            if level_turn is None:
+                raise Unreachable('no level path')
+            return 'level', level_turn
+        planner = NS(keep_orientation=strict, free_yaw=False, scene_note='', _plan_level=level,
+                     _plan_direct=lambda *_:'direct', _goal=lambda *_:(None, None),
+                     _max_turn=lambda *_:fallback_turn)
+        namespace = dict(Unreachable=Unreachable, tilt=lambda _:0., _xyzw=lambda _:None, VERTICAL=.1, math=math)
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), 'exec'), namespace)
+        try:
+            result = namespace['_plan_carry'](planner, 'right', None, {}, .005, .05)
+        except Unreachable:
+            result = 'rejected'
+        return result, calls
+
+    def test_recorded_carry_disallows_free_yaw_and_rotating_fallback(self):
+        self.assertEqual(self.plan_carry(strict=True), ('rejected', [False]))
+        self.assertEqual(self.plan_carry(strict=True, level_turn=.02), ('level', [False]))
+        self.assertEqual(self.plan_carry(strict=True, level_turn=.08), ('rejected', [False]))
+        self.assertEqual(self.plan_carry(strict=True, fallback_turn=.02), ('direct', [False]))
+        self.assertEqual(self.plan_carry(strict=False), ('direct', [False, True]))

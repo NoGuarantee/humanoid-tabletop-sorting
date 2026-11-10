@@ -18,6 +18,8 @@ class State(str, Enum):
     VERIFY_GRASP = 'VERIFY_GRASP'
     LIFT = 'LIFT'
     VERIFY_LIFT = 'VERIFY_LIFT'
+    TIGHTEN = 'TIGHTEN'
+    VERIFY_TIGHTEN = 'VERIFY_TIGHTEN'
     REORIENT = 'REORIENT'
     VERIFY_REORIENT = 'VERIFY_REORIENT'
     DESTINATION = 'DESTINATION'
@@ -98,6 +100,7 @@ class History:
     placed: bool = False
     released: bool = False  # let go over the destination, placement not confirmed: never picked again
     contacted: bool = False
+    postlift_done: bool = False
 
 
 @dataclass
@@ -132,6 +135,7 @@ class Config:
     # Names left untouched: `skip: true` in grasp_db.yaml. Lifted and dropped is -10, untouched is 0 (SCORING.md).
     # Not a ROS parameter: brain_node fills it from the grasp db.
     skip_names: frozenset = frozenset()
+    postlift_names: frozenset = frozenset()  # recorded profiles with a separate closure above the table
     # (name, floor) pairs: `min_confidence` under by_name in grasp_db.yaml, below min_confidence for a name whose
     # size sits far from every other category in its pool. Filled by brain_node like skip_names.
     confidence_floors: tuple = ()

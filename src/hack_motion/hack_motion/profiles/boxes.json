@@ -1,0 +1,1243 @@
+{
+  "profiles": [
+    {
+      "key": "brother_left_wide",
+      "id": "brother_left_wide",
+      "family": "brother",
+      "object_name": "Brother_Ink_Cartridge_Magenta_LC75M",
+      "hand": "left",
+      "reference": {
+        "kind": "rgbd_model_pose",
+        "model_name": "Brother_Ink_Cartridge_Magenta_LC75M",
+        "frame": "canonical_rgbd_model",
+        "centroid_fallback": false
+      },
+      "T_reference_pregrasp": {
+        "left": [
+          [
+            0.40669906175488013,
+            0.8045378297718065,
+            0.4327987449540165,
+            0.11615770793851288
+          ],
+          [
+            -0.42819836103314496,
+            0.5863619584476341,
+            -0.6876233106098015,
+            -0.05112503964050868
+          ],
+          [
+            -0.8069956857234296,
+            0.0943320420192787,
+            0.5829746384468577,
+            0.30273897481524686
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "T_reference_approach": {
+        "left": [
+          [
+            0.39251436623006924,
+            0.8088671984597093,
+            0.4377971305969786,
+            0.11804143437681652
+          ],
+          [
+            -0.4337088831877578,
+            0.5825308260549693,
+            -0.6874259533504266,
+            -0.04954245406096185
+          ],
+          [
+            -0.8110666291662076,
+            0.07994805783542336,
+            0.579464607289616,
+            0.20040291454237477
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "T_reference_tcp": {
+        "left": [
+          [
+            0.39251436623006924,
+            0.8088671984597093,
+            0.4377971305969786,
+            0.11804143437681652
+          ],
+          [
+            -0.4337088831877578,
+            0.5825308260549693,
+            -0.6874259533504266,
+            -0.04954245406096185
+          ],
+          [
+            -0.8110666291662076,
+            0.07994805783542336,
+            0.579464607289616,
+            0.20040291454237477
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "preshape": {
+        "left": [
+          0.73,
+          0.73,
+          0.73,
+          0.73,
+          0.8300000000000001,
+          0.1
+        ]
+      },
+      "closure": {
+        "positions": {
+          "left": [
+            0.29000000000000004,
+            0.29000000000000004,
+            0.29000000000000004,
+            0.29000000000000004,
+            0.39,
+            0.1
+          ]
+        },
+        "duration_s": 2.0,
+        "settle_s": 1.0,
+        "steps": 40
+      },
+      "release": {
+        "duration_s": 2.0,
+        "settle_s": 0.5,
+        "steps": 40,
+        "progress_intervals": [
+          [
+            0.0,
+            0.75
+          ],
+          [
+            0.0,
+            0.75
+          ],
+          [
+            0.0,
+            0.75
+          ],
+          [
+            0.0,
+            0.75
+          ],
+          [
+            0.0,
+            0.75
+          ],
+          [
+            0.75,
+            1.0
+          ]
+        ]
+      },
+      "lift_m": 0.12,
+      "effort_limit": 0.6,
+      "source": {
+        "input_path": "outputs/box_pose_robustness_20261107/brother_combo100_v187/stages/brother_combo100_v187_b0_s20000/probe/full_arm_input.json",
+        "input_sha256": "3b619f1732d5dca723ebda4f4a83049a326a2f53c4af4ce38868baead90df8cc",
+        "report_path": "outputs/box_pose_robustness_20261107/brother_combo100_v187/remote_progress_latest.json",
+        "report_sha256": "e5521304347b7f0474f3d4a12e81a608fb8523b6efe591cfb0272de8582f364c",
+        "canonical_trace_sha256": "ec07f615e5437ef360e6f9bf72a14e4b421aaaa5030544c4d632445f6edc177f",
+        "native_full_cycle_passed": true,
+        "policy_path": "outputs/box_pose_robustness_20261107/brother_combo100_v187/policy_library.json",
+        "policy_sha256": "5990a4f2a503cd23f6383722b3df8f668f1f4bcec308d0683743003df95bb1fe"
+      },
+      "adaptations": {
+        "ros_qualified": false,
+        "effort": "ROS trial limit; no native force equivalence",
+        "preshape": "ROS six actuator targets; native encoder-bias approach controller is not replayed",
+        "motion": "main MoveTcp planning and tracking; native world and joint paths are not replayed",
+        "placement": "main observed-tray placement; native measured seating is not reproduced",
+        "native_seat_before_release": true
+      }
+    },
+    {
+      "key": "brother_left_compact",
+      "id": "brother_left_compact",
+      "family": "brother",
+      "object_name": "Brother_Ink_Cartridge_Magenta_LC75M",
+      "hand": "left",
+      "reference": {
+        "kind": "rgbd_model_pose",
+        "model_name": "Brother_Ink_Cartridge_Magenta_LC75M",
+        "frame": "canonical_rgbd_model",
+        "centroid_fallback": false
+      },
+      "T_reference_pregrasp": {
+        "left": [
+          [
+            0.40669906175488035,
+            0.8045378297718063,
+            0.4327987449540168,
+            0.11615770793851322
+          ],
+          [
+            -0.4281983610331452,
+            0.5863619584476343,
+            -0.6876233106098013,
+            -0.05112503964051051
+          ],
+          [
+            -0.8069956857234295,
+            0.09433204201927864,
+            0.5829746384468579,
+            0.30273897481524686
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "T_reference_approach": {
+        "left": [
+          [
+            0.39251436623006936,
+            0.8088671984597092,
+            0.43779713059697895,
+            0.11804143437681619
+          ],
+          [
+            -0.4337088831877575,
+            0.5825308260549695,
+            -0.6874259533504267,
+            -0.0495424540609597
+          ],
+          [
+            -0.8110666291662081,
+            0.07994805783542334,
+            0.5794646072896157,
+            0.20040291454237455
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "T_reference_tcp": {
+        "left": [
+          [
+            0.39251436623006936,
+            0.8088671984597092,
+            0.43779713059697895,
+            0.11804143437681619
+          ],
+          [
+            -0.4337088831877575,
+            0.5825308260549695,
+            -0.6874259533504267,
+            -0.0495424540609597
+          ],
+          [
+            -0.8110666291662081,
+            0.07994805783542334,
+            0.5794646072896157,
+            0.20040291454237455
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "preshape": {
+        "left": [
+          0.29000000000000004,
+          0.4188666015850025,
+          0.5344938897175736,
+          0.6067612788436114,
+          0.7164098602412792,
+          0.1
+        ]
+      },
+      "closure": {
+        "positions": {
+          "left": [
+            0.29000000000000004,
+            0.29000000000000004,
+            0.29000000000000004,
+            0.29000000000000004,
+            0.39,
+            0.1
+          ]
+        },
+        "duration_s": 2.0,
+        "settle_s": 1.0,
+        "steps": 40
+      },
+      "release": {
+        "duration_s": 2.0,
+        "settle_s": 0.5,
+        "steps": 40,
+        "progress_intervals": [
+          [
+            0.0,
+            0.75
+          ],
+          [
+            0.0,
+            0.75
+          ],
+          [
+            0.0,
+            0.75
+          ],
+          [
+            0.0,
+            0.75
+          ],
+          [
+            0.0,
+            0.75
+          ],
+          [
+            0.75,
+            1.0
+          ]
+        ]
+      },
+      "lift_m": 0.12,
+      "effort_limit": 0.6,
+      "source": {
+        "input_path": "outputs/box_pose_robustness_20261107/brother_combo100_v187/stages/brother_combo100_v187_b0_s20002/probe/full_arm_input.json",
+        "input_sha256": "b309d0ac0cae5b82b598558cfaeea2d910dcd3178a4b07ec1fdd0ecf3bc7daa2",
+        "report_path": "outputs/box_pose_robustness_20261107/brother_combo100_v187/remote_progress_latest.json",
+        "report_sha256": "e5521304347b7f0474f3d4a12e81a608fb8523b6efe591cfb0272de8582f364c",
+        "canonical_trace_sha256": "5f40cd1e5ec1e215bf90a8bf2ac8930c27c29e6a9ff4b7e3e6b2575a21d63453",
+        "native_full_cycle_passed": true,
+        "policy_path": "outputs/box_pose_robustness_20261107/brother_combo100_v187/policy_library.json",
+        "policy_sha256": "5990a4f2a503cd23f6383722b3df8f668f1f4bcec308d0683743003df95bb1fe"
+      },
+      "adaptations": {
+        "ros_qualified": false,
+        "effort": "ROS trial limit; no native force equivalence",
+        "preshape": "ROS six actuator targets; native encoder-bias approach controller is not replayed",
+        "motion": "main MoveTcp planning and tracking; native world and joint paths are not replayed",
+        "placement": "main observed-tray placement; native measured seating is not reproduced",
+        "native_seat_before_release": true
+      }
+    },
+    {
+      "key": "philips_right",
+      "id": "philips_right",
+      "family": "philips",
+      "object_name": "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack",
+      "hand": "right",
+      "reference": {
+        "kind": "rgbd_model_pose",
+        "model_name": "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack",
+        "frame": "canonical_rgbd_model",
+        "centroid_fallback": false
+      },
+      "T_reference_pregrasp": {
+        "right": [
+          [
+            -0.9645772658671699,
+            0.06305733011619179,
+            0.2561532183885899,
+            0.04726129223862437
+          ],
+          [
+            -0.2377336259718546,
+            -0.6286493879349218,
+            -0.7404611199322505,
+            -0.06564435776421407
+          ],
+          [
+            0.11433906267977424,
+            -0.7751281959570726,
+            0.621371755535963,
+            0.32500745426451844
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "T_reference_approach": {
+        "right": [
+          [
+            -0.9654954501147702,
+            0.06653459147270095,
+            0.2517770520624116,
+            0.04841558299953789
+          ],
+          [
+            -0.2370755922160761,
+            -0.6246476414974006,
+            -0.7440500571514876,
+            -0.06458766635530847
+          ],
+          [
+            0.10776687516613938,
+            -0.7780671385615101,
+            0.6188681834669073,
+            0.22483202869240695
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "T_reference_tcp": {
+        "right": [
+          [
+            -0.9654954501147702,
+            0.06653459147270095,
+            0.2517770520624116,
+            0.04841558299953789
+          ],
+          [
+            -0.2370755922160761,
+            -0.6246476414974006,
+            -0.7440500571514876,
+            -0.06458766635530847
+          ],
+          [
+            0.10776687516613938,
+            -0.7780671385615101,
+            0.6188681834669073,
+            0.22483202869240695
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "preshape": {
+        "right": [
+          0.93,
+          0.93,
+          0.93,
+          0.93,
+          1.0,
+          0.1
+        ]
+      },
+      "closure": {
+        "positions": {
+          "right": [
+            0.29,
+            0.29,
+            0.29,
+            0.29,
+            0.39,
+            0.1
+          ]
+        },
+        "duration_s": 2.0,
+        "settle_s": 1.0,
+        "steps": 40
+      },
+      "release": {
+        "duration_s": 2.0,
+        "settle_s": 0.5,
+        "steps": 40,
+        "progress_intervals": [
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "lift_m": 0.12,
+      "effort_limit": 0.6,
+      "source": {
+        "input_path": "outputs/box_pose_robustness_20261107/philips100_v224/stages/philips100_v224_b4_s20000/probe/full_arm_input.json",
+        "input_sha256": "8d23cda0195278b3dcdc47e118bef27156bd5f73dda95ed80b34db3e13dbbace",
+        "report_path": "outputs/box_pose_robustness_20261107/philips100_v224/remote_progress_latest.json",
+        "report_sha256": "b648ff27460bacbe877f01e7581132aedbdbf9f737203ca868c36bf144090952",
+        "canonical_trace_sha256": "88611aa82200ba1769714f98741d218dd9259c9dd3b8cd4641934eb4513454d6",
+        "native_full_cycle_passed": true,
+        "policy_path": "outputs/box_pose_robustness_20261107/philips100_v224/policy_library.json",
+        "policy_sha256": "45f5c246fe75d21c7e2ea3f1a17a80f897b2142b2148f593db9d7719716aa4ea"
+      },
+      "adaptations": {
+        "ros_qualified": false,
+        "effort": "ROS trial limit; no native force equivalence",
+        "preshape": "ROS six actuator targets; native encoder-bias approach controller is not replayed",
+        "motion": "main MoveTcp planning and tracking; native world and joint paths are not replayed",
+        "placement": "main observed-tray placement; native measured seating is not reproduced",
+        "native_seat_before_release": false
+      }
+    },
+    {
+      "key": "philips_right_turn180",
+      "id": "philips_right_turn180",
+      "family": "philips",
+      "object_name": "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack",
+      "hand": "right",
+      "reference": {
+        "kind": "rgbd_model_pose",
+        "model_name": "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack",
+        "frame": "canonical_rgbd_model",
+        "centroid_fallback": false
+      },
+      "T_reference_pregrasp": {
+        "right": [
+          [
+            0.96457726586717,
+            -0.06305733011619209,
+            -0.2561532183885903,
+            -0.047204291571766366
+          ],
+          [
+            0.23773362597185507,
+            0.6286493879349216,
+            0.7404611199322506,
+            0.06643736031004857
+          ],
+          [
+            0.11433906267977434,
+            -0.7751281959570728,
+            0.621371755535963,
+            0.32500745426451827
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "T_reference_approach": {
+        "right": [
+          [
+            0.9654954501147701,
+            -0.06653459147270135,
+            -0.2517770520624119,
+            -0.048358582332680713
+          ],
+          [
+            0.23707559221607663,
+            0.6246476414974004,
+            0.7440500571514876,
+            0.06538066890114304
+          ],
+          [
+            0.10776687516613942,
+            -0.7780671385615103,
+            0.6188681834669073,
+            0.22483202869240682
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "T_reference_tcp": {
+        "right": [
+          [
+            0.9654954501147701,
+            -0.06653459147270135,
+            -0.2517770520624119,
+            -0.048358582332680713
+          ],
+          [
+            0.23707559221607663,
+            0.6246476414974004,
+            0.7440500571514876,
+            0.06538066890114304
+          ],
+          [
+            0.10776687516613942,
+            -0.7780671385615103,
+            0.6188681834669073,
+            0.22483202869240682
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "preshape": {
+        "right": [
+          0.93,
+          0.93,
+          0.93,
+          0.93,
+          1.0,
+          0.1
+        ]
+      },
+      "closure": {
+        "positions": {
+          "right": [
+            0.29,
+            0.29,
+            0.29,
+            0.29,
+            0.39,
+            0.1
+          ]
+        },
+        "duration_s": 2.0,
+        "settle_s": 1.0,
+        "steps": 40
+      },
+      "release": {
+        "duration_s": 2.0,
+        "settle_s": 0.5,
+        "steps": 40,
+        "progress_intervals": [
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "lift_m": 0.12,
+      "effort_limit": 0.6,
+      "source": {
+        "input_path": "outputs/box_pose_robustness_20261107/philips100_v224/stages/philips100_v224_b4_s20007/probe/full_arm_input.json",
+        "input_sha256": "400c58831db70aafb60a482e7218af88b420e82db5c21680492174d17b73e3f6",
+        "report_path": "outputs/box_pose_robustness_20261107/philips100_v224/remote_progress_latest.json",
+        "report_sha256": "b648ff27460bacbe877f01e7581132aedbdbf9f737203ca868c36bf144090952",
+        "canonical_trace_sha256": "b95faf14f874f4d4be8705bc335a396985f681b5c197b338cb8e73083b8ae1a0",
+        "native_full_cycle_passed": true,
+        "policy_path": "outputs/box_pose_robustness_20261107/philips100_v224/policy_library.json",
+        "policy_sha256": "45f5c246fe75d21c7e2ea3f1a17a80f897b2142b2148f593db9d7719716aa4ea"
+      },
+      "adaptations": {
+        "ros_qualified": false,
+        "effort": "ROS trial limit; no native force equivalence",
+        "preshape": "ROS six actuator targets; native encoder-bias approach controller is not replayed",
+        "motion": "main MoveTcp planning and tracking; native world and joint paths are not replayed",
+        "placement": "main observed-tray placement; native measured seating is not reproduced",
+        "native_seat_before_release": false
+      }
+    },
+    {
+      "key": "nescafe_right",
+      "id": "nescafe_right",
+      "family": "nescafe",
+      "object_name": "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g",
+      "hand": "right",
+      "reference": {
+        "kind": "rgbd_model_pose",
+        "model_name": "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g",
+        "frame": "canonical_rgbd_model",
+        "centroid_fallback": false
+      },
+      "T_reference_pregrasp": {
+        "right": [
+          [
+            -0.8267536923838686,
+            0.1929096125324722,
+            0.5284545519930842,
+            0.06746623550930249
+          ],
+          [
+            -0.5409436418184458,
+            -0.5305267472661138,
+            -0.652626498704607,
+            -0.058189360784432355
+          ],
+          [
+            0.15446134955333254,
+            -0.8254254974422638,
+            0.5429681755557635,
+            0.36470496131203944
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "T_reference_approach": {
+        "right": [
+          [
+            -0.8269460601457015,
+            0.18780723964368076,
+            0.52998929644562,
+            0.0642288865119177
+          ],
+          [
+            -0.5391809937873895,
+            -0.5322552329422439,
+            -0.6526777328391408,
+            -0.061249993218724486
+          ],
+          [
+            0.1595119730551446,
+            -0.8254894352703847,
+            0.5414084619850672,
+            0.25988659429022715
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "T_reference_tcp": {
+        "right": [
+          [
+            -0.8269460601457015,
+            0.18780723964368076,
+            0.52998929644562,
+            0.0642288865119177
+          ],
+          [
+            -0.5391809937873895,
+            -0.5322552329422439,
+            -0.6526777328391408,
+            -0.061249993218724486
+          ],
+          [
+            0.1595119730551446,
+            -0.8254894352703847,
+            0.5414084619850672,
+            0.25988659429022715
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "preshape": {
+        "right": [
+          0.93,
+          0.93,
+          0.93,
+          0.93,
+          0.8300000000000001,
+          0.1
+        ]
+      },
+      "closure": {
+        "positions": {
+          "right": [
+            0.49,
+            0.49,
+            0.49,
+            0.49,
+            0.64,
+            0.1
+          ]
+        },
+        "duration_s": 2.0,
+        "settle_s": 0.5,
+        "steps": 40
+      },
+      "release": {
+        "duration_s": 2.0,
+        "settle_s": 0.5,
+        "steps": 40,
+        "progress_intervals": [
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "lift_m": 0.12,
+      "effort_limit": 0.6,
+      "source": {
+        "input_path": "outputs/box_pose_robustness_20261107/coffee100_v215/stages/coffee100_v215_b3_s20000/probe/full_arm_input.json",
+        "input_sha256": "0f5079c6e9864ae3d66fe83c2c6a8afe2fbadfa3c6d8f89ffeb86ab94b5f6e85",
+        "report_path": "outputs/box_pose_robustness_20261107/coffee100_v215/remote_progress_latest.json",
+        "report_sha256": "1ffe063f77477338386cf9a5a7c8484aa9a3c0f9ebc222a6094d0563c2e3d87d",
+        "canonical_trace_sha256": "b65921e61805683be95b3cb447b5744e31245189410bb7a91d9c1cd8c54bbf63",
+        "native_full_cycle_passed": true,
+        "policy_path": "outputs/box_pose_robustness_20261107/coffee100_v215/policy_library.json",
+        "policy_sha256": "1be11c02f23fc42758b8e732fb86f990c299fad6a9276313d1153c2191ef89b0"
+      },
+      "adaptations": {
+        "ros_qualified": false,
+        "effort": "ROS trial limit; no native force equivalence",
+        "preshape": "ROS six actuator targets; native encoder-bias approach controller is not replayed",
+        "motion": "main MoveTcp planning and tracking; native world and joint paths are not replayed",
+        "placement": "main observed-tray placement; native measured seating is not reproduced",
+        "native_seat_before_release": false
+      },
+      "postlift": {
+        "positions": {
+          "right": [
+            0.44,
+            0.44,
+            0.44,
+            0.44,
+            0.59,
+            0.1
+          ]
+        },
+        "duration_s": 2.0,
+        "settle_s": 0.5,
+        "steps": 40
+      }
+    },
+    {
+      "key": "nescafe_right_turn180",
+      "id": "nescafe_right_turn180",
+      "family": "nescafe",
+      "object_name": "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g",
+      "hand": "right",
+      "reference": {
+        "kind": "rgbd_model_pose",
+        "model_name": "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g",
+        "frame": "canonical_rgbd_model",
+        "centroid_fallback": false
+      },
+      "T_reference_pregrasp": {
+        "right": [
+          [
+            0.8267536923838685,
+            -0.19290961253247263,
+            -0.5284545519930843,
+            -0.06715323661842582
+          ],
+          [
+            0.5409436418184462,
+            0.5305267472661137,
+            0.652626498704607,
+            0.05901435984863967
+          ],
+          [
+            0.1544613495533325,
+            -0.8254254974422638,
+            0.5429681755557635,
+            0.36470496131203933
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "T_reference_approach": {
+        "right": [
+          [
+            0.8269460601457012,
+            -0.18780723964368085,
+            -0.52998929644562,
+            -0.0639158876210402
+          ],
+          [
+            0.5391809937873894,
+            0.5322552329422438,
+            0.6526777328391408,
+            0.06207499228293227
+          ],
+          [
+            0.1595119730551445,
+            -0.8254894352703847,
+            0.5414084619850672,
+            0.25988659429022726
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "T_reference_tcp": {
+        "right": [
+          [
+            0.8269460601457012,
+            -0.18780723964368085,
+            -0.52998929644562,
+            -0.0639158876210402
+          ],
+          [
+            0.5391809937873894,
+            0.5322552329422438,
+            0.6526777328391408,
+            0.06207499228293227
+          ],
+          [
+            0.1595119730551445,
+            -0.8254894352703847,
+            0.5414084619850672,
+            0.25988659429022726
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "preshape": {
+        "right": [
+          0.93,
+          0.93,
+          0.93,
+          0.93,
+          0.8300000000000001,
+          0.1
+        ]
+      },
+      "closure": {
+        "positions": {
+          "right": [
+            0.49,
+            0.49,
+            0.49,
+            0.49,
+            0.64,
+            0.1
+          ]
+        },
+        "duration_s": 2.0,
+        "settle_s": 0.5,
+        "steps": 40
+      },
+      "release": {
+        "duration_s": 2.0,
+        "settle_s": 0.5,
+        "steps": 40,
+        "progress_intervals": [
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "lift_m": 0.12,
+      "effort_limit": 0.6,
+      "source": {
+        "input_path": "outputs/box_pose_robustness_20261107/coffee100_v215/stages/coffee100_v215_b3_s20006/probe/full_arm_input.json",
+        "input_sha256": "075b23af9050c4319f8a81659c50b243dc58cedbb31bc000839555d7ee3611c7",
+        "report_path": "outputs/box_pose_robustness_20261107/coffee100_v215/remote_progress_latest.json",
+        "report_sha256": "1ffe063f77477338386cf9a5a7c8484aa9a3c0f9ebc222a6094d0563c2e3d87d",
+        "canonical_trace_sha256": "0d703d9dc4c8602f234e6b8e0be3e51fae9215a2731fa2df73d9082cc4ba4044",
+        "native_full_cycle_passed": true,
+        "policy_path": "outputs/box_pose_robustness_20261107/coffee100_v215/policy_library.json",
+        "policy_sha256": "1be11c02f23fc42758b8e732fb86f990c299fad6a9276313d1153c2191ef89b0"
+      },
+      "adaptations": {
+        "ros_qualified": false,
+        "effort": "ROS trial limit; no native force equivalence",
+        "preshape": "ROS six actuator targets; native encoder-bias approach controller is not replayed",
+        "motion": "main MoveTcp planning and tracking; native world and joint paths are not replayed",
+        "placement": "main observed-tray placement; native measured seating is not reproduced",
+        "native_seat_before_release": false
+      },
+      "postlift": {
+        "positions": {
+          "right": [
+            0.44,
+            0.44,
+            0.44,
+            0.44,
+            0.59,
+            0.1
+          ]
+        },
+        "duration_s": 2.0,
+        "settle_s": 0.5,
+        "steps": 40
+      }
+    },
+    {
+      "key": "brother_right",
+      "id": "brother_right",
+      "family": "brother",
+      "object_name": "Brother_Ink_Cartridge_Magenta_LC75M",
+      "hand": "right",
+      "reference": {
+        "kind": "rgbd_model_pose",
+        "model_name": "Brother_Ink_Cartridge_Magenta_LC75M",
+        "frame": "canonical_rgbd_model",
+        "centroid_fallback": false
+      },
+      "T_reference_pregrasp": {
+        "right": [
+          [
+            0.06247134191579862,
+            0.7404949044254401,
+            -0.6691521710038741,
+            -0.2119286673131473
+          ],
+          [
+            -0.43620298232145954,
+            -0.5827783900156991,
+            -0.6856356950630376,
+            -0.05437972358477694
+          ],
+          [
+            -0.8976771633795215,
+            0.33471875455472855,
+            0.28659913764041145,
+            0.12223170121303739
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "T_reference_approach": {
+        "right": [
+          [
+            0.06247134191579862,
+            0.7404949044254401,
+            -0.6691521710038741,
+            -0.14239926866682318
+          ],
+          [
+            -0.43620298232145954,
+            -0.5827783900156991,
+            -0.6856356950630376,
+            -0.053847712160264294
+          ],
+          [
+            -0.8976771633795215,
+            0.33471875455472855,
+            0.28659913764041145,
+            0.1077528566187056
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "T_reference_tcp": {
+        "right": [
+          [
+            0.06247134191579862,
+            0.7404949044254401,
+            -0.6691521710038741,
+            -0.14239926866682318
+          ],
+          [
+            -0.43620298232145954,
+            -0.5827783900156991,
+            -0.6856356950630376,
+            -0.053847712160264294
+          ],
+          [
+            -0.8976771633795215,
+            0.33471875455472855,
+            0.28659913764041145,
+            0.1077528566187056
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "preshape": {
+        "right": [
+          0.73,
+          0.73,
+          0.73,
+          0.73,
+          0.8300000000000001,
+          0.09999999999999998
+        ]
+      },
+      "closure": {
+        "positions": {
+          "right": [
+            0.29000000000000004,
+            0.29000000000000004,
+            0.29000000000000004,
+            0.29000000000000004,
+            0.39,
+            0.09999999999999998
+          ]
+        },
+        "duration_s": 2.0,
+        "settle_s": 1.0,
+        "steps": 40
+      },
+      "release": {
+        "duration_s": 2.0,
+        "settle_s": 0.5,
+        "steps": 40,
+        "progress_intervals": [
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "lift_m": 0.12,
+      "effort_limit": 0.6,
+      "source": {
+        "input_path": "outputs/box_pose_robustness_20261107/pick_evidence_001/results/pick_brother0_v3/input.json",
+        "input_sha256": "15ee1513ceaf6c8072a0f80b5dea143f4fdc62f59266caac9e1c74bee1e23398",
+        "report_path": "outputs/box_pose_robustness_20261107/pick_evidence_001/results/pick_brother0_v3/independent_cycle_audit.json",
+        "report_sha256": "e6da57d5676eaecfd1257e5b2d6a8b2e1c1ca01572e708457a10fd7c4383b3ba",
+        "canonical_trace_sha256": "95235f7fd3c1a2595590aa0f1b353e95c23af50db246ee307baa5350d1e3eab5",
+        "native_full_cycle_passed": true
+      },
+      "adaptations": {
+        "ros_qualified": false,
+        "effort": "ROS trial limit; no native force equivalence",
+        "preshape": "ROS six actuator targets; native encoder-bias approach controller is not replayed",
+        "motion": "main MoveTcp planning and tracking; native world and joint paths are not replayed",
+        "placement": "main observed-tray placement; native measured seating is not reproduced",
+        "native_seat_before_release": false
+      }
+    }
+  ]
+}

@@ -67,10 +67,11 @@ class Skills:
         return (effect.phase in (State.OPEN, State.DESCEND) and effect.target is not None
                 and recorded_grasps.uses_recorded(self.db, effect.target.name))
 
-    def prepare_recorded(self, effect, scene, data, now, after_stamp_ns):
+    def prepare_recorded(self, effect, scene, data, now, after_stamp_ns, attempt=1):
         obj = next(o for o in scene.objects if (o.name or o.track_id) == effect.target.id)
         container = next((x for x in scene.containers if x.id == effect.destination and x.kind == 'tray'), None)
-        cand = recorded_grasps.candidate(data, now, obj, container, self.db, after_stamp_ns)
+        key = self.grasp.profile_key if effect.phase == State.DESCEND else None
+        cand = recorded_grasps.candidate(data, now, obj, container, self.db, after_stamp_ns, attempt, key)
         self.grasp = recorded_grasps.refreshed(self.grasp, cand) if effect.phase == State.DESCEND else cand
 
     def command(self, effect, scene, attempt=1):
@@ -106,8 +107,12 @@ class Skills:
         if phase == State.CLEAR:  # the arm of the last grasp, to the side and out of the head camera view
             return 'tcp', MoveTcp.Goal(arm=g.arm, target=Pose(), mode='ready')
         if phase in (State.CLOSE, State.RELEASE):
-            return 'hand', Hand.Goal(hand=g.arm, preset=g.hand_preset if phase == State.CLOSE else 'open',
-                                     force=float(g.force if phase == State.CLOSE else 0.0))
+            release = (g.profile_key + '_release' if isinstance(g, recorded_grasps.RecordedGrasp)
+                       and 'release' in recorded_grasps.PROFILES[g.profile_key] else 'open')
+            preset = g.hand_preset if phase == State.CLOSE else release
+            return 'hand', Hand.Goal(hand=g.arm, preset=preset, force=float(g.force if preset != 'open' else 0.0))
+        if phase == State.TIGHTEN:
+            return 'hand', Hand.Goal(hand=g.arm, preset=g.profile_key + '_postlift', force=float(g.force))
         if phase == State.TRANSFER:
             container = next(x for x in scene.containers if x.id == effect.destination and x.kind == 'tray')
             self.place_plan = place_for(g, container, self.db)
@@ -118,8 +123,9 @@ class Skills:
         if phase not in poses:
             raise NotImplementedError('skill unavailable: ' + phase.value)
         recorded = isinstance(g, recorded_grasps.RecordedGrasp)
+        mode = {State.APPROACH: 'direct', State.TRANSFER: 'carry'}.get(phase, 'linear')
         return 'tcp', MoveTcp.Goal(arm=g.arm, target=poses[phase],
-                                  mode={State.APPROACH: 'direct', State.TRANSFER: 'carry'}.get(phase, 'linear'),
+                                  mode=mode + '_fixed' if recorded else mode,
                                   pos_tol=.005 if recorded else {State.DESCEND: GRASP_POS_TOL, State.APPROACH: FREE_POS_TOL,
                                            State.TRANSFER: FREE_POS_TOL}.get(phase, 0.0),
                                   rot_tol=.05 if recorded else 0.0)

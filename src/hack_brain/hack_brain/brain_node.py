@@ -32,10 +32,13 @@ class Brain(Node):
             get_package_share_directory('hack_brain'), 'config', 'grasp_db.yaml'))
         db = load_db(self.get_parameter('grasp_db').value)
         self.declare_parameter('recorded_grasps', False)
+        self.declare_parameter('recorded_objects', 'rhino,brother,philips,nescafe')
         if self.get_parameter('recorded_grasps').value:
             from .recorded_grasps import evaluation_db
-            db = evaluation_db(db, True)
-        values = {'skip_names': skip_names(db), 'confidence_floors': confidence_floors(db)}
+            db = evaluation_db(db, True, self.get_parameter('recorded_objects').value)
+        from .recorded_grasps import postlift_names
+        values = {'skip_names': skip_names(db), 'confidence_floors': confidence_floors(db),
+                  'postlift_names': postlift_names(db)}
         for name in Config.__dataclass_fields__:
             if name in values:
                 continue

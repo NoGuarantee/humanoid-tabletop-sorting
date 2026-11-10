@@ -105,6 +105,9 @@ class MotionNode(Node):
         self.q = {}
         self.compensation = {}  # joint -> rad on top of the target, kept between moves (see move_joints)
         self.hand_state = {"left": None, "right": None}
+        # What the last Hand goal of each side found: False after a close that met nothing or an open, True after a
+        # close that met an object, None before any. A shut empty hand is not one that may hold an object.
+        self.hand_holds = {"left": None, "right": None}
         self.task_trays = None  # trays of the task from /sim/task, None until it arrives
         self.scene_objects = ()  # neighbours from the latest perception/scene, tuples for the cuRobo world
         self.carrying = False  # during a carry: the planner leaves out what the robot touches at each start
@@ -427,6 +430,7 @@ class MotionNode(Node):
             # a closing finger stopped well short of its target with noticeable effort -> something is in the hand
             res.object_detected = any(
                 res.position[i] > target[i] + 0.05 and (not res.effort or res.effort[i] > 0.1) for i in closing)
+            self.hand_holds[g.hand] = bool(res.object_detected)
             self.get_logger().info(
                 f"hand {g.hand} {g.preset}: position {' '.join(f'{p:.2f}' for p in res.position)}, effort "
                 f"{' '.join(f'{e:.2f}' for e in res.effort)}, object {res.object_detected}")
@@ -595,11 +599,14 @@ class MotionNode(Node):
         q = self.joints(ARM_JOINTS[other])
         if any(v is None for v in q):
             return False
-        off = max(abs(v - r) for v, r in zip(q, ready_pose(other)))
+        off, worst = max((abs(v - r), f"{n} {v:+.2f}") for n, v, r in zip(ARM_JOINTS[other], q, ready_pose(other)))
         if off <= OTHER_READY_TOL:
             return False
+        why = f"{why}; worst {worst}"
         fingers = self._finger_pos(other)
-        if fingers is None or min(fingers[:5]) < OPEN_FINGER:
+        # After an empty grasp the hand stays shut on nothing, and that arm stayed in the way of a carry with the
+        # other one five times, until brain gave up with the cartridge in the hand (sort3 seed 7, 2026-11-10).
+        if (fingers is None or min(fingers[:5]) < OPEN_FINGER) and self.hand_holds[other] is not False:
             self.get_logger().info(f"move_tcp {arm}: {why}; the {other} arm is {off:.2f} rad off ready, "
                                    f"but its hand is not open, so it stays")
             return False

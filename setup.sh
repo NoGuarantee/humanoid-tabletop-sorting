@@ -7,21 +7,23 @@
 #
 # Never fails: solution.sh runs this under set -e, and a non-zero exit would skip run.sh, so /sim/task/done would
 # never be published. Without cuRobo the nodes still start and MoveTcp answers with the error.
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 0
+setup_started=$SECONDS
 rm -f weights/.rgbd-ready
 if bash tools/curobo_install.sh; then
     python3 tools/curobo_warmup.py || echo "[setup] cuRobo warmup failed, the first MoveTcp compiles the kernels"
 else
     echo "[setup] cuRobo install FAILED, MoveTcp will not work"
 fi
-# Presence of the pre-staged archive explicitly opts in to the RGB-D scene worker.
-if [ -f weights/geometry_only_ros_bundle.tar.gz ]; then
-    if bash tools/stage_perception_rgbd.sh &&
+# The bundled 12 MB archive works in a clean checkout without GitHub credentials.
+rgbd_started=$SECONDS
+if bash tools/stage_perception_rgbd.sh &&
        /usr/bin/python3 -m pip install 'numpy<2' -r tools/perception_rgbd_requirements.txt &&
-       YOLO_OFFLINE=true YOLO_AUTOINSTALL=false /usr/bin/python3 -c           'import cv2, numpy, scipy, PIL, torch, torchvision, ultralytics; assert numpy.__version__.split(".")[0] == "1"'; then
-        touch weights/.rgbd-ready
-    else
-        echo "[setup] RGB-D setup failed, using baseline perception"
-    fi
+       PYTHONPATH="$PWD/src/hack_perception${PYTHONPATH:+:$PYTHONPATH}" YOLO_OFFLINE=true YOLO_AUTOINSTALL=false /usr/bin/python3 -c \
+           'import numpy; assert numpy.__version__.split(".")[0] == "1"; from hack_perception.rgbd.pose_backend import PoseBackend; PoseBackend("weights/rgbd-b33b2debe3c1", device="cpu")'; then
+    touch weights/.rgbd-ready
+else
+    echo "[setup] RGB-D setup failed, using baseline perception"
 fi
+echo "[setup] RGB-D elapsed $((SECONDS-rgbd_started))s; total $((SECONDS-setup_started))s"
 exit 0

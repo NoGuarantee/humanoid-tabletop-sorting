@@ -198,7 +198,6 @@ class CuroboPlanner:
         if mode not in ("direct", "linear", "ready"):
             raise RuntimeError(f"unknown mode {mode}")
         self.free_yaw = False
-        self.keep_orientation = keep_orientation
         if mode == "ready":
             # No objects: the hand may still hold one, or sit by the one it let go, and a start inside a cuboid
             # does not plan. main had no objects in the world for this move either.
@@ -207,9 +206,9 @@ class CuroboPlanner:
         self.sync_world(target)
         held = self._held(q_by_name)
         if not held:
-            result = self._plan_in_world(arm, target, q_by_name, mode, pos_tol, rot_tol)
+            result = self._plan_in_world(arm, target, q_by_name, mode, pos_tol, rot_tol, keep_orientation)
         else:
-            result = self._without(held, lambda: self._plan_in_world(arm, target, q_by_name, mode, pos_tol, rot_tol))
+            result = self._without(held, lambda: self._plan_in_world(arm, target, q_by_name, mode, pos_tol, rot_tol, keep_orientation))
             self.scene_note += f", without {', '.join(held)} (carried, the start touches them)"
         if keep_orientation and self.carrying and mode == 'linear':
             goal, state = self._goal(arm, target, q_by_name)
@@ -230,11 +229,11 @@ class CuroboPlanner:
         trays = set(self._tray_names())
         return [name for name in self._touching(q_by_name) if name not in trays and name != "table"]
 
-    def _plan_in_world(self, arm, target, q_by_name, mode, pos_tol, rot_tol):
+    def _plan_in_world(self, arm, target, q_by_name, mode, pos_tol, rot_tol, keep_orientation=False):
         """plan() after sync_world: `direct` with a detour, or `linear` without what the start touches."""
         if mode == "direct":
             if self.carrying:
-                return self._plan_carry(arm, target, q_by_name, pos_tol, rot_tol)
+                return self._plan_carry(arm, target, q_by_name, pos_tol, rot_tol, keep_orientation)
             try:
                 return self._plan_direct(arm, target, q_by_name, pos_tol, rot_tol)
             except Unreachable:
@@ -261,7 +260,7 @@ class CuroboPlanner:
             self.scene_note += f", planned without {', '.join(touching)} (the start touches them)"
             return result
 
-    def _plan_carry(self, arm, target, q_by_name, pos_tol, rot_tol):
+    def _plan_carry(self, arm, target, q_by_name, pos_tol, rot_tol, keep_orientation=False):
         """`direct` for a hand that holds an object: a path that keeps the hand's orientation, then the plain one.
 
         The plain joint path to an IK solution turns the wrist on the way. Carrying the cup to tray_right it was
@@ -273,7 +272,7 @@ class CuroboPlanner:
         A path that tips the hand more than CARRY_TURN is not taken.
         """
         notes = []
-        strict = getattr(self, 'keep_orientation', False)
+        strict = keep_orientation
         tries = [False, True] if not strict and tilt(_xyzw(target)) <= VERTICAL else [False]
         for free_yaw in tries:
             try:

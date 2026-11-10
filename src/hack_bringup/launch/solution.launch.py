@@ -25,7 +25,7 @@ def generate_launch_description():
         DeclareLaunchArgument("perceive_frame_wait_s", default_value="0.75"),
         DeclareLaunchArgument("rgbd_model_dir", default_value=EnvironmentVariable("NSSR_RGBD_MODEL_DIR", default_value="")),
         DeclareLaunchArgument("recorded_grasps", default_value=EnvironmentVariable("NSSR_RECORDED_GRASPS", default_value="false")),
-        DeclareLaunchArgument("recorded_objects", default_value="rhino,brother,philips,nescafe"),
+        DeclareLaunchArgument("recorded_objects", default_value=EnvironmentVariable("NSSR_RECORDED_OBJECTS", default_value="philips")),
         DeclareLaunchArgument("rgbd_robot_self_filter", default_value=LaunchConfiguration("recorded_grasps")),
         DeclareLaunchArgument("rgbd_enable_model_poses", default_value=EnvironmentVariable("NSSR_RGBD_ENABLE_MODEL_POSES", default_value=LaunchConfiguration("recorded_grasps"))),
         DeclareLaunchArgument("rgbd_device", default_value=EnvironmentVariable("NSSR_RGBD_DEVICE", default_value="cpu")),

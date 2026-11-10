@@ -37,6 +37,7 @@ from .robot import (ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, READY_STEP, TCP
 
 KEEP_YAW_XY = 0.03  # m: a linear move this far across or less is vertical, and a top-down hand keeps its yaw on it
 PERIOD = 0.05  # s, real time between control checks
+CLOCK_STALL_WALL_S = 15.0  # watchdog only: abort if /clock stops advancing; motion timing uses sim time
 # Inspire actuator 6, thumb rotation. It turns across before the other fingers close.
 THUMB = 5
 # /inspire_hand/set_speed: 1.0 is a full stroke in 0.8 s. Half of that keeps the close from kicking the object out.
@@ -455,7 +456,7 @@ class MotionNode(Node):
         self.hand_holds[goal.hand] = None
         if not self._set_hand_limit(goal.hand, force) or not self._set_hand_speed(goal.hand, 1.0):
             return Hand.Result(success=False)
-        wall_deadline = time.monotonic() + 30.
+        clock_progress_wall = time.monotonic()
         start = last = self.now()
         elapsed = 0.
         for positions, duration in hand_steps(goal.preset):
@@ -469,7 +470,12 @@ class MotionNode(Node):
             while rclpy.ok():
                 now = self.now()
                 sample = self._finger_sample(goal.hand)
-                if (self.cancelled() or now < last or time.monotonic() >= wall_deadline
+                if now > last:
+                    clock_progress_wall = time.monotonic()
+                if time.monotonic() - clock_progress_wall >= CLOCK_STALL_WALL_S:
+                    self.get_logger().warn('recorded hand: /clock stopped advancing for 15 wall seconds')
+                    return Hand.Result(success=False)
+                if (self.cancelled() or now < last
                         or sample is None or abs(now - sample[0]) > .5
                         or not all(math.isfinite(p) for p in sample[1])):
                     return Hand.Result(success=False)

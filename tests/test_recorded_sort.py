@@ -381,7 +381,7 @@ class RecordedClientTests(unittest.TestCase):
 
 class RecordedHandTests(unittest.TestCase):
     """Run the actual action method with a deterministic clock and measured hand."""
-    def run_hand(self, *, side='right', preset=CLOSE, cancel_at=None, stale=False, force_ok=True, force=.6):
+    def run_hand(self, *, side='right', preset=CLOSE, cancel_at=None, stale=False, force_ok=True, force=.6, sim_rate=1.):
         import math
         import threading
         from hack_motion.recorded_grasp import HAND_TARGETS
@@ -390,9 +390,11 @@ class RecordedHandTests(unittest.TestCase):
         method = next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
                       and node.name == 'recorded_hand')
         clock = [10.]
+        wall = [0.]
         sent = []
         def sleep(dt):
-            clock[0] += dt
+            clock[0] += dt * sim_rate
+            wall[0] += dt
         state = NS(position=[.4]*6, effort=[.2]*6)
         node = NS(lock=threading.Lock(), get_logger=Mock(), hand_state={'right':state, 'left':state}, hand_holds={'left':None, 'right':None},
                   now=lambda: clock[0], _set_hand_limit=lambda *_: force_ok,
@@ -401,8 +403,8 @@ class RecordedHandTests(unittest.TestCase):
                   _command_fingers=lambda _, values: sent.append(list(values)),
                   cancelled=lambda: cancel_at is not None and clock[0] >= cancel_at)
         namespace = dict(Hand=NS(Result=NS, Feedback=NS), profile_for_preset=profile_for_preset, HAND_TARGETS=HAND_TARGETS,
-                         hand_steps=hand_steps, math=math, time=NS(monotonic=lambda:clock[0], sleep=sleep),
-                         PERIOD=.05, rclpy=NS(ok=lambda:True))
+                         hand_steps=hand_steps, math=math, time=NS(monotonic=lambda:wall[0], sleep=sleep),
+                         PERIOD=.05, CLOCK_STALL_WALL_S=15., rclpy=NS(ok=lambda:True))
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), 'exec'), namespace)
         goal = NS(request=NS(hand=side, preset=preset, force=force), publish_feedback=lambda _:None)
         return namespace['recorded_hand'](node, goal, HAND_TARGETS[preset]), sent, clock[0]
@@ -419,6 +421,15 @@ class RecordedHandTests(unittest.TestCase):
         result, sent, _ = self.run_hand(force=float(np.float32(.6)))
         self.assertTrue(result.success)
         self.assertTrue(sent)
+
+    def test_slow_clock_finishes_but_frozen_clock_stops(self):
+        result, _, end = self.run_hand(sim_rate=.05)  # >60 wall seconds, but valid 3 sim-second closure
+        self.assertTrue(result.success)
+        self.assertAlmostEqual(end, 13., delta=.01)
+        result, sent, end = self.run_hand(sim_rate=0.)
+        self.assertFalse(result.success)
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(end, 10.)
 
     def test_left_stale_and_failed_force_send_no_finger_commands(self):
         for options in ({'side':'left'}, {'stale':True}, {'force_ok':False}, {'force':0.},
@@ -537,13 +548,13 @@ class RecordedCarryTests(unittest.TestCase):
             if level_turn is None:
                 raise Unreachable('no level path')
             return 'level', level_turn
-        planner = NS(keep_orientation=strict, free_yaw=False, scene_note='', _plan_level=level,
+        planner = NS(free_yaw=False, scene_note='', _plan_level=level,
                      _plan_direct=lambda *_:'direct', _goal=lambda *_:(None, None),
                      _max_turn=lambda *_:fallback_turn)
         namespace = dict(Unreachable=Unreachable, tilt=lambda _:0., _xyzw=lambda _:None, VERTICAL=.1, math=math)
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), 'exec'), namespace)
         try:
-            result = namespace['_plan_carry'](planner, 'right', None, {}, .005, .05)
+            result = namespace['_plan_carry'](planner, 'right', None, {}, .005, .05, keep_orientation=strict)
         except Unreachable:
             result = 'rejected'
         return result, calls

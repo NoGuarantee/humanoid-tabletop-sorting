@@ -23,7 +23,8 @@ def generate_launch_description():
         DeclareLaunchArgument("serialized_images", default_value="true"),
         DeclareLaunchArgument("perceive_frame_wait_s", default_value="0.75"),
         DeclareLaunchArgument("rgbd_model_dir", default_value=EnvironmentVariable("NSSR_RGBD_MODEL_DIR", default_value="")),
-        DeclareLaunchArgument("rgbd_enable_model_poses", default_value=EnvironmentVariable("NSSR_RGBD_ENABLE_MODEL_POSES", default_value="false")),
+        DeclareLaunchArgument("recorded_grasps", default_value=EnvironmentVariable("NSSR_RECORDED_GRASPS", default_value="false")),
+        DeclareLaunchArgument("rgbd_enable_model_poses", default_value=EnvironmentVariable("NSSR_RGBD_ENABLE_MODEL_POSES", default_value=LaunchConfiguration("recorded_grasps"))),
         DeclareLaunchArgument("rgbd_device", default_value=EnvironmentVariable("NSSR_RGBD_DEVICE", default_value="cpu")),
         DeclareLaunchArgument("rgbd_on_demand", default_value=EnvironmentVariable("NSSR_RGBD_ON_DEMAND", default_value="false")),
         DeclareLaunchArgument("rgbd_model_names", default_value=EnvironmentVariable("NSSR_RGBD_MODEL_NAMES", default_value="")),
@@ -34,6 +35,6 @@ def generate_launch_description():
         Node(package="hack_perception", executable="perception_node", name="hack_perception",
              parameters=[common, rgbd], output="screen"),
         Node(package="hack_brain", executable="brain_node", name="hack_brain",
-             parameters=[common], output="screen",
+             parameters=[common, {"recorded_grasps": ParameterValue(LaunchConfiguration("recorded_grasps"), value_type=bool)}], output="screen",
              on_exit=Shutdown(reason="brain exited")),  # brain owns /sim/task/done; without it nothing is left to do
     ])

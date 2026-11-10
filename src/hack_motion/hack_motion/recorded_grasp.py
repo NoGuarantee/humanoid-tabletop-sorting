@@ -1,4 +1,4 @@
-"""Numeric E71 profile shared by the existing Hand action and pick client."""
+"""Numeric E71 profile shared by the existing Hand action and sorting skills."""
 import json
 from importlib.resources import files
 
@@ -15,7 +15,7 @@ HAND_TARGETS = {
 def hand_steps(preset):
     """Six simultaneous actuator targets and the following sim-time dwell."""
     if preset == PRESHAPE:
-        return [(HAND_TARGETS[PRESHAPE], .5)]
+        return [([1.] * 6, .5), (HAND_TARGETS[PRESHAPE], .5)]
     if preset != CLOSE:
         raise ValueError('unknown recorded preset')
     closure = RHINO['closure']

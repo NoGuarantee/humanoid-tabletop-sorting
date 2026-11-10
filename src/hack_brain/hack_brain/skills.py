@@ -16,6 +16,7 @@ from geometry_msgs.msg import Pose
 
 from .context import State
 from .grasp_planner import FINGERTIP, flat_hold_point, plan_grasps, plan_place, pose, tcp_from_local
+from . import recorded_grasps
 
 # The joint loop accepts 0.01 rad. On a 0.7 m arm that is already about 1 cm at the TCP, and the default
 # MoveTcp limit is 1 cm, so a descent that had arrived was rejected at 1.02 cm and the hand never closed.
@@ -36,6 +37,8 @@ def place_for(cand, container, db):
     Keep the grasp orientation: turning the wrist to yaw 0 on the way tips a pinched object out. plan_place aims
     a vertical hand; a leaned (flat pinch) hand holds the object between the pads, not on the TCP axis.
     """
+    if isinstance(cand, recorded_grasps.RecordedGrasp):
+        return recorded_grasps.place(cand, container, db)
     plan = plan_place(cand.arm, container, db)
     q = cand.grasp.orientation
     if cand.leaned:
@@ -60,6 +63,16 @@ class Skills:
         self.grasp = None
         self.place_plan = None
 
+    def needs_model_pose(self, effect):
+        return (effect.phase in (State.OPEN, State.DESCEND) and effect.target is not None
+                and recorded_grasps.uses_recorded(self.db, effect.target.name))
+
+    def prepare_recorded(self, effect, scene, data, now, after_stamp_ns):
+        obj = next(o for o in scene.objects if (o.name or o.track_id) == effect.target.id)
+        container = next((x for x in scene.containers if x.id == effect.destination and x.kind == 'tray'), None)
+        cand = recorded_grasps.candidate(data, now, obj, container, self.db, after_stamp_ns)
+        self.grasp = recorded_grasps.refreshed(self.grasp, cand) if effect.phase == State.DESCEND else cand
+
     def command(self, effect, scene, attempt=1):
         from hack_interfaces.action import Hand, MoveJoints, MoveTcp
         phase = effect.phase
@@ -74,10 +87,15 @@ class Skills:
         if phase == State.OPEN:
             obj = next(o for o in scene.objects if (o.name or o.track_id) == effect.target.id)
             container = next((x for x in scene.containers if x.id == effect.destination and x.kind == 'tray'), None)
-            candidates = plan_grasps(obj, scene, self.db, container)
-            if not candidates:
-                raise ValueError('no_grasp_candidates')
-            self.grasp = candidates[min(attempt - 1, len(candidates) - 1)]
+            self.place_plan = None
+            if recorded_grasps.uses_recorded(self.db, obj.name):
+                if not isinstance(self.grasp, recorded_grasps.RecordedGrasp):
+                    raise ValueError('missing_recorded_model_pose')
+            else:
+                candidates = plan_grasps(obj, scene, self.db, container)
+                if not candidates:
+                    raise ValueError('no_grasp_candidates')
+                self.grasp = candidates[min(attempt - 1, len(candidates) - 1)]
             # The pinch turns the thumb across before the descent (pinch_ready), as pick() does. Turned at the
             # grasp instead, the thumb pushed the cartridge aside and it slipped out on the lift (sort3 seed 1).
             return 'hand', Hand.Goal(hand=self.grasp.arm, preset=self.grasp.approach_preset,
@@ -99,10 +117,12 @@ class Skills:
                           State.RETREAT: self.place_plan.retreat})
         if phase not in poses:
             raise NotImplementedError('skill unavailable: ' + phase.value)
+        recorded = isinstance(g, recorded_grasps.RecordedGrasp)
         return 'tcp', MoveTcp.Goal(arm=g.arm, target=poses[phase],
                                   mode={State.APPROACH: 'direct', State.TRANSFER: 'carry'}.get(phase, 'linear'),
-                                  pos_tol={State.DESCEND: GRASP_POS_TOL, State.APPROACH: FREE_POS_TOL,
-                                           State.TRANSFER: FREE_POS_TOL}.get(phase, 0.0))
+                                  pos_tol=.005 if recorded else {State.DESCEND: GRASP_POS_TOL, State.APPROACH: FREE_POS_TOL,
+                                           State.TRANSFER: FREE_POS_TOL}.get(phase, 0.0),
+                                  rot_tol=.05 if recorded else 0.0)
 
     def holding(self, arm, hand_result):
         # TODO(grasping): also check the weight on /arm_6dof_{arm} after lifting (force along gravity)

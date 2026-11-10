@@ -19,7 +19,7 @@ by_category:
 
 by_name:
   # skip: true = brain leaves the object untouched (0) instead of risking a drop (-10). The 2026-11-09 bench
-  # never got these into a tray; drop the flag once tools/pick_one.py lifts the object reliably.
+  # never got these into a tray; drop the flag only after repeated complete deliveries through brain.
   # pool 4 (team 049): figure
   Schleich_African_Black_Rhino: {skip: true}  # flat pinch: lifted, then slipped
   3D_Dollhouse_Sink: {}

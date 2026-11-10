@@ -146,8 +146,6 @@
   },
   "hand": "right",
   "effort_limit": 0.6,
-  "test_lift_m": 0.047,
-  "hold_s": 5.0,
   "source": {
     "commit": "e5da24ff94559913d3545d87e889f31fd71659c9",
     "episode": "E71",

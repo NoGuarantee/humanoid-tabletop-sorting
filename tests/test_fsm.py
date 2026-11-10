@@ -277,6 +277,15 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(f.c.state, State.CANCELLING)
         self.assertEqual(f.effects[-1].kind, 'CANCEL')
 
+    def test_failed_lower_releases_over_the_tray(self):
+        f = Fake()
+        f.until(State.LOWER)
+        f.answer('unreachable: no straight collision-free path along the goal z axis', ok=False)
+        self.assertEqual(f.c.state, State.RELEASE)
+        c = f.run()
+        self.assertEqual(c.reason, 'candidates_exhausted')
+        self.assertTrue(c.history['a'].placed)
+
     def test_release_failure_not_placement(self):
         f = Fake()
         f.until(State.RELEASE)

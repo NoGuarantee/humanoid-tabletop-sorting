@@ -262,6 +262,12 @@ def _result(c, e, op, effects):
             c.last_recovery = 'retreat_failed: ' + str(e.data or '')
             c.place_look = True
             _look(c, effects)
+        elif state == State.LOWER:
+            # TRANSFER left the fingertips 0.2 m above the tray opening: open there. A straight descent that did
+            # not plan failed the same way six times, and the mission ended with the cup in the hand, -10 (seed
+            # 146, 2026-11-10). Let go over the tray, it lands inside or costs what keeping it would.
+            c.last_recovery = 'lower_failed: ' + str(e.data or '')
+            _enter(c, State.RELEASE, effects)
         else:
             _recover(c, effects, str(e.data or 'operation_failed'))
         return

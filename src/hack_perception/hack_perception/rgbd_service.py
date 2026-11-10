@@ -245,7 +245,8 @@ class ModelPoseService:
         self._worker_notices.append(('debug', f"RGB-D {kind} worker time {elapsed:.3f}s at stamp {key[1]}"))
         if self.on_demand or kind == 'pose':
             self._worker_notices.append(('info', json.dumps(dict(event='rgbd_worker_timing', kind=kind,
-                                                        wall_s=elapsed, stamp_ns=key[1]))))
+                wall_s=elapsed, stamp_ns=key[1], age_sim_s=(now-key[1])*1e-9,
+                accepted=is_fresh(key, self.generation, now, POSE_AGE_NS if kind == 'pose' else SCENE_AGE_NS)))))
         if kind == "scene":
             self.prepared_key = key
             if is_fresh(key, self.generation, now, SCENE_AGE_NS):

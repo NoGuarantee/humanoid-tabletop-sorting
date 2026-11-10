@@ -1,9 +1,20 @@
 """All solution nodes, sim time everywhere. Started by run.sh."""
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, Shutdown
+from launch.actions import DeclareLaunchArgument, OpaqueFunction, SetLaunchConfiguration, Shutdown
 from launch.substitutions import EnvironmentVariable, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+
+
+def recorded_pose_names(context):
+    """Fit selected recorded objects; retain all observed geometry as obstacles."""
+    if (LaunchConfiguration("rgbd_model_names").perform(context)
+            or LaunchConfiguration("recorded_grasps").perform(context).lower() != "true"):
+        return []
+    from hack_motion.recorded_grasp import PROFILES
+    families = set(LaunchConfiguration("recorded_objects").perform(context).split(","))
+    names = sorted({p['object_name'] for p in PROFILES.values() if p['family'] in {s.strip() for s in families}})
+    return [SetLaunchConfiguration("rgbd_model_names", ",".join(names))]
 
 
 def generate_launch_description():
@@ -29,10 +40,11 @@ def generate_launch_description():
         DeclareLaunchArgument("rgbd_robot_self_filter", default_value=LaunchConfiguration("recorded_grasps")),
         DeclareLaunchArgument("rgbd_enable_model_poses", default_value=EnvironmentVariable("NSSR_RGBD_ENABLE_MODEL_POSES", default_value=LaunchConfiguration("recorded_grasps"))),
         DeclareLaunchArgument("rgbd_device", default_value=EnvironmentVariable("NSSR_RGBD_DEVICE", default_value="cpu")),
-        DeclareLaunchArgument("rgbd_on_demand", default_value=EnvironmentVariable("NSSR_RGBD_ON_DEMAND", default_value="false")),
+        DeclareLaunchArgument("rgbd_on_demand", default_value=EnvironmentVariable("NSSR_RGBD_ON_DEMAND", default_value=LaunchConfiguration("recorded_grasps"))),
         DeclareLaunchArgument("rgbd_model_names", default_value=EnvironmentVariable("NSSR_RGBD_MODEL_NAMES", default_value="")),
         DeclareLaunchArgument("rgbd_torch_threads", default_value=EnvironmentVariable("NSSR_RGBD_TORCH_THREADS", default_value="2")),
         DeclareLaunchArgument("rgbd_pool", default_value="0"),
+        OpaqueFunction(function=recorded_pose_names),
         Node(package="hack_motion", executable="motion_node", name="hack_motion",
              parameters=[common], output="screen"),
         Node(package="hack_perception", executable="perception_node", name="hack_perception",

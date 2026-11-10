@@ -1,5 +1,6 @@
 """Clean-checkout delivery and startup fallback, without ROS or network."""
 import hashlib
+import ast
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,24 @@ DIGEST = 'b33b2debe3c1710bd6e7458b983767bfc7a7ce003b0d9c5560ad20ec5bd7fade'
 
 
 class RecordedStartupTests(unittest.TestCase):
+    def test_pose_fitting_follows_selected_families_and_preserves_override(self):
+        from hack_motion.recorded_grasp import PROFILES
+        tree = ast.parse((ROOT/'src/hack_bringup/launch/solution.launch.py').read_text())
+        function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'recorded_pose_names')
+        class Configuration:
+            def __init__(self, name): self.name = name
+            def perform(self, context): return context[self.name]
+        scope = dict(LaunchConfiguration=Configuration, SetLaunchConfiguration=lambda k,v: (k,v))
+        exec(compile(ast.Module(body=[function], type_ignores=[]), '<launch>', 'exec'), scope)
+        resolve = scope['recorded_pose_names']
+        params = dict(recorded_grasps='true', recorded_objects='philips', rgbd_model_names='')
+        self.assertEqual(resolve(params), [('rgbd_model_names', next(p['object_name'] for p in PROFILES.values() if p['family']=='philips'))])
+        params['recorded_objects']='brother, philips'
+        names=resolve(params)[0][1].split(',')
+        self.assertEqual(set(names), {p['object_name'] for p in PROFILES.values() if p['family'] in ('brother','philips')})
+        self.assertEqual(resolve(dict(params, rgbd_model_names='explicit')), [])
+        self.assertEqual(resolve(dict(params, recorded_grasps='false')), [])
+
     def test_clean_checkout_stages_bundled_archive_with_pinned_digest(self):
         archive = ROOT/'assets/perception/geometry_only_ros_bundle.tar.gz'
         self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), DIGEST)

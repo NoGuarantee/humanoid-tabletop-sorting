@@ -90,6 +90,7 @@ class Clients:
         self.model_pending = None
         self.model_future = None
         self.next_model_request = 0.
+        self.model_pose_error = ''
         self.verify_pending = None
         self.verify_scene = None
         self.verify_future = None
@@ -130,6 +131,7 @@ class Clients:
             return
         if self.skills.needs_model_pose(effect):
             self.model_pending = effect
+            self.model_pose_error = ''
             self.model_future = None
             self.next_model_request = 0.
             return
@@ -282,6 +284,9 @@ class Clients:
             return
         if context.sim - context.active.sim_start >= SCENE_WAIT_S:
             self.model_pending = self.model_future = None
+            self.node.get_logger().warning('recorded pose unavailable: ' + json.dumps({
+                'object': effect.target.name, 'phase': effect.phase.value,
+                'last_response': self.model_pose_error}))
             self.emit(Event('REJECTED', effect.op_id, 'fresh_recorded_pose_unavailable', ok=False, stopped=True))
             return
         if self.model_future is not None and self.model_future.done():
@@ -289,10 +294,14 @@ class Clients:
             data = None
             try:
                 response = future.result()
+                payload = json.loads(response.message)
                 if response.success:
-                    data = json.loads(response.message)
+                    data = payload
                     observed_pose(data, context.sim, int(context.active.sim_start * 1e9), object_name=effect.target.name)
-            except Exception:
+                else:
+                    self.model_pose_error = payload.get('status', 'unsuccessful_response')
+            except Exception as exc:
+                self.model_pose_error = str(exc)
                 data = None
             if data is not None:
                 self.model_pending = None

@@ -48,6 +48,7 @@ class RecordedGrasp(GraspCandidate):
     exposure: dict = None
     profile_key: str = ''
     observed_center: tuple = ()
+    contact_object_id: str = ''
 
 
 def selected_object(scene, target):
@@ -172,6 +173,7 @@ def candidate(data, now_s, obj, container, db, after_stamp_ns, attempt=1, profil
                            profile['effort_limit'], 1., key + '_preshape', True,
                            tuple(center_tcp), tuple(map(tuple, corners_tcp)), dict(data['exposure_key']), key)
     result.observed_center = tuple(center)
+    result.contact_object_id = obj.track_id
     place(result, container, db)  # reject a known footprint mismatch before touching the object
     return result
 

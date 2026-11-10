@@ -180,6 +180,12 @@ class RecordedSortTests(unittest.TestCase):
                         data['objects'][0]['exposure_key'] = data['exposure_key'].copy()
                         skills.prepare_recorded(effect, scene, data, f.sim, int(f.c.active.sim_start*1e9))
                     action, goal = skills.command(effect, scene)
+                    if phase == State.DESCEND:
+                        self.assertEqual(goal.contact_object, scene.objects[0].track_id)
+                        self.assertEqual(goal.contact_center, list(skills.grasp.observed_center))
+                        self.assertEqual(goal.contact_stamp_ns, skills.grasp.exposure['stamp_ns'])
+                    else:
+                        self.assertFalse(getattr(goal, 'contact_object', ''))
                     goals.append((phase, action, goal))
                 # Explicit fake sensor evidence drives the FSM; this is not a physical validation.
                 f.answer()

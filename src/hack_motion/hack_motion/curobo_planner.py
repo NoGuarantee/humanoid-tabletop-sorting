@@ -183,7 +183,7 @@ class CuroboPlanner:
         return {"ik_s": round(ik_s, 2), "warmup_s": round(warm_s, 2), "ik_ok": ok,
                 "ik_pos_mm": None if err is None else round(err * 1e3, 3), "cspace_ok": cspace_ok}
 
-    def plan(self, arm, target, q_by_name, mode, pos_tol=0.01, rot_tol=0.1, keep_orientation=False):
+    def plan(self, arm, target, q_by_name, mode, pos_tol=0.01, rot_tol=0.1, keep_orientation=False, contact_object=''):
         """Return (joint names, waypoints [N x dof], dt or None).
 
         `direct` is one IK solution, then a collision-free joint-space path to it. A straight line in joint
@@ -203,7 +203,17 @@ class CuroboPlanner:
             # does not plan. main had no objects in the world for this move either.
             self.sync_world(None, objects=False)
             return self._plan_ready(arm, q_by_name)
-        self.sync_world(target)
+        # An explicit recorded contact grants only this object, not whatever
+        # happens to lie under main's approximate fingertip point.
+        self.sync_world(None if contact_object else target)
+        if contact_object:
+            if (mode != 'linear' or not keep_orientation or self.carrying
+                    or contact_object not in self._object_cuboids()):
+                raise Unreachable('invalid_recorded_contact_permission')
+            result = self._without([contact_object], lambda: self._plan_in_world(
+                arm, target, q_by_name, mode, pos_tol, rot_tol, keep_orientation, explicit_contact=True))
+            self.scene_note += f', contact with selected {contact_object}'
+            return result
         held = self._held(q_by_name)
         if not held:
             result = self._plan_in_world(arm, target, q_by_name, mode, pos_tol, rot_tol, keep_orientation)
@@ -229,7 +239,7 @@ class CuroboPlanner:
         trays = set(self._tray_names())
         return [name for name in self._touching(q_by_name) if name not in trays and name != "table"]
 
-    def _plan_in_world(self, arm, target, q_by_name, mode, pos_tol, rot_tol, keep_orientation=False):
+    def _plan_in_world(self, arm, target, q_by_name, mode, pos_tol, rot_tol, keep_orientation=False, *, explicit_contact=False):
         """plan() after sync_world: `direct` with a detour, or `linear` without what the start touches."""
         if mode == "direct":
             if self.carrying:
@@ -245,6 +255,8 @@ class CuroboPlanner:
         try:
             return self._plan_linear(arm, goal, state, world_axes=keep_orientation)
         except Unreachable as failed:
+            if explicit_contact:
+                raise  # never widen one selected contact to neighbouring objects
             touching = self._touching(q_by_name)
             trays = set(self._tray_names())
             tcp_z = self._tcp_z(arm, goal, state)
@@ -745,7 +757,8 @@ class CuroboPlanner:
         finally:
             self.mp.update_tool_pose_criteria({link: ToolPoseCriteria()})
         if result is None or not _flag(result.success, any_ok=True):
-            raise Unreachable(f"no straight collision-free path along the goal {axis} axis; start {self._violated(state)}")
+            frame = 'goal' if goal_frame else 'world'
+            raise Unreachable(f"no straight collision-free path along the {frame} {axis} axis; start {self._violated(state)}")
         return self._trajectory(result)
 
     def _violated(self, state):

@@ -32,6 +32,7 @@ from tf2_ros import Buffer, TransformListener
 from .curobo_planner import Unreachable
 from .recorded_grasp import HAND_TARGETS, hand_steps, profile_for_preset
 from .recorded_carry import carry_waypoints, pose_matrix, with_matrix
+from .recorded_contact import contact_object
 from .robot import (ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, READY_STEP, TCP_LINK, TRAY_IDS, VERTICAL, clip,
                     raise_steps, ready_pose, tilt, top_down, yaw)
 
@@ -838,6 +839,15 @@ class MotionNode(Node):
         rot_tol = g.rot_tol or 0.1
         if mode == "linear" and not keep_orientation:
             g = self._keep_yaw(g, rot_tol)
+        # Reject stale/mismatched contact permission before even the automatic
+        # arm raise. Recheck below after planning-model preparation as well.
+        if getattr(g, 'contact_object', ''):
+            with self.lock:
+                objects, carrying = self.scene_objects, self.carrying
+            try:
+                contact_object(g, objects, self.now(), self.tcp_tf(g.arm), carrying)
+            except ValueError as exc:
+                return self._refused(g, mode, str(exc))
         free_yaw = False
         with self._tcp_lock:
             try:
@@ -863,9 +873,17 @@ class MotionNode(Node):
                     planner.objects = self.scene_objects
                     planner.carrying = self.carrying
                 try:
+                    contact = contact_object(g, planner.objects, self.now(),
+                                             self.tcp_tf(g.arm) if getattr(g, 'contact_object', '') else None,
+                                             planner.carrying)
+                except ValueError as exc:
+                    raise Unreachable(str(exc)) from exc
+                if contact:
+                    self.get_logger().info(f'recorded contact: {contact}, exposure {g.contact_stamp_ns}')
+                try:
                     names, waypoints, dt = planner.plan(
                         g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol,
-                        keep_orientation=keep_orientation)
+                        keep_orientation=keep_orientation, contact_object=contact)
                 except Unreachable as e:
                     if mode != "direct" or not self._other_arm_to_ready(planner, g.arm, e):
                         raise
@@ -883,7 +901,8 @@ class MotionNode(Node):
                         self.get_logger().info('recorded planning rejection: ' + json.dumps(dict(
                             arm=g.arm, mode=mode, target_xyz_xyzw=[p.x, p.y, p.z, o.x, o.y, o.z, o.w],
                             joints=snapshot, table=planner.table, trays=planner.trays,
-                            objects=planner.objects, carrying=planner.carrying, error=str(e))))
+                            objects=planner.objects, carrying=planner.carrying, error=str(e),
+                            contact_object=getattr(g, 'contact_object', ''))))
                 except Exception as err:  # the report must not hide the failure it explains
                     report = f"no report: {err!r}"
                 return self._refused(g, mode, f"unreachable: {e}", f"start {report}; {planner.scene_note}")

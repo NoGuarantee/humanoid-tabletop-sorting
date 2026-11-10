@@ -125,11 +125,17 @@ class Skills:
             raise NotImplementedError('skill unavailable: ' + phase.value)
         recorded = isinstance(g, recorded_grasps.RecordedGrasp)
         mode = {State.APPROACH: 'direct', State.TRANSFER: 'carry'}.get(phase, 'linear')
+        contact = {}
+        if recorded and phase == State.DESCEND:
+            contact = dict(contact_object=g.contact_object_id, contact_center=list(g.observed_center),
+                           contact_stamp_ns=g.exposure['stamp_ns'])
+            if not g.contact_object_id:
+                raise ValueError('missing_recorded_contact_object')
         return 'tcp', MoveTcp.Goal(arm=g.arm, target=poses[phase],
                                   mode=mode + '_fixed' if recorded else mode,
                                   pos_tol=.005 if recorded else {State.DESCEND: GRASP_POS_TOL, State.APPROACH: FREE_POS_TOL,
                                            State.TRANSFER: FREE_POS_TOL}.get(phase, 0.0),
-                                  rot_tol=.05 if recorded else 0.0)
+                                  rot_tol=.05 if recorded else 0.0, **contact)
 
     def holding(self, arm, hand_result):
         # TODO(grasping): also check the weight on /arm_6dof_{arm} after lifting (force along gravity)

@@ -31,8 +31,10 @@ from tf2_ros import Buffer, TransformListener
 
 from .curobo_planner import Unreachable
 from .recorded_grasp import HAND_TARGETS, RHINO, hand_steps
-from .robot import ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, TCP_LINK, TRAY_IDS, clip, raise_steps, ready_pose
+from .robot import (ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, READY_STEP, TCP_LINK, TRAY_IDS, VERTICAL, clip,
+                    raise_steps, ready_pose, tilt, top_down, yaw)
 
+KEEP_YAW_XY = 0.03  # m: a linear move this far across or less is vertical, and a top-down hand keeps its yaw on it
 PERIOD = 0.05  # s, real time between control checks
 # Inspire actuator 6, thumb rotation. It turns across before the other fingers close.
 THUMB = 5
@@ -104,8 +106,12 @@ class MotionNode(Node):
         self.q = {}
         self.compensation = {}  # joint -> rad on top of the target, kept between moves (see move_joints)
         self.hand_state = {"left": None, "right": None}
+        # What the last Hand goal of each side found: False after a close that met nothing or an open, True after a
+        # close that met an object, None before any. A shut empty hand is not one that may hold an object.
+        self.hand_holds = {"left": None, "right": None}
         self.task_trays = None  # trays of the task from /sim/task, None until it arrives
         self.scene_objects = ()  # neighbours from the latest perception/scene, tuples for the cuRobo world
+        self.carrying = False  # during a carry: the planner leaves out what the robot touches at each start
         self.table_plane = None  # (a, b, c, d) of the table in pelvis, the latest perception/scene that had one
         self.seen_trays = {}  # tray id -> tray tuple (robot.TRAY_SIZE), the last pose perception measured
         cb = ReentrantCallbackGroup()
@@ -427,6 +433,7 @@ class MotionNode(Node):
             # a closing finger stopped well short of its target with noticeable effort -> something is in the hand
             res.object_detected = any(
                 res.position[i] > target[i] + 0.05 and (not res.effort or res.effort[i] > 0.1) for i in closing)
+            self.hand_holds[g.hand] = bool(res.object_detected)
             self.get_logger().info(
                 f"hand {g.hand} {g.preset}: position {' '.join(f'{p:.2f}' for p in res.position)}, effort "
                 f"{' '.join(f'{e:.2f}' for e in res.effort)}, object {res.object_detected}")
@@ -586,20 +593,26 @@ class MotionNode(Node):
             time.sleep(PERIOD)
         return False
 
-    def _leave_colliding_home(self, planner):
+    def _leave_colliding_home(self, planner, planned):
         """Bring an arm that hangs at home up in front of the chest by joints (robot.RAISE_STEPS).
 
         At home the forearm spheres are inside the thigh, and cuRobo will not plan from a state in collision.
         Only when every joint of the arm is near home: from a working pose the same joint moves could sweep
         the arm through the table. Once the arm is out of the thigh, a step that would enter an object is
         skipped and the plan that follows goes around it.
+
+        The arm not `planned` for stops at ready (robot.READY_STEP). The end of the raise holds its hand over its
+        side of the table: perception saw the two objects under it at confidence 0, and brain ended the mission
+        with them on the table (sort3 seed 146, 2026-11-10).
         """
         for arm, names in ARM_JOINTS.items():
             q = self.joints(names)
             if any(v is None for v in q) or max(abs(v) for v in q) >= HOME_TOL:
                 continue
-            self.get_logger().info(f"{arm} arm at home, raising it in front of the chest")
-            for i, step in enumerate(raise_steps(arm)):
+            steps = raise_steps(arm) if arm == planned else raise_steps(arm)[:READY_STEP + 1]
+            where = "in front of the chest" if arm == planned else "to ready"
+            self.get_logger().info(f"{arm} arm at home, raising it {where}")
+            for i, step in enumerate(steps):
                 with self.lock:
                     snapshot = dict(self.q)
                 try:
@@ -626,11 +639,14 @@ class MotionNode(Node):
         q = self.joints(ARM_JOINTS[other])
         if any(v is None for v in q):
             return False
-        off = max(abs(v - r) for v, r in zip(q, ready_pose(other)))
+        off, worst = max((abs(v - r), f"{n} {v:+.2f}") for n, v, r in zip(ARM_JOINTS[other], q, ready_pose(other)))
         if off <= OTHER_READY_TOL:
             return False
+        why = f"{why}; worst {worst}"
         fingers = self._finger_pos(other)
-        if fingers is None or min(fingers[:5]) < OPEN_FINGER:
+        # After an empty grasp the hand stays shut on nothing, and that arm stayed in the way of a carry with the
+        # other one five times, until brain gave up with the cartridge in the hand (sort3 seed 7, 2026-11-10).
+        if (fingers is None or min(fingers[:5]) < OPEN_FINGER) and self.hand_holds[other] is not False:
             self.get_logger().info(f"move_tcp {arm}: {why}; the {other} arm is {off:.2f} rad off ready, "
                                    f"but its hand is not open, so it stays")
             return False
@@ -670,6 +686,15 @@ class MotionNode(Node):
         has no plan or stops short, the rest goes as `direct`, which is what TRANSFER did before.
         """
         tf = self.tcp_tf(g.arm)
+        with self.lock:
+            self.carrying = True
+        try:
+            return self._carry_legs(g, tf)
+        finally:
+            with self.lock:
+                self.carrying = False
+
+    def _carry_legs(self, g, tf):
         legs = []
         if tf is not None and tf.transform.translation.z < g.target.position.z - 0.01:
             up = copy.deepcopy(g.target)
@@ -690,6 +715,36 @@ class MotionNode(Node):
             return result
         return self.move_tcp(MoveTcp.Goal(arm=g.arm, target=g.target, mode="direct", pos_tol=g.pos_tol,
                                           rot_tol=g.rot_tol, max_time=g.max_time))
+
+    def _keep_yaw(self, g, rot_tol):
+        """A vertical `linear` move of a top-down hand keeps the hand's yaw instead of the goal's.
+
+        A carry may turn a top-down hand about the vertical to reach the tray (curobo_planner._plan_carry). The
+        lower into the tray and the retreat from it then still carry the grasp's yaw: turning to it on a 10 cm
+        straight move is what the carry could not plan. Only a hand already top-down, a goal top-down too, a move
+        mostly vertical and within KEEP_YAW_XY across, and a yaw off by more than the tolerance.
+        """
+        o = g.target.orientation
+        want = (o.x, o.y, o.z, o.w)
+        if tilt(want) > VERTICAL:
+            return g
+        tf = self.tcp_tf(g.arm)
+        if tf is None:
+            return g
+        t, r = tf.transform.translation, tf.transform.rotation
+        now = (r.x, r.y, r.z, r.w)
+        p = g.target.position
+        across = math.hypot(p.x - t.x, p.y - t.y)
+        if tilt(now) > VERTICAL or across > KEEP_YAW_XY or abs(p.z - t.z) < across:
+            return g
+        turn = math.remainder(yaw(now) - yaw(want), 2 * math.pi)
+        if abs(turn) <= rot_tol:
+            return g
+        kept = copy.deepcopy(g)
+        kept.target = _turned(g.target, yaw(now))
+        self.get_logger().info(f"move_tcp {g.arm} linear: keeps the hand's yaw, {math.degrees(turn):.0f} deg "
+                               "off the goal's")
+        return kept
 
     def tcp_error(self, arm, target):
         """Position (m) and rotation (rad) of the TCP tf against the goal, or (None, None)."""
@@ -725,6 +780,9 @@ class MotionNode(Node):
             return self._carry(g)
         pos_tol = g.pos_tol or 0.01
         rot_tol = g.rot_tol or 0.1
+        if mode == "linear":
+            g = self._keep_yaw(g, rot_tol)
+        free_yaw = False
         with self._tcp_lock:
             try:
                 if not self._wait_joints():
@@ -736,16 +794,18 @@ class MotionNode(Node):
                 with self.lock:
                     snapshot = dict(self.q)
                     planner.objects = self.scene_objects
+                    planner.carrying = self.carrying
                 note = planner.load(snapshot)
                 if note != "curobo already loaded":
                     self.get_logger().info(note)
                 # Every object, including the one this goal will grasp. The raise is not aimed at it yet.
                 planner.sync_world(None)
-                self._leave_colliding_home(planner)
+                self._leave_colliding_home(planner, g.arm)
                 planner.table, planner.trays = self._world()
                 with self.lock:
                     snapshot = dict(self.q)
                     planner.objects = self.scene_objects
+                    planner.carrying = self.carrying
                 try:
                     names, waypoints, dt = planner.plan(
                         g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol)
@@ -773,6 +833,7 @@ class MotionNode(Node):
             waypoints = [[q[i] for _, i in known] for q in waypoints]
             self.get_logger().info(f"move_tcp {g.arm} {mode}: {len(waypoints)} waypoints, {len(names)} joints, "
                                    f"start moved {planner.start_moved:.3f} rad, {planner.scene_note}")
+            free_yaw = planner.free_yaw
             other = next(joints for arm, joints in ARM_JOINTS.items() if arm != g.arm)
             ok, err, msg = self.follow(names, waypoints, dt, tol=0.01, max_time=g.max_time, held=other)
         if mode == "ready":  # the goal is joints, the target pose is not used
@@ -780,7 +841,13 @@ class MotionNode(Node):
             note = f" ({planner.ready_note})" if planner.ready_note else ""
             self.get_logger().info(f"move_tcp {g.arm} ready{note}: joint error {err:.3f} rad, {msg}")
             return MoveTcp.Result(success=reached, message="ok" if reached else msg)
-        pos_err, rot_err = self.tcp_error(g.arm, g.target)
+        check = g.target
+        if free_yaw:  # the plan chose the yaw of the top-down hand: the tilt is what is checked
+            tf = self.tcp_tf(g.arm)
+            if tf is not None:
+                r = tf.transform.rotation
+                check = _turned(g.target, yaw((r.x, r.y, r.z, r.w)))
+        pos_err, rot_err = self.tcp_error(g.arm, check)
         if pos_err is None:
             return MoveTcp.Result(success=False, pos_error=0.0, rot_error=0.0, message=f"{msg}; no tf")
         # The goal is the TCP pose: a joint stalled a few mrad short must not fail a TCP that is in tolerance.
@@ -795,6 +862,13 @@ class MotionNode(Node):
             f"move_tcp {g.arm} {mode}: tcp {pos_err * 100:.2f} cm, {math.degrees(rot_err):.1f} deg, {message}")
         return MoveTcp.Result(success=reached, pos_error=float(pos_err), rot_error=float(rot_err), message=message)
 
+
+def _turned(pose, heading):
+    """A copy of `pose` with the orientation of a top-down hand at `heading`."""
+    turned = copy.deepcopy(pose)
+    o = turned.orientation
+    o.x, o.y, o.z, o.w = top_down(heading)
+    return turned
 
 def main():
     rclpy.init()

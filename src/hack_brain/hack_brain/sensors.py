@@ -129,6 +129,15 @@ class Measurements:
             contact &= {i for i in range(5) if target[i] < .9
                         and min(positions.get(str(i+1), -1), 1.) > target[i]+.05
                         and effort.get(str(i+1), 0) > .1}
+        # The thumb presses against the fingers, so it alone proves nothing. Every pinch that held something stopped
+        # the index short at 0.61..1.17 with effort 1.0. On seed 13051 (2026-11-10) the index shut to 0.10 on nothing
+        # while the thumb, still closing at 0.35 with effort 0.1, read HOLDING. The lift that followed knocked the
+        # cartridge out of view.
+        fingers = {i for i in range(4) if target[i] < .9}
+        if fingers and all(pos[i] <= target[i] + .05 for i in fingers):
+            return t, 'EMPTY'
+        if fingers:
+            contact &= fingers
         if len(rows) >= 3 and contact:
             return t, 'HOLDING'
         # Closed to the target or past it (the thumb overshoots) with nothing in the way.

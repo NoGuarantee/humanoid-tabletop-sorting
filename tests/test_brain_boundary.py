@@ -19,7 +19,8 @@ def load_brain():
         'rosgraph_msgs.msg': NS(Clock=object),
         'ament_index_python.packages': NS(get_package_share_directory=lambda _: ''),
         'hack_brain.clients': NS(Clients=object),
-        'hack_brain.grasp_planner': NS(load_db=lambda _: {}, skip_names=lambda _: frozenset()),
+        'hack_brain.grasp_planner': NS(load_db=lambda _: {}, skip_names=lambda _: frozenset(),
+                                     confidence_floors=lambda _: ()),
     }
     path = Path(__file__).resolve().parents[1] / 'src/hack_brain/hack_brain/brain_node.py'
     spec = importlib.util.spec_from_file_location('hack_brain.boundary_test', path)

@@ -132,6 +132,12 @@ class Config:
     # Names left untouched: `skip: true` in grasp_db.yaml. Lifted and dropped is -10, untouched is 0 (SCORING.md).
     # Not a ROS parameter: brain_node fills it from the grasp db.
     skip_names: frozenset = frozenset()
+    # (name, floor) pairs: `min_confidence` under by_name in grasp_db.yaml, below min_confidence for a name whose
+    # size sits far from every other category in its pool. Filled by brain_node like skip_names.
+    confidence_floors: tuple = ()
+
+    def min_confidence_for(self, name):
+        return dict(self.confidence_floors).get(name, self.min_confidence)
 
 
 @dataclass

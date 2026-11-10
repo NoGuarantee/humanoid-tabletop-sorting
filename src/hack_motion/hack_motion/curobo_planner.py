@@ -13,8 +13,8 @@ from types import SimpleNamespace
 
 from .curobo_robot import load_robot_cfg
 from .robot import (
-    ARM_JOINTS, CUBOID_CACHE, JOINTS, TCP_LINK, clearance_z, fingertip, footprint_gap, on_the_way, plan_limits,
-    ready_pose, sphere_cuboid_overlap, spheres_hit, world_scene)
+    ARM_JOINTS, CUBOID_CACHE, JOINTS, TCP_LINK, VERTICAL, clearance_z, fingertip, footprint_gap, on_the_way,
+    plan_limits, ready_pose, sphere_cuboid_overlap, spheres_hit, tilt, world_scene)
 
 
 LOCK_TOL = 0.02  # rad
@@ -30,6 +30,8 @@ START_CLEAR_MAX = 0.08  # rad: a farther jump is a different pose, and a held ob
 # A 45° hand rises as two TCP-axis steps. Past 0.14 m that pair has no plan: the 0.15 m
 # lift of the soap dish reports the start or the end in collision, while 0.12 m still plans.
 LEAN_STEP = 0.12
+CARRY_TURN = 0.35  # rad: the most a carry's joint path may turn the hand from the held orientation
+CARRY_TURN_CHECKS = 24  # waypoints of a carry path whose TCP orientation is checked
 NEAR_CUBOID = 0.01  # m: a sphere this close to a tray counts as in it, about cuRobo's collision activation distance
 READY_LIFT = 0.08  # m: a hand left in the table or a tray goes this far straight up before the joint path to ready
 UNDER_FINGERS = 0.05  # m: a straight descent that fails may go into objects whose footprint is this close to the
@@ -47,6 +49,11 @@ def _with_z(target, z):
     return SimpleNamespace(
         position=SimpleNamespace(x=float(target.position.x), y=float(target.position.y), z=float(z)),
         orientation=SimpleNamespace(x=float(o.x), y=float(o.y), z=float(o.z), w=float(o.w)))
+
+
+def _xyzw(pose):
+    o = pose.orientation
+    return (float(o.x), float(o.y), float(o.z), float(o.w))
 
 
 def _flag(success, any_ok=False):
@@ -86,6 +93,8 @@ class CuroboPlanner:
         self.trays = ()  # tray tuples (robot.TRAY_SIZE) of this task that perception has seen. motion_node
         self.objects = ()  # detected neighbours, (id, x, y, z, yaw, sx, sy, sz, top_z). motion_node, from perception
         self.left_out = ()  # ids the last sync_world kept out of the world, the object under the fingertips
+        self.free_yaw = False  # the last plan left the yaw of a top-down hand free: check its tilt, not the yaw
+        self.carrying = False  # the hand holds an object: what the robot touches at the start is not an obstacle
         self._scene = None  # cuboid dict the collision world currently holds
         self.scene_note = ""  # what the last plan put in the world, for the move log
         self.start_moved = 0.0  # rad, how far the last plan moved its start state off the self-collision buffer
@@ -188,13 +197,38 @@ class CuroboPlanner:
             raise RuntimeError("curobo is not loaded")
         if mode not in ("direct", "linear", "ready"):
             raise RuntimeError(f"unknown mode {mode}")
+        self.free_yaw = False
         if mode == "ready":
             # No objects: the hand may still hold one, or sit by the one it let go, and a start inside a cuboid
             # does not plan. main had no objects in the world for this move either.
             self.sync_world(None, objects=False)
             return self._plan_ready(arm, q_by_name)
         self.sync_world(target)
+        held = self._held(q_by_name)
+        if not held:
+            return self._plan_in_world(arm, target, q_by_name, mode, pos_tol, rot_tol)
+        result = self._without(held, lambda: self._plan_in_world(arm, target, q_by_name, mode, pos_tol, rot_tol))
+        self.scene_note += f", without {', '.join(held)} (carried, the start touches them)"
+        return result
+
+    def _held(self, q_by_name):
+        """Objects a carrying robot touches at the start: the one in the hand, and nothing to plan around.
+
+        The look at the trays after the lift sees the object in the hand as one more object, a cuboid within a
+        centimetre of the palm. With it in the world the straight carry across had no plan, and the joint-space
+        path that replaced it went around the cartridge in the hand, rolling the wrist until it fell
+        (sort3 seed 13051, 2026-11-10).
+        """
+        if not self.carrying:
+            return []
+        trays = set(self._tray_names())
+        return [name for name in self._touching(q_by_name) if name not in trays and name != "table"]
+
+    def _plan_in_world(self, arm, target, q_by_name, mode, pos_tol, rot_tol):
+        """plan() after sync_world: `direct` with a detour, or `linear` without what the start touches."""
         if mode == "direct":
+            if self.carrying:
+                return self._plan_carry(arm, target, q_by_name, pos_tol, rot_tol)
             try:
                 return self._plan_direct(arm, target, q_by_name, pos_tol, rot_tol)
             except Unreachable:
@@ -220,6 +254,88 @@ class CuroboPlanner:
             result = self._without(touching, lambda: self._plan_linear(arm, goal, state))
             self.scene_note += f", planned without {', '.join(touching)} (the start touches them)"
             return result
+
+    def _plan_carry(self, arm, target, q_by_name, pos_tol, rot_tol):
+        """`direct` for a hand that holds an object: a path that keeps the hand's orientation, then the plain one.
+
+        The plain joint path to an IK solution turns the wrist on the way. Carrying the cup to tray_right it was
+        146 degrees off when the cup fell out, and the cartridge in the next run 170 (sort3 seed 13051,
+        2026-11-10). A level path weighs the TCP orientation on every waypoint and frees only the position, so it
+        may go around an obstacle but not roll the hand. Both of those carries had no level path with the grasp's
+        yaw: the wrist runs out of range over the far tray. A top-down hand may turn about the vertical without
+        tipping what it holds, so its last try leaves the yaw free (self.free_yaw, motion_node checks the tilt).
+        A path that tips the hand more than CARRY_TURN is not taken.
+        """
+        notes = []
+        tries = [False, True] if tilt(_xyzw(target)) <= VERTICAL else [False]
+        for free_yaw in tries:
+            try:
+                plan, turn = self._plan_level(arm, target, q_by_name, free_yaw)
+            except Unreachable as e:
+                notes.append(f"level{' any yaw' if free_yaw else ''}: {e}")
+                continue
+            self.free_yaw = free_yaw
+            self.scene_note += (f", level carry{' with a free yaw' if free_yaw else ''}, "
+                                f"the hand {'tips' if free_yaw else 'turns'} {math.degrees(turn):.0f} deg at most")
+            return plan
+        try:
+            plan = self._plan_direct(arm, target, q_by_name, pos_tol, rot_tol)
+        except Unreachable:
+            plan = self._plan_detour(arm, target, q_by_name, pos_tol, rot_tol)
+            if plan is None:
+                raise
+        goal, state = self._goal(arm, target, q_by_name)
+        turn = self._max_turn(arm, plan, goal, state, False)
+        self.scene_note += f"; {'; '.join(notes)}; the joint path turns the hand {math.degrees(turn):.0f} deg"
+        return plan
+
+    def _plan_level(self, arm, target, q_by_name, free_yaw):
+        """plan_pose with the TCP orientation held on every waypoint, or only its tilt when `free_yaw`.
+
+        Returns (plan, the largest turn from the goal orientation, or the largest tilt when `free_yaw`).
+        """
+        from curobo._src.cost.tool_pose_criteria import ToolPoseCriteria
+
+        goal, state = self._goal(arm, target, q_by_name)
+        link = TCP_LINK[arm]
+        yaw_weight = 0.0 if free_yaw else 1.0
+        self.mp.update_tool_pose_criteria({link: ToolPoseCriteria(
+            terminal_pose_axes_weight_factor=[1.0, 1.0, 1.0, 1.0, 1.0, yaw_weight],
+            non_terminal_pose_axes_weight_factor=[0.0, 0.0, 0.0, 1.0, 1.0, yaw_weight])})
+        try:
+            result = self.mp.plan_pose(goal, state)
+        finally:
+            self.mp.update_tool_pose_criteria({link: ToolPoseCriteria()})
+        if result is None or not _flag(result.success, any_ok=True):
+            raise Unreachable(f"no plan ({getattr(result, 'status', None)})")
+        plan = self._trajectory(result)
+        turn = self._max_turn(arm, plan, goal, state, free_yaw)
+        if turn > CARRY_TURN:
+            raise Unreachable(f"the path {'tips' if free_yaw else 'turns'} the hand {math.degrees(turn):.0f} deg")
+        return plan, turn
+
+    def _max_turn(self, arm, plan, goal, state, tilt_only):
+        """The largest angle between the TCP orientation on `plan` and the goal's, over CARRY_TURN_CHECKS waypoints.
+
+        With `tilt_only`, the largest angle of the TCP z axis from world z: the goal is a top-down hand.
+        """
+        import torch
+
+        names, waypoints, _ = plan
+        i = goal.tool_frames.index(TCP_LINK[arm])
+        want = goal.quaternion[0, 0, i, 0]
+        step = max(1, len(waypoints) // CARRY_TURN_CHECKS)
+        worst = 0.0
+        for q in waypoints[::step] + waypoints[-1:]:
+            got = self.mp.compute_kinematics(self._chain_state(names, q, state)).tool_poses.quaternion[0, 0, i]
+            if tilt_only:
+                w, x, y, z = got.tolist()
+                angle = tilt((x, y, z, w))
+            else:
+                dot = torch.abs(torch.dot(got.to(want.dtype), want)).clamp(max=1.0).item()
+                angle = 2.0 * math.acos(dot)
+            worst = max(worst, angle)
+        return worst
 
     def _plan_direct(self, arm, target, q_by_name, pos_tol, rot_tol):
         """One collision-free path to `target`. No second attempt above the neighbours."""

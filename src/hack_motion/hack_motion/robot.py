@@ -138,6 +138,26 @@ def fingertip(position, xyzw):
     return (position[0] - FINGERTIP * zx, position[1] - FINGERTIP * zy, position[2] - FINGERTIP * zz)
 
 
+VERTICAL = 0.1  # rad: a TCP z axis this close to world vertical is a top-down hand, its yaw does not tip what it holds
+
+
+def tilt(xyzw):
+    """Angle (rad) between the TCP z axis and world z. 0 for a top-down hand, whose orientation is a pure yaw."""
+    x, y, _, _ = xyzw
+    return math.acos(max(-1.0, min(1.0, 1 - 2 * (x * x + y * y))))
+
+
+def yaw(xyzw):
+    """Heading (rad) of the TCP x axis in the world xy plane."""
+    x, y, z, w = xyzw
+    return math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+
+
+def top_down(heading):
+    """(x, y, z, w) of a top-down hand turned to `heading`, as grasp_planner.quat_from_rpy(0, 0, heading)."""
+    return (0.0, 0.0, math.sin(heading / 2), math.cos(heading / 2))
+
+
 def _quat_wxyz(rows):
     """(w, x, y, z) of a rotation matrix given by its three rows."""
     (r00, r01, r02), (r10, r11, r12), (r20, r21, r22) = rows

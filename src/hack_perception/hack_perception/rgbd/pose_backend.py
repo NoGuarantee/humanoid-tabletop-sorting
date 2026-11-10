@@ -160,11 +160,14 @@ class PoseBackend:
         depth_views = [depth_view(sensor) for sensor in sensors if sensor is not None]
         detections = []
         for task, hypotheses in zip(tasks, guesses):
-            if names:
-                if max(hypotheses, key=lambda hypothesis: hypothesis[2])[0] not in names:
-                    continue
-                hypotheses = [hypothesis for hypothesis in hypotheses if hypothesis[0] in names]
-            detections.append(self.fit_pose(task, hypotheses, plane, depth_views))
+            if names and not any(hypothesis[0] in names for hypothesis in hypotheses):
+                continue
+            # A request for Philips must not force an uncertain Brother/Philips
+            # mask to fit Philips by removing the competing identity. Preserve
+            # normal geometry-based selection, then filter the winning result.
+            detection = self.fit_pose(task, hypotheses, plane, depth_views)
+            if not names or detection.name in names:
+                detections.append(detection)
         return detections
 
     @staticmethod

@@ -22,7 +22,7 @@ from rclpy.time import Time
 from hack_motion.robot import HAND_PRESETS, JOINTS
 from .fsm import VERIFY
 from .skills import Skills
-from .recorded_grasps import observed_pose
+from .recorded_grasps import observed_pose, associate_model_pose, selected_object
 from .grasp_planner import tray_side
 from .transport import ActionTransport
 
@@ -182,7 +182,7 @@ class Clients:
         stamp = s.header.stamp.sec + s.header.stamp.nanosec * 1e-9
         objects = tuple(Object(o.name or o.track_id, o.category, o.name, o.cap_color,
                                o.confidence, o.partially_visible, o.lying,
-                               'left' if o.center.y > 0 else 'right') for o in s.objects)
+                               'left' if o.center.y > 0 else 'right', o.track_id) for o in s.objects)
         containers = tuple(Container(x.id, x.kind, tuple(i for i, occupied in enumerate(x.slot_occupied)
                                                         if not occupied and i < len(x.slots)),
                                      tray_side(x)) for x in s.containers)
@@ -296,7 +296,17 @@ class Clients:
                 response = future.result()
                 payload = json.loads(response.message)
                 if response.success:
-                    data = payload
+                    if effect.phase == State.OPEN:
+                        scene = self.scenes['table']
+                        if scene.header.frame_id != 'pelvis' or not 0 <= context.active.sim_start-stamp(scene) <= 2.:
+                            raise ValueError('stale_recorded_selection_scene')
+                        obj = selected_object(scene, effect.target)
+                        reference = [getattr(obj.center, axis) for axis in 'xyz']
+                        reference_stamp = int(stamp(scene)*1e9)
+                    else:
+                        reference = self.skills.grasp.observed_center
+                        reference_stamp = self.skills.grasp.exposure['stamp_ns']
+                    data = associate_model_pose(payload, reference, reference_stamp, object_name=effect.target.name)
                     observed_pose(data, context.sim, int(context.active.sim_start * 1e9), object_name=effect.target.name)
                 elif payload.get('status') != 'awaiting_fresh_pose' or not self.model_pose_error:
                     # A later pending poll must not erase the actual pose rejection.
@@ -313,7 +323,8 @@ class Clients:
                     self.node.get_logger().info('recorded grasp: ' + json.dumps({
                         'object': effect.target.name, 'profile': self.skills.grasp.profile_key,
                         'arm': self.skills.grasp.arm, 'phase': effect.phase.value,
-                        'destination': effect.destination, 'exposure': self.skills.grasp.exposure}))
+                        'destination': effect.destination, 'exposure': self.skills.grasp.exposure,
+                        'association': data.get('target_association')}))
                     self.execute_motion(effect, context)
                 except Exception as exc:
                     self.emit(Event('REJECTED', effect.op_id, repr(exc), ok=False, stopped=True))

@@ -68,7 +68,7 @@ class Skills:
                 and recorded_grasps.uses_recorded(self.db, effect.target.name))
 
     def prepare_recorded(self, effect, scene, data, now, after_stamp_ns, attempt=1, disabled_arm=''):
-        obj = next(o for o in scene.objects if (o.name or o.track_id) == effect.target.id)
+        obj = recorded_grasps.selected_object(scene, effect.target)
         container = next((x for x in scene.containers if x.id == effect.destination and x.kind == 'tray'), None)
         key = self.grasp.profile_key if effect.phase == State.DESCEND else None
         cand = recorded_grasps.candidate(data, now, obj, container, self.db, after_stamp_ns, attempt, key, disabled_arm)
@@ -86,7 +86,8 @@ class Skills:
         if phase == State.ARMS_READY:  # then up off the table and whatever the new layout put under the hand
             return 'tcp', MoveTcp.Goal(arm=effect.arm, target=Pose(), mode='ready')
         if phase == State.OPEN:
-            obj = next(o for o in scene.objects if (o.name or o.track_id) == effect.target.id)
+            obj = (recorded_grasps.selected_object(scene, effect.target) if self.needs_model_pose(effect) else
+                   next(o for o in scene.objects if (o.name or o.track_id) == effect.target.id))
             container = next((x for x in scene.containers if x.id == effect.destination and x.kind == 'tray'), None)
             self.place_plan = None
             if recorded_grasps.uses_recorded(self.db, obj.name):

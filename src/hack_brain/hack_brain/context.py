@@ -60,6 +60,7 @@ class Object:
     partial: bool = False
     lying: bool = False
     side: str = ''  # 'left' for y > 0, else 'right': the arm when the tray does not choose it (choose_arm)
+    track_id: str = ''  # selected sensor cluster; history still uses semantic id
 
 
 @dataclass(frozen=True)

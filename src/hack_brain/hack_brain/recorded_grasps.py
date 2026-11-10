@@ -47,6 +47,56 @@ class RecordedGrasp(GraspCandidate):
     corners_in_tcp: tuple = ()  # offsets from the object's centre, expressed in TCP axes
     exposure: dict = None
     profile_key: str = ''
+    observed_center: tuple = ()
+
+
+def selected_object(scene, target):
+    """Retain the exact cluster chosen by the FSM, including when names repeat."""
+    matches = [o for o in scene.objects if (o.name or o.track_id) == target.id
+               and (not target.track_id or o.track_id == target.track_id)]
+    if len(matches) != 1:
+        raise ValueError('selected_sensor_object_unavailable_or_ambiguous')
+    return matches[0]
+
+
+def associate_model_pose(data, reference_point, reference_stamp_ns, *, object_name):
+    """Bind a canonical hypothesis to an independently selected measured surface.
+
+    A visible surface centre need not be the complete model centre. It must lie
+    inside exactly one fitted model's oriented bounds, with 2 cm allowance for
+    depth/fit error. No score/nearest tie-break; unrelated regions remain in the
+    response. DESCEND uses the accepted OPEN centre and still checks pose drift.
+    """
+    point = np.asarray(reference_point, dtype=float)
+    if point.shape != (3,) or not np.isfinite(point).all() or data.get('stamp_ns', 0) <= reference_stamp_ns:
+        raise ValueError('invalid_recorded_pose_reference')
+    matches, evidence = [], []
+    for index, row in enumerate(data.get('objects', [])):
+        if row.get('name') != object_name:
+            continue
+        if row.get('exposure_key') != data.get('exposure_key'):
+            raise ValueError('mixed_recorded_pose_exposure')
+        if row.get('pose_status') != 'ok':
+            continue
+        world = transform(row['T_pelvis_object'])
+        center, size = np.asarray(row['center_pelvis_m']), np.asarray(row['size_model_m'])
+        if center.shape != (3,) or size.shape != (3,) or not np.isfinite([center, size]).all() or np.min(size) <= 0:
+            raise ValueError('invalid_recorded_pose_bounds')
+        gap = np.maximum(np.abs((point-center) @ world[:3, :3]) - size/2, 0.)
+        compatible = bool(np.max(gap) <= .02)
+        evidence.append(dict(index=index, outside_m=gap.tolist(), compatible=compatible))
+        if compatible:
+            matches.append(index)
+    if len(matches) != 1:
+        raise ValueError('recorded_pose_association_ambiguous' if matches else 'recorded_pose_association_unmatched')
+    result = deepcopy(data)
+    selected = matches[0]
+    for index, row in enumerate(result['objects']):
+        if row.get('name') == object_name and index != selected:
+            row['unassociated_name'], row['name'] = row['name'], None
+    result['target_association'] = dict(reference_point=point.tolist(), reference_stamp_ns=reference_stamp_ns,
+                                       selected_index=selected, candidates=evidence)
+    return result
 
 
 def transform(value):
@@ -121,6 +171,7 @@ def candidate(data, now_s, obj, container, db, after_stamp_ns, attempt=1, profil
     result = RecordedGrasp(side, poses['pregrasp'], poses['tcp'], lift, key + '_close',
                            profile['effort_limit'], 1., key + '_preshape', True,
                            tuple(center_tcp), tuple(map(tuple, corners_tcp)), dict(data['exposure_key']), key)
+    result.observed_center = tuple(center)
     place(result, container, db)  # reject a known footprint mismatch before touching the object
     return result
 

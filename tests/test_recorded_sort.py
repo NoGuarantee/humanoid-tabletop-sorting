@@ -242,6 +242,36 @@ class RecordedSortTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pick.observed_pose(data, 10.1, object_name='missing')
 
+    def test_saved_philips_duplicate_is_bound_to_selected_surface_without_score_tie_break(self):
+        raw = json.loads(Path(__file__).with_name('fixtures').joinpath('philips_ambiguous_pose.json').read_text())
+        raw['frame_id'] = 'pelvis'  # inspector saved a field subset; this endpoint's fixed output frame
+        name = PROFILES['philips_right']['object_name']
+        for chosen in (0, 1):
+            # Either independently selected surface must bind to its own model,
+            # regardless of ordering/confidence, while retaining the other region.
+            point = raw['objects'][chosen]['center_pelvis_m']
+            result = pick.associate_model_pose(raw, point, raw['stamp_ns']-100_000_000, object_name=name)
+            self.assertEqual(result['target_association']['selected_index'], chosen)
+            self.assertEqual(len(result['objects']), len(raw['objects']))
+            self.assertEqual(result['objects'][1-chosen]['T_pelvis_object'], raw['objects'][1-chosen]['T_pelvis_object'])
+            np.testing.assert_allclose(pick.observed_pose(result, raw['stamp_ns']/1e9+.1, object_name=name),
+                                       raw['objects'][chosen]['T_pelvis_object'])
+        self.assertEqual([o['name'] for o in raw['objects']], [name, name])
+        duplicate=deepcopy(raw);duplicate['objects'][1]=deepcopy(duplicate['objects'][0])
+        with self.assertRaisesRegex(ValueError, 'ambiguous'):
+            pick.associate_model_pose(duplicate, raw['objects'][0]['center_pelvis_m'], 1, object_name=name)
+        with self.assertRaisesRegex(ValueError, 'unmatched'):
+            pick.associate_model_pose(raw, [2,2,2], 1, object_name=name)
+
+    def test_selected_cluster_survives_duplicate_names(self):
+        from hack_brain.context import Object
+        name=PROFILES['philips_right']['object_name']
+        a,b=detected(name),detected(name);a.track_id='partial';b.track_id='selected'
+        target=Object(name,'box',name=name,track_id='selected')
+        self.assertIs(pick.selected_object(NS(objects=[a,b]),target), b)
+        with self.assertRaises(ValueError):
+            pick.selected_object(NS(objects=[a]),target)
+
     def test_imported_geometry_reconstructs_source_and_six_actuator_commands(self):
         from scipy.spatial.transform import Rotation
         def matrix(p):
@@ -297,7 +327,8 @@ class RecordedClientTests(unittest.TestCase):
         self.client.skills.grasp.exposure = observation()['exposure_key']
         self.client.skills.grasp.profile_key = 'rhino_e71'
         self.client.skills.grasp.arm = 'right'
-        self.client.scenes = {'table': object()}
+        obj=detected();obj.center=NS(x=0.,y=0.,z=0.)
+        self.client.scenes = {'table': NS(objects=[obj], header=NS(frame_id='pelvis',stamp=NS(sec=9,nanosec=800_000_000)))}
         self.client.model_cli = Mock()
         self.client.model_cli.service_is_ready.return_value = True
         self.client.execute_motion = Mock()

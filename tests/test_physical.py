@@ -100,6 +100,15 @@ class MeasurementsTests(unittest.TestCase):
         m=Measurements();fill(m,'left',positions=blocked,efforts=[0.]*6)
         self.assertIsNone(m.hand('left',1.4,1,target))  # stopped short without pushing proves nothing
 
+    def test_thumb_alone_against_a_shut_index_is_empty(self):
+        # sort3 seed 13051: the index shut on nothing, the thumb still closing with some effort.
+        pinch=[1.,1.,1.,.1,0.,.1]
+        m=Measurements();fill(m,'left',positions=[.99,.99,.99,.10,.35,.10],efforts=[.03,.04,.04,.01,.15,.2])
+        self.assertEqual(m.hand('left',1.4,1,pinch)[1],'EMPTY')
+        # The same pinch around the sink: the index stopped short and pushes.
+        m=Measurements();fill(m,'left',positions=[1.01,1.01,1.01,.65,.24,.1],efforts=[.17,.18,.18,1.,.28,.03])
+        self.assertEqual(m.hand('left',1.4,1,pinch)[1],'HOLDING')
+
     def test_bench_pinch_reads_holding(self):
         pinch=[1.,1.,1.,.3,.4,.1]
         m=Measurements();fill(m,'right',positions=[1.,1.,1.,1.03,.25,.1],efforts=[0,0,0,.4,.3,0])

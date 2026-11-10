@@ -27,11 +27,15 @@ by_name:
   # pool 4: dish
   Threshold_Bamboo_Ceramic_Soap_Dish: {force: 0.4, skip: true}  # flat pinch does not hold at 0.4-1.0
   Cole_Hardware_Bowl_Scirocco_YellowBlue: {skip: true}  # flat pinch: slipped on the lift 3 of 3
-  Ecoforms_Cup_B4_SAN: {}
+  # Lifted cups: 2 of 7 into the tray in sort3 runs (2026-11-10), 0 of 3 with pick_one at force 0.7 (1.0: two empty
+  # grasps). A lifted object out of a tray is -10 (SCORING.md), an untouched one 0: at under half it costs points.
+  Ecoforms_Cup_B4_SAN: {skip: true}
   # pool 4: box
   Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g: {skip: true}  # 6.4 cm box: empty or slips
   # 3.1 cm across; the only box with room between the pads. The grasp is 8.9 cm below the top, so the tips need more air.
-  Brother_Ink_Cartridge_Magenta_LC75M: {preset: pinch, force: 0.4, pre_height: 0.12}
+  # Force 0.7 against 0.4 on a carry to tray_center (pick_one --tray, 2026-11-10): 7 of 8 into the tray against 1 of 3.
+  # The thumb presses the box into the index, which is pushed back past open: the grip is the force limit.
+  Brother_Ink_Cartridge_Magenta_LC75M: {preset: pinch, force: 0.7, pre_height: 0.12}
   Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack: {skip: true}  # 6.4 cm box: slips on the lift
   # pool 6 (extra sort2): electronics
   Razer_Taipan_White_Ambidextrous_Gaming_Mouse: {}

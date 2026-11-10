@@ -204,9 +204,9 @@ def sim_tray(node, name):
     return (got[-1].get("objects", {}).get(name) or {}).get("tray")
 
 
-def tray_for(arm):
-    """Opening of the tray on this arm's side. sort2 and sort3 both have the side trays."""
-    name = "tray_left" if arm == "left" else "tray_right"
+def tray_for(arm, name=None):
+    """Opening of the tray `name`, by default the one on this arm's side. sort2 and sort3 both have the side trays."""
+    name = name or ("tray_left" if arm == "left" else "tray_right")
     x, y, z = tray_rim(name)
     return Container(id=name, kind="tray",
                      pose=Pose(position=Point(x=x, y=y, z=z), orientation=Quaternion(w=1.0)))
@@ -263,14 +263,14 @@ def watch(node, stop, aim=0.0):
         time.sleep(0.2)
 
 
-def run(node, name, at, use_camera, watching=False):
-    status = _run(node, name, at, use_camera, watching)
+def run(node, name, at, use_camera, watching=False, tray_name=None):
+    status = _run(node, name, at, use_camera, watching, tray_name)
     # The pick's own checks miss a drop on the way to the tray, and an OK place does not see the tray floor.
     print(f"SIM {name} tray {sim_tray(node, name)}", flush=True)
     return status
 
 
-def _run(node, name, at, use_camera, watching=False):
+def _run(node, name, at, use_camera, watching=False, tray_name=None):
     while rclpy.ok() and node.get_clock().now().nanoseconds == 0:
         time.sleep(0.1)
     if not node.api.wait_ready(timeout=120.0):
@@ -304,7 +304,7 @@ def _run(node, name, at, use_camera, watching=False):
         print(f"FAIL the object is within {TRAY_CLEAR * 100:.0f} cm of {hit}", flush=True)
         return 1
     cand = plan_grasps(obj, scene, node.skills.db)[0]
-    tray = tray_for(cand.arm)
+    tray = tray_for(cand.arm, tray_name)
     place = plan_place(cand.arm, tray, node.skills.db)
     if show_plan(obj, cand, place) < TOUCH_MARGIN:
         print("FAIL refusing: the fingertips would meet the table", flush=True)
@@ -346,6 +346,8 @@ def main():
     ap.add_argument("--watch", action="store_true", help="turn the head against the waist during the pick (video)")
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
                     help="grasp_db parameter for this object, e.g. preset=pinch or across=0.05")
+    ap.add_argument("--tray", choices=("tray_left", "tray_center", "tray_right"),
+                    help="carry into this tray, not the one on the arm's side (a longer carry, as in the mission)")
     ap.add_argument("--sweep", metavar="KEY=V1,V2,...",
                     help="pick once per value (object placed again each time), then print a table")
     args = ap.parse_args()
@@ -369,13 +371,13 @@ def main():
             for v in values.split(","):
                 entry[key] = parse_kv(f"{key}={v}")[1]
                 print(f"==== {key}={entry[key]}", flush=True)
-                results.append((entry[key], run(node, names[0], tuple(args.at), use_camera, args.watch)))
+                results.append((entry[key], run(node, names[0], tuple(args.at), use_camera, args.watch, args.tray)))
             print(f"==== sweep {key} on {names[0]} with {args.set}", flush=True)
             for v, st in results:
                 print(f"  {key}={v}: {'OK' if st == 0 else 'fail'}", flush=True)
             status = 0 if any(st == 0 for _, st in results) else 1
         else:
-            status = run(node, names[0], tuple(args.at), use_camera, args.watch)
+            status = run(node, names[0], tuple(args.at), use_camera, args.watch, args.tray)
     finally:
         executor.shutdown()
         spin.join(timeout=5.0)

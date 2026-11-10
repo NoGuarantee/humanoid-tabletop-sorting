@@ -321,6 +321,12 @@ class MissionTests(unittest.TestCase):
         self.assertEqual([x.target.id for x in f.commands if x.phase == State.OPEN], ['b'])
         self.assertNotIn('a', [k for k, h in c.history.items() if h.attempts])
 
+    def test_a_confidence_floor_lets_only_its_name_through(self):
+        objects = [Object('a', 'figure', name='a', confidence=0.39), Object('b', 'dish', name='b', confidence=0.39)]
+        f = Fake(objects=objects, config=Config(confidence_floors=(('a', 0.3),)))
+        f.run()
+        self.assertEqual([x.target.id for x in f.commands if x.phase == State.OPEN], ['a'])
+
     def test_trays_out_of_view_are_looked_for_to_the_side(self):
         spec = TaskSpec('sort3', 'sort', categories={'figure': 'tray_left', 'dish': 'tray_right', 'box': 'tray_center'},
                         objects={'a': 'figure', **{str(i): 'dish' for i in range(8)}})

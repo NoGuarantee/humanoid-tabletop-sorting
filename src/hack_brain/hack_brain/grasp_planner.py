@@ -129,6 +129,12 @@ def skip_names(db):
     return frozenset(n for n, p in (db.get("by_name") or {}).items() if p and p.get("skip"))
 
 
+def confidence_floors(db):
+    """(name, floor) pairs for `min_confidence` under by_name: brain picks these from a lower confidence."""
+    return tuple(sorted((n, float(p["min_confidence"])) for n, p in (db.get("by_name") or {}).items()
+                        if p and "min_confidence" in p))
+
+
 def params_for(db, name, category):
     p = dict(db.get("default", {}))
     p.update(db.get("by_category", {}).get(category, {}))

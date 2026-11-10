@@ -103,7 +103,7 @@ class PhysicalVerifier:
         if scene is not None:
             # track_id is only stable before contact; never rename a nearby detection.
             matches = [o for o in scene.objects if c.target.name and o.name == c.target.name
-                       and not o.partially_visible and o.confidence >= c.config.min_confidence]
+                       and not o.partially_visible and o.confidence >= c.config.min_confidence_for(o.name)]
             trays = [x for x in scene.containers if x.id == c.destination and x.kind == 'tray']
             placed = len(matches)==1 and len(trays)==1 and in_tray(matches[0],trays[0])
             t = min(t,st)

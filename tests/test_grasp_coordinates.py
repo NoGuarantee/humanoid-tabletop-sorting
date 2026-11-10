@@ -88,3 +88,16 @@ class ArmTests(unittest.TestCase):
     def test_candidates_use_the_tray_arm(self):
         for c in self.m.plan_grasps(self.obj,NS(table_z=0),{},_tray(.34,.69)):
             self.assertEqual(c.arm,'left')
+
+
+class DbFloorTests(unittest.TestCase):
+    def test_the_sink_floor_comes_from_grasp_db(self):
+        import yaml
+        path=Path(__file__).resolve().parents[1]/'src/hack_brain/config/grasp_db.yaml'
+        with open(path) as f:
+            db=yaml.safe_load(f)
+        m=_planner()
+        floors=dict(m.confidence_floors(db))
+        self.assertEqual(floors.get('3D_Dollhouse_Sink'),0.3)
+        self.assertTrue(all(0<v<0.6 for v in floors.values()))
+        self.assertFalse(set(floors)&m.skip_names(db))

@@ -30,6 +30,7 @@ from std_msgs.msg import String
 from tf2_ros import Buffer, TransformListener
 
 from .curobo_planner import Unreachable
+from .recorded_grasp import HAND_TARGETS, RHINO, hand_steps
 from .robot import ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, TCP_LINK, TRAY_IDS, clip, raise_steps, ready_pose
 
 PERIOD = 0.05  # s, real time between control checks
@@ -396,6 +397,8 @@ class MotionNode(Node):
             res.success = False
             return res
         target = [float(v) for v in HAND_PRESETS[g.preset]]
+        if g.preset in HAND_TARGETS:
+            return self.recorded_hand(handle, target)
         # 0 keeps the limit already set (Hand.action). 1.0 pushes the object out; grasps pass 0.3-0.5.
         if g.force > 0 and not self._set_hand_limit(g.hand, g.force):
             self.get_logger().warn(f"set_force {g.hand} {g.force:.2f} was not applied")
@@ -431,6 +434,43 @@ class MotionNode(Node):
         res.success = (st is not None and len(st.position) >= 6 and
                        abs(self.now()-(st.header.stamp.sec+st.header.stamp.nanosec*1e-9)) <= .5)
         return res
+
+    def recorded_hand(self, handle, target):
+        """Run E71's simultaneous schedule under the normal motor/action lock."""
+        goal = handle.request
+        force = float(goal.force)
+        if goal.hand != RHINO['hand'] or not math.isfinite(force) or not 0 < force <= .6:
+            return Hand.Result(success=False)
+        if not self._set_hand_limit(goal.hand, force) or not self._set_hand_speed(goal.hand, 1.0):
+            return Hand.Result(success=False)
+        wall_deadline = time.monotonic() + 30.
+        for positions, duration in hand_steps(goal.preset):
+            start = self.now()
+            sample = self._finger_sample(goal.hand)
+            if (self.cancelled() or sample is None or abs(start - sample[0]) > .5
+                    or not all(math.isfinite(p) for p in sample[1])):
+                return Hand.Result(success=False)
+            self._command_fingers(goal.hand, positions)
+            while rclpy.ok():
+                now = self.now()
+                sample = self._finger_sample(goal.hand)
+                if (self.cancelled() or now < start or time.monotonic() >= wall_deadline
+                        or sample is None or abs(now - sample[0]) > .5
+                        or not all(math.isfinite(p) for p in sample[1])):
+                    return Hand.Result(success=False)
+                handle.publish_feedback(Hand.Feedback(position=sample[1]))
+                if now - start >= duration:
+                    break
+                time.sleep(PERIOD)
+            else:
+                return Hand.Result(success=False)
+        with self.lock:
+            state = self.hand_state[goal.hand]
+        positions = [float(p) for p in state.position[:6]]
+        efforts = [float(e) for e in state.effort[:6]]
+        detected = len(efforts) == 6 and any(
+            t < .9 and p > t + .05 and e > .1 for p, t, e in zip(positions, target, efforts))
+        return Hand.Result(success=True, object_detected=detected, position=positions, effort=efforts)
 
     def _finger_pos(self, side):
         with self.lock:

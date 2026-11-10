@@ -878,6 +878,12 @@ class MotionNode(Node):
             except Unreachable as e:
                 try:
                     report = planner.start_report(snapshot)
+                    if keep_orientation:
+                        p, o = g.target.position, g.target.orientation
+                        self.get_logger().info('recorded planning rejection: ' + json.dumps(dict(
+                            arm=g.arm, mode=mode, target_xyz_xyzw=[p.x, p.y, p.z, o.x, o.y, o.z, o.w],
+                            joints=snapshot, table=planner.table, trays=planner.trays,
+                            objects=planner.objects, carrying=planner.carrying, error=str(e))))
                 except Exception as err:  # the report must not hide the failure it explains
                     report = f"no report: {err!r}"
                 return self._refused(g, mode, f"unreachable: {e}", f"start {report}; {planner.scene_note}")

@@ -22,7 +22,9 @@ by_name:
   # never got these into a tray; drop the flag once tools/pick_one.py lifts the object reliably.
   # pool 4 (team 049): figure
   Schleich_African_Black_Rhino: {skip: true}  # flat pinch: lifted, then slipped
-  3D_Dollhouse_Sink: {}
+  # Seen at 0.39 on seed 146 (0.093 x 0.084 x 0.130 against 0.085 x 0.073 x 0.131): the light bulbs box is the next
+  # category, 1.9 cm further, so the name is right and brain's 0.6 left it on the table. 2 of 3 lifted into the tray.
+  3D_Dollhouse_Sink: {min_confidence: 0.3}
   LADYBUG_BEAD: {skip: true}  # empty grasps; the leaned pinch slipped on the lift
   # pool 4: dish
   Threshold_Bamboo_Ceramic_Soap_Dish: {force: 0.4, skip: true}  # flat pinch does not hold at 0.4-1.0

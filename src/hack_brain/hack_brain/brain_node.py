@@ -17,7 +17,7 @@ from std_msgs.msg import Empty, String
 from .clients import Clients
 from .context import Config, Context, Event, State
 from .fsm import transition
-from .grasp_planner import load_db, skip_names
+from .grasp_planner import confidence_floors, load_db, skip_names
 from .task import parse_task
 
 
@@ -31,7 +31,7 @@ class Brain(Node):
         self.declare_parameter('grasp_db', os.path.join(
             get_package_share_directory('hack_brain'), 'config', 'grasp_db.yaml'))
         db = load_db(self.get_parameter('grasp_db').value)
-        values = {'skip_names': skip_names(db)}
+        values = {'skip_names': skip_names(db), 'confidence_floors': confidence_floors(db)}
         for name in Config.__dataclass_fields__:
             if name in values:
                 continue
@@ -40,6 +40,8 @@ class Brain(Node):
         self.mission_context = Context(config=Config(**values))
         if values['skip_names']:
             self.get_logger().info('left untouched: ' + ', '.join(sorted(values['skip_names'])))
+        if values['confidence_floors']:
+            self.get_logger().info('confidence floors: ' + ', '.join(f'{n} {v:.2f}' for n, v in values['confidence_floors']))
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
                              reliability=ReliabilityPolicy.RELIABLE)
         self.create_subscription(String, '/sim/task', lambda m: self.emit(Event('TASK', data=m.data)), latched)
@@ -62,6 +64,12 @@ class Brain(Node):
         c = self.mission_context
         if event.kind != 'TICK' or effects:
             try:
+                record = {}
+                if old.state.value == 'OBSERVE' and getattr(event.data, 'objects', None) is not None:
+                    # What select saw: an object never picked shows here why (confidence, CUT, missing).
+                    record['scene_objects'] = [
+                        f"{o.id} {o.name or '-'} {o.category or '-'} {o.confidence:.2f}{' CUT' if o.partial else ''}"
+                        for o in event.data.objects]
                 self.get_logger().info(json.dumps({
                     'event': event.kind, 'operation_id': event.op_id,
                     'active_operation_id': c.active.id if c.active else None,
@@ -75,6 +83,7 @@ class Brain(Node):
                     'last_recovery': c.last_recovery,
                     'look_side': c.look_side,
                     'operation_elapsed_sim': c.sim - old.active.sim_start if old.active and c.sim is not None else None,
+                    **record,
                 }))
             except Exception:
                 pass  # Logging failure must not discard effects or done publication.

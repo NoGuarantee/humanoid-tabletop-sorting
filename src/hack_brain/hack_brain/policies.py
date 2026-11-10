@@ -48,7 +48,7 @@ def select(c, scene):
     candidates = []
     for obj in scene.objects:
         h = c.history.get(obj.id, History())
-        if (not obj.id or obj.partial or not math.isfinite(obj.confidence) or obj.confidence < c.config.min_confidence or h.placed or h.released
+        if (not obj.id or obj.partial or not math.isfinite(obj.confidence) or obj.confidence < c.config.min_confidence_for(obj.name) or h.placed or h.released
                 or h.attempts >= c.config.max_attempts or obj.name in c.config.skip_names
                 or not destinations(c.spec, obj)):
             continue

@@ -30,8 +30,8 @@ from std_msgs.msg import String
 from tf2_ros import Buffer, TransformListener
 
 from .curobo_planner import Unreachable
-from .robot import (ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, TCP_LINK, TRAY_IDS, VERTICAL, clip, raise_steps,
-                    ready_pose, tilt, top_down, yaw)
+from .robot import (ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, READY_STEP, TCP_LINK, TRAY_IDS, VERTICAL, clip,
+                    raise_steps, ready_pose, tilt, top_down, yaw)
 
 KEEP_YAW_XY = 0.03  # m: a linear move this far across or less is vertical, and a top-down hand keeps its yaw on it
 PERIOD = 0.05  # s, real time between control checks
@@ -549,20 +549,26 @@ class MotionNode(Node):
             time.sleep(PERIOD)
         return False
 
-    def _leave_colliding_home(self, planner):
+    def _leave_colliding_home(self, planner, planned):
         """Bring an arm that hangs at home up in front of the chest by joints (robot.RAISE_STEPS).
 
         At home the forearm spheres are inside the thigh, and cuRobo will not plan from a state in collision.
         Only when every joint of the arm is near home: from a working pose the same joint moves could sweep
         the arm through the table. Once the arm is out of the thigh, a step that would enter an object is
         skipped and the plan that follows goes around it.
+
+        The arm not `planned` for stops at ready (robot.READY_STEP). The end of the raise holds its hand over its
+        side of the table: perception saw the two objects under it at confidence 0, and brain ended the mission
+        with them on the table (sort3 seed 146, 2026-11-10).
         """
         for arm, names in ARM_JOINTS.items():
             q = self.joints(names)
             if any(v is None for v in q) or max(abs(v) for v in q) >= HOME_TOL:
                 continue
-            self.get_logger().info(f"{arm} arm at home, raising it in front of the chest")
-            for i, step in enumerate(raise_steps(arm)):
+            steps = raise_steps(arm) if arm == planned else raise_steps(arm)[:READY_STEP + 1]
+            where = "in front of the chest" if arm == planned else "to ready"
+            self.get_logger().info(f"{arm} arm at home, raising it {where}")
+            for i, step in enumerate(steps):
                 with self.lock:
                     snapshot = dict(self.q)
                 try:
@@ -747,7 +753,7 @@ class MotionNode(Node):
                     self.get_logger().info(note)
                 # Every object, including the one this goal will grasp. The raise is not aimed at it yet.
                 planner.sync_world(None)
-                self._leave_colliding_home(planner)
+                self._leave_colliding_home(planner, g.arm)
                 planner.table, planner.trays = self._world()
                 with self.lock:
                     snapshot = dict(self.q)

@@ -254,7 +254,8 @@ class CuroboPlanner:
                 return detour
         goal, state = self._goal(arm, target, q_by_name)
         try:
-            return self._plan_linear(arm, goal, state, world_axes=keep_orientation)
+            return self._plan_linear(arm, goal, state, world_axes=keep_orientation,
+                                     axis_tolerance=pos_tol if explicit_contact else None)
         except Unreachable as failed:
             if explicit_contact:
                 raise  # never widen one selected contact to neighbouring objects
@@ -688,7 +689,7 @@ class CuroboPlanner:
                 checker.enable_obstacle(name, True)
             self.mp.graph_planner.reset_buffer()
 
-    def _plan_linear(self, arm, goal, state, *, world_axes=False):
+    def _plan_linear(self, arm, goal, state, *, world_axes=False, axis_tolerance=None):
         """plan_pose with the moving TCP held on the line through the goal along one axis of the goal frame.
 
         cuRobo's linear criterion frees one goal-frame axis on the way and pulls the other two and the orientation
@@ -727,7 +728,8 @@ class CuroboPlanner:
                 step = goal.clone()
                 step.position[0, 0, i, 0] = start.to(end.dtype) + (end - start.to(end.dtype)) * alpha
                 try:
-                    names, part, dt = self._plan_linear(arm, step, js, world_axes=world_axes)
+                    names, part, dt = self._plan_linear(arm, step, js, world_axes=world_axes,
+                                                       axis_tolerance=axis_tolerance)
                 except Unreachable as e:
                     raise Unreachable(f"at {alpha:.2f} of {length:.3f} m: {e}") from e
                 waypoints.extend(part)
@@ -735,7 +737,16 @@ class CuroboPlanner:
             return names, waypoints, dt
         # A leaned hand's world-vertical move is split across two TCP axes. Freeing only the larger one
         # pulls the path onto a line that, for the 45° pinch, points down into the table.
-        if length < 1e-4 or float(local[dominant].abs()) > 0.85 * length:
+        aligned = float(local[dominant].abs()) > 0.85 * length
+        if axis_tolerance is not None:
+            # A refreshed contact can move sideways within the allowed pose
+            # drift. The angle-only test called 15.6 mm across / 98 mm down
+            # "vertical" on seed7, then the constrained Z plan had no path.
+            # Align across first at the pregrasp height, using the same world
+            # and the same single-object contact permission, then descend.
+            lateral = math.sqrt(max(0., length * length - float(local[dominant]) ** 2))
+            aligned = lateral <= axis_tolerance
+        if length < 1e-4 or aligned:
             return self._linear_axis(link, goal, state, "xyz"[dominant], goal_frame=not world_axes)
         order = sorted(range(3), key=lambda k: -float(rot[2, k] * local[k]))  # gain height before sliding
         names, waypoints, dt = None, [], None

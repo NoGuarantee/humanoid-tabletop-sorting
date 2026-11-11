@@ -729,6 +729,30 @@
   ],
   "same_server_main_evidence": "series_rtx6000_943e716.json",
   "artifacts_sha256": {
-    "philips_seed13051_01aa6e2_final.jpg": "c0b5e21944de14a160e6d5ecd54cd71f1a3b272d9d13866d388098e492d0aa22"
+    "philips_seed13051_01aa6e2_final.jpg": "c0b5e21944de14a160e6d5ecd54cd71f1a3b272d9d13866d388098e492d0aa22",
+    "philips_seed13051_01aa6e2_4x.mp4": "fe6363321bd7fa1d4bc9344b52e1d26164bb2f8299d19035bd38c470ed2b3082"
+  },
+  "video_extraction": {
+    "first": {
+      "index": 1471,
+      "wall_elapsed_s": 311.397097454872,
+      "stamps": {
+        "cam_head": 185.929995844,
+        "cam_torso": 185.929995844
+      }
+    },
+    "last": {
+      "index": 2026,
+      "wall_elapsed_s": 428.310504573863,
+      "stamps": {
+        "cam_head": 253.999994323,
+        "cam_torso": 253.999994323
+      }
+    },
+    "speed": "4x relative to 5 fps source recording; camera overlay uses sim time",
+    "frames": 556,
+    "source_sha256": "4c25536be82052f3f31202120ce6f1b41f1809dc9cfe3ef35efdea7a1fc39eb3",
+    "clip_sha256": "b87fdb18b613758856cee38200f07aa5f43b48c32ea28ba8e22e0f1431a7f8be",
+    "bytes": 7860486
   }
 }

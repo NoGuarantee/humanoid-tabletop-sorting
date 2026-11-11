@@ -29,6 +29,9 @@ HEAD_SIDE_YAW = 0.6
 # Pre-grasp and above-tray poses are in free air, and the linear move after them plans from the measured pose.
 # An approach that stopped 1.01 cm off was rejected at the 1 cm default and cost the attempt (eval 2026-11-08).
 FREE_POS_TOL = 0.02
+# Recorded transit reached 6 mm / 0.032 rad on seed 7, but a 5 mm gate
+# aborted the held-object carry. Lower/release geometry still uses 5 mm.
+RECORDED_TRANSFER_POS_TOL = 0.01
 
 
 def place_for(cand, container, db):
@@ -133,7 +136,7 @@ class Skills:
                 raise ValueError('missing_recorded_contact_object')
         return 'tcp', MoveTcp.Goal(arm=g.arm, target=poses[phase],
                                   mode=mode + '_fixed' if recorded else mode,
-                                  pos_tol=.005 if recorded else {State.DESCEND: GRASP_POS_TOL, State.APPROACH: FREE_POS_TOL,
+                                  pos_tol=(RECORDED_TRANSFER_POS_TOL if phase == State.TRANSFER else .005) if recorded else {State.DESCEND: GRASP_POS_TOL, State.APPROACH: FREE_POS_TOL,
                                            State.TRANSFER: FREE_POS_TOL}.get(phase, 0.0),
                                   rot_tol=.05 if recorded else 0.0, **contact)
 

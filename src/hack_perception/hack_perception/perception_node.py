@@ -377,16 +377,22 @@ class PerceptionNode(Node):
                 center=Point(x=float(c.center[0]), y=float(c.center[1]), z=float(c.center[2])),
                 size=Vector3(x=float(c.size[0]), y=float(c.size[1]), z=float(c.size[2]))))
         rejected = result.rejected if result is not None else []
-        trays = classify.merge_trays(model_trays, rejected, rgb, tray_of_color)
+        # With recorded geometry enabled, fit the opening before accepting a
+        # whole-cluster box. A placed Brother merged with the green tray made
+        # its supposed rim 26 mm too high, raising the next Philips carry.
+        # Keep the baseline ordering when the RGB-D worker is disabled.
+        fallback = [] if self.model_poses is not None else rejected
+        trays = classify.merge_trays(model_trays, fallback, rgb, tray_of_color)
         missing = {color: ident for color, ident in tray_of_color.items()
                    if ident not in {tray[0] for tray in trays}}
+        measured = []
         if result is not None and missing:
             dtype = '>u2' if f['depth'].is_bigendian else '<u2'
             depth_mm = decode_image(f['depth'], '16UC1', dtype, 1)[..., 0].astype(np.uint16, copy=False)
             sensor = dict(rgb=rgb, depth=depth_mm,
                           K=np.asarray(f['info'].k).reshape(3, 3), T=camera_tf)
             measured = color_openings(sensor, cloud, result.plane, missing) if rgb is not None else []
-            trays.extend((tray.id, tray.color, tray.center, tray.yaw, tray.size) for tray in measured)
+        trays = classify.merge_trays(model_trays, rejected, rgb, tray_of_color, measured=measured)
         for tray_id, color, center, yaw, size in trays:
             x, y, z = map(float, center)
             scene.containers.append(Container(

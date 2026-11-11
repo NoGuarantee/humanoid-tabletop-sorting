@@ -194,6 +194,11 @@ class RecordedSortTests(unittest.TestCase):
         transfer = next(g for p, _, g in goals if p == State.TRANSFER)
         self.assertEqual(transfer.mode, 'carry_fixed')
         self.assertEqual(transfer.arm, side)
+        self.assertEqual(transfer.pos_tol, .01)
+        for phase, action, goal in goals:
+            if action == 'tcp' and phase not in (State.ARMS_READY, State.CLEAR):
+                self.assertEqual(goal.pos_tol, .01 if phase == State.TRANSFER else .005)
+                self.assertEqual(goal.rot_tol, .05)
         self.assertTrue(all(e.destination == 'red' for e in f.commands if e.phase == State.TRANSFER))
         self.assertEqual(next(g.preset for p, _, g in goals if p == State.CLOSE), key + '_close')
         self.assertEqual(next(g.preset for p, _, g in goals if p == State.RELEASE),

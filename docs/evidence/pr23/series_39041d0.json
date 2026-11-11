@@ -1,0 +1,531 @@
+{
+  "runtime_commit": "39041d0",
+  "task": "sort3",
+  "pool": 4,
+  "server": "vast4090",
+  "runtime_source_root": "/root/vlad/junk/nssr-uwt-20261030/pr23_philips_20261111",
+  "cases": [
+    {
+      "case": "candidate_seed13051_39041d0",
+      "status": "completed",
+      "right": 1,
+      "wrong": 0,
+      "sim_step": 21295,
+      "philips": {
+        "tray": null,
+        "ok": false
+      },
+      "philips_transitions": [
+        {
+          "sim": 122.389997264,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 127.10999715800001,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 134.329996997,
+          "from": "APPROACH",
+          "to": "DESCEND",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 140.359996862,
+          "from": "DESCEND",
+          "to": "RECOVER",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 158.499996457,
+          "from": "RECOVER",
+          "to": "OPEN_HANDS",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 160.699996408,
+          "from": "OPEN_HANDS",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 161.98999637900002,
+          "from": "LOOK_TABLE",
+          "to": "OBSERVE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 162.219996374,
+          "from": "OBSERVE",
+          "to": "ARMS_READY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 173.829996114,
+          "from": "ARMS_READY",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 175.229996083,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 177.52999603100002,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 180.699995961,
+          "from": "APPROACH",
+          "to": "RECOVER",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 198.799995556,
+          "from": "RECOVER",
+          "to": "OPEN_HANDS",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 200.979995507,
+          "from": "OPEN_HANDS",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 201.789995489,
+          "from": "LOOK_TABLE",
+          "to": "OBSERVE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 201.999995484,
+          "from": "OBSERVE",
+          "to": "ARMS_READY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 208.659995336,
+          "from": "ARMS_READY",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        }
+      ],
+      "exit_code": null,
+      "sha256": {
+        "solution.log": "d0a4a159f48e7dcdee698d7f0a6bc33c5533ac7906d2d3ad1a4c9c947fd2850f",
+        "result.json": "f1d21b69cdbaa396d03b14dd58559270edcbf2c6f3f23641e83bcf5d3630716a"
+      }
+    },
+    {
+      "case": "candidate_seed146_39041d0",
+      "status": "completed",
+      "right": 3,
+      "wrong": 0,
+      "sim_step": 19126,
+      "philips": {
+        "tray": "tray_center",
+        "ok": true
+      },
+      "philips_transitions": [
+        {
+          "sim": 77.00999827800001,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 81.68999817400001,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 89.71999799400001,
+          "from": "APPROACH",
+          "to": "DESCEND",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 91.849997946,
+          "from": "DESCEND",
+          "to": "CLOSE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 95.239997871,
+          "from": "CLOSE",
+          "to": "VERIFY_GRASP",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 95.56999786300001,
+          "from": "VERIFY_GRASP",
+          "to": "LIFT",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 100.309997757,
+          "from": "LIFT",
+          "to": "VERIFY_LIFT",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "UNKNOWN"
+        },
+        {
+          "sim": 100.63999775,
+          "from": "VERIFY_LIFT",
+          "to": "DESTINATION",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 100.83999774600001,
+          "from": "DESTINATION",
+          "to": "VERIFY_TRANSFER",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 101.169997738,
+          "from": "VERIFY_TRANSFER",
+          "to": "TRANSFER",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 118.67999734700001,
+          "from": "TRANSFER",
+          "to": "VERIFY_HOLD",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 119.00999733900001,
+          "from": "VERIFY_HOLD",
+          "to": "LOWER",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 120.19999731300001,
+          "from": "LOWER",
+          "to": "RELEASE",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 123.07999724800001,
+          "from": "RELEASE",
+          "to": "RETREAT",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 127.09999715900001,
+          "from": "RETREAT",
+          "to": "CLEAR",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 135.429996972,
+          "from": "CLEAR",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 135.889996962,
+          "from": "LOOK_TABLE",
+          "to": "VERIFY_PLACE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 136.209996955,
+          "from": "VERIFY_PLACE",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "LIFTED"
+        }
+      ],
+      "exit_code": "0",
+      "sha256": {
+        "solution.log": "b8682b341c001af2f5fbaa44fc6893c7f966730b8cf405f415630a31d9b9ed4e",
+        "result.json": "80b16d073ce6f07cf60daba02eeac046254df9a1dbb63de0f49196ba0f915680"
+      }
+    },
+    {
+      "case": "candidate_seed7_39041d0",
+      "status": "completed",
+      "right": 1,
+      "wrong": 0,
+      "sim_step": 19183,
+      "philips": {
+        "tray": null,
+        "ok": false
+      },
+      "philips_transitions": [
+        {
+          "sim": 97.48999782,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 102.25999771400001,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 116.86999738700001,
+          "from": "APPROACH",
+          "to": "DESCEND",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 122.889997253,
+          "from": "DESCEND",
+          "to": "RECOVER",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 141.01999684700002,
+          "from": "RECOVER",
+          "to": "OPEN_HANDS",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 144.309996774,
+          "from": "OPEN_HANDS",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 145.549996746,
+          "from": "LOOK_TABLE",
+          "to": "OBSERVE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 145.77999674100002,
+          "from": "OBSERVE",
+          "to": "ARMS_READY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 157.799996472,
+          "from": "ARMS_READY",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 159.15999644200002,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 161.76999638400002,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 162.769996361,
+          "from": "APPROACH",
+          "to": "RECOVER",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 180.879995957,
+          "from": "RECOVER",
+          "to": "OPEN_HANDS",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 183.049995908,
+          "from": "OPEN_HANDS",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 183.4099959,
+          "from": "LOOK_TABLE",
+          "to": "OBSERVE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 183.609995895,
+          "from": "OBSERVE",
+          "to": "ARMS_READY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 187.219995815,
+          "from": "ARMS_READY",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        }
+      ],
+      "exit_code": "0",
+      "sha256": {
+        "solution.log": "4b77db5d8d2d3072b77e7a771157e00aca4255b02e605b7edef163e3bf8a9749",
+        "result.json": "a8c4b23693737d8707fd55ab6727829ab8edf1db365f2998f9410c976138ad50"
+      }
+    },
+    {
+      "case": "main_seed13051_e48f0db",
+      "status": "completed",
+      "right": 1,
+      "wrong": 0,
+      "sim_step": 15169,
+      "philips": {
+        "tray": null,
+        "ok": false
+      },
+      "philips_transitions": [],
+      "exit_code": "0",
+      "sha256": {
+        "solution.log": "2ca5a5e69e6d57b224e02e3756abfb5890e6aaa710c323bde619d2c355ce1d36",
+        "result.json": "0f27f95e4e3da962c3c380a2eba564118c4327738a5f624d22eab14bbb4b1a93"
+      }
+    },
+    {
+      "case": "main_seed146_e48f0db",
+      "status": "completed",
+      "right": 1,
+      "wrong": 0,
+      "sim_step": 10790,
+      "philips": {
+        "tray": null,
+        "ok": false
+      },
+      "philips_transitions": [],
+      "exit_code": "0",
+      "sha256": {
+        "solution.log": "9a1fb48bcb56245b477c4aca5c94a914509e90557bf7a95b002e3c7d20dacb62",
+        "result.json": "a62dbc4913b1c7c51cabbc8f76a4d698128f34a8e7b46bd779896fa16426c832"
+      }
+    },
+    {
+      "case": "main_seed7_e48f0db",
+      "status": "completed",
+      "right": 2,
+      "wrong": 0,
+      "sim_step": 11515,
+      "philips": {
+        "tray": null,
+        "ok": false
+      },
+      "philips_transitions": [],
+      "exit_code": "0",
+      "sha256": {
+        "solution.log": "6fe05accd967636ae120e312d9c00628611be0a4b621aaede0c465a76ca79cc6",
+        "result.json": "a239f89199441934a39f028753e699d561f160069b444aae7716ea4406e4867b"
+      }
+    }
+  ],
+  "qualification": "failed: Philips placement confirmed only on seed146, seed7 total below main"
+}

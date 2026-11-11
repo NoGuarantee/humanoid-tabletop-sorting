@@ -31,6 +31,29 @@ def method(file, name, **namespace):
 
 
 class PR9TransferTests(unittest.TestCase):
+    def test_philips_orders_existing_profiles_by_pick_and_place_reach(self):
+        name = base.PROFILES['philips_right']['object_name']
+        for yaw in (0., np.pi):
+            data = base.observation(name)
+            world = np.eye(4)
+            world[:3, :3] = axis_angle([0., 0., 1.], yaw)[:3, :3]
+            world[:3, 3] = [.34, .08, -.16]
+            data['objects'][0].update(T_pelvis_object=world.tolist(), center_pelvis_m=[.34, .08, -.10])
+            container = base.tray(y=0., yaw=0., size=(.32, .32))
+            choices = []
+            for key in ('philips_right', 'philips_right_turn180'):
+                g = base.pick.candidate(data, 10.1, base.detected(name), container, base.DB, 0, profile_key=key)
+                p = base.pick.place(g, container, base.DB)
+                choices.append((max(np.hypot(t.position.x, t.position.y) for t in (g.grasp, p.approach)), key))
+            expected = sorted(choices)
+            for attempt in (1, 2):
+                g = base.pick.candidate(data, 10.1, base.detected(name), container, base.DB, 0, attempt=attempt)
+                self.assertEqual(g.profile_key, expected[attempt-1][1])
+            # An explicit profile survives the OPEN -> DESCEND refresh.
+            far = base.pick.candidate(data, 10.1, base.detected(name), container, base.DB, 0,
+                                      profile_key=expected[1][1])
+            self.assertEqual(far.profile_key, expected[1][1])
+
     def test_philips_carry_reuses_native_rim_clearance_without_changing_release(self):
         for key in ('philips_right', 'philips_right_turn180'):
             name = base.PROFILES[key]['object_name']

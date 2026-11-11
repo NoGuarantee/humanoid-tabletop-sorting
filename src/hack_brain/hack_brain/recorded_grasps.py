@@ -153,6 +153,27 @@ def candidate(data, now_s, obj, container, db, after_stamp_ns, attempt=1, profil
         choices = preferred or choices
     if not choices:
         raise ValueError('no_recorded_profile_for_object_and_arm: ' + obj.name + '/' + side)
+    if not profile_key and len(choices) > 1 and all(p['family'] == 'philips' for p in choices):
+        # Both opposite-side grasps were recorded successfully. The far-side
+        # one reaches the ROS wrist/shoulder stops during carry on seed 7.
+        # Prefer the demonstrated variant with the shorter maximum reach over
+        # pick and placement; this is ordering, not an IK feasibility claim.
+        # DESCEND keeps OPEN's explicit profile_key, even after a fresh fit.
+        ranked, failures = [], []
+        for p in choices:
+            try:
+                grasp = candidate(data, now_s, obj, container, db, after_stamp_ns,
+                                  profile_key=p['key'], disabled_arm=disabled_arm)
+                placement = place(grasp, container, db)
+                reach = max(np.hypot(t.position.x, t.position.y)
+                            for t in (grasp.grasp, placement.approach))
+                ranked.append((reach, p['key'], grasp))
+            except ValueError as exc:
+                failures.append(str(exc))
+        if not ranked:
+            raise ValueError('no_recorded_placement: ' + '; '.join(failures))
+        ranked.sort(key=lambda item: item[:2])
+        return ranked[min(max(attempt - 1, 0), len(ranked) - 1)][2]
     profile = choices[min(max(attempt - 1, 0), len(choices) - 1)]
     side = profile['hand']
     row = next(o for o in data['objects'] if o.get('name') == obj.name)

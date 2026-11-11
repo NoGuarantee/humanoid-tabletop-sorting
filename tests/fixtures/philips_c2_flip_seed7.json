@@ -1,0 +1,193 @@
+{
+  "source_commit": "01aa6e2",
+  "source_case": "candidate_seed7_01aa6e2",
+  "source_log_sha256": "7b0ae1e548e6c1090a85b01002e43df6418fded571fdcd17bbdd5fb982903aa8",
+  "open": {
+    "object": "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack",
+    "profile": "philips_right",
+    "arm": "right",
+    "phase": "OPEN",
+    "destination": "tray_center",
+    "exposure": {
+      "session_id": "e5eee6b651b24626b3edfb12be22960a",
+      "epoch": 1,
+      "stamp_ns": 100489997754
+    },
+    "association": {
+      "reference_point": [
+        0.3421748851016768,
+        0.08454940310058981,
+        -0.10180344646352515
+      ],
+      "reference_stamp_ns": 99409997778,
+      "selected_index": 0,
+      "candidates": [
+        {
+          "index": 0,
+          "outside_m": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "compatible": true
+        },
+        {
+          "index": 1,
+          "outside_m": [
+            0.02136083008859832,
+            0.21375174911254308,
+            0.0
+          ],
+          "compatible": false
+        }
+      ]
+    },
+    "model_pose": {
+      "name": "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack",
+      "category": "box",
+      "pose_status": "ok",
+      "T_pelvis_object": [
+        [
+          0.19535692078697295,
+          -0.9792779291489975,
+          -0.053389240323154424,
+          0.34538265279768227
+        ],
+        [
+          0.9807310108055216,
+          0.19515223101055512,
+          0.009071448394984628,
+          0.08388826578829738
+        ],
+        [
+          0.0015355601623998469,
+          -0.05413265385378794,
+          0.9985325722487645,
+          -0.15734261926556492
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "center_pelvis_m": [
+        0.3414099332804689,
+        0.08468335644130796,
+        -0.10001189185807971
+      ],
+      "size_model_m": [
+        0.10638102449476719,
+        0.06700798245146872,
+        0.10151400309987366
+      ],
+      "orientation_mode": "c2",
+      "detector_score": 0.9654483795166016,
+      "depth_points": 1300,
+      "fit_rmse_m": 0.0008913476472376073,
+      "depth_supported_views": 2,
+      "instances": {
+        "cam_head": 8,
+        "cam_torso": 3
+      },
+      "exposure_key": {
+        "session_id": "e5eee6b651b24626b3edfb12be22960a",
+        "epoch": 1,
+        "stamp_ns": 100489997754
+      }
+    }
+  },
+  "descend": {
+    "error": "recorded_pose_association_unmatched",
+    "object": "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack",
+    "phase": "DESCEND",
+    "exposure": {
+      "session_id": "e5eee6b651b24626b3edfb12be22960a",
+      "epoch": 1,
+      "stamp_ns": 117139997382
+    },
+    "objects": [
+      {
+        "name": "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack",
+        "category": "box",
+        "pose_status": "ok",
+        "T_pelvis_object": [
+          [
+            -0.19894178713363322,
+            0.9782615506086434,
+            -0.058536347108873045,
+            0.3455278639719197
+          ],
+          [
+            -0.9800040718897151,
+            -0.1983555750011054,
+            0.01571893589148708,
+            0.08389677861756731
+          ],
+          [
+            0.003766219809879579,
+            0.06049301171833685,
+            0.9981615155482556,
+            -0.15722669641474282
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "center_pelvis_m": [
+          0.34306739127085667,
+          0.08452333880970596,
+          -0.09980909919060531
+        ],
+        "size_model_m": [
+          0.10638102449476719,
+          0.06700798245146872,
+          0.10151400309987366
+        ],
+        "orientation_mode": "c2",
+        "detector_score": 0.897044837474823,
+        "depth_points": 705,
+        "fit_rmse_m": 0.0006661524916789044,
+        "depth_supported_views": 2,
+        "instances": {
+          "cam_head": 7,
+          "cam_torso": 7
+        },
+        "exposure_key": {
+          "session_id": "e5eee6b651b24626b3edfb12be22960a",
+          "epoch": 1,
+          "stamp_ns": 117139997382
+        }
+      },
+      {
+        "name": "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack",
+        "category": "box",
+        "pose_status": "reacquire_clipped",
+        "T_pelvis_object": null,
+        "center_pelvis_m": null,
+        "size_model_m": [
+          0.10638102449476719,
+          0.06700798245146872,
+          0.10151400309987366
+        ],
+        "orientation_mode": "c2",
+        "detector_score": 0.9750670194625854,
+        "depth_points": 650,
+        "fit_rmse_m": 0.0007050700078130561,
+        "depth_supported_views": 1,
+        "instances": {
+          "cam_torso": 1
+        },
+        "exposure_key": {
+          "session_id": "e5eee6b651b24626b3edfb12be22960a",
+          "epoch": 1,
+          "stamp_ns": 117139997382
+        }
+      }
+    ]
+  }
+}

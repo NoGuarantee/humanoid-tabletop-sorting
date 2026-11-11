@@ -49,6 +49,7 @@ class RecordedGrasp(GraspCandidate):
     profile_key: str = ''
     observed_center: tuple = ()
     contact_object_id: str = ''
+    orientation_mode: str = ''
 
 
 def selected_object(scene, target):
@@ -79,7 +80,7 @@ def associate_model_pose(data, reference_point, reference_stamp_ns, *, object_na
     point = np.asarray(reference_point, dtype=float)
     if point.shape != (3,) or not np.isfinite(point).all() or data.get('stamp_ns', 0) <= reference_stamp_ns:
         raise ValueError('invalid_recorded_pose_reference')
-    matches, evidence = [], []
+    matches, evidence, aligned = [], [], {}
     for index, row in enumerate(data.get('objects', [])):
         if row.get('name') != object_name:
             continue
@@ -96,9 +97,23 @@ def associate_model_pose(data, reference_point, reference_stamp_ns, *, object_na
         detail = dict(index=index, outside_m=gap.tolist())
         if previous is not None:
             profile = PROFILES[previous.profile_key]
-            shift, angle = _tcp_drift(previous.grasp, world @ transform(profile['T_reference_tcp'][previous.arm]))
-            compatible = compatible and shift <= .02 and angle <= .15
-            detail.update(tcp_shift_m=shift, tcp_angle_rad=angle)
+            # PR9 relative_observation_error compares declared cyclic aliases
+            # around model Z. Keep the fresh translation/tilt, but express the
+            # pose in the same observable basis as the accepted pregrasp.
+            # This is one model instance; distinct instances stay ambiguous.
+            mode = row.get('orientation_mode', '')
+            order = {'c2': 2, 'c4': 4}.get(mode, 1) if mode == previous.orientation_mode else 1
+            variants = []
+            for k in range(order):
+                equivalent = world @ axis_angle([0., 0., 1.], 2*np.pi*k/order)
+                shift, angle = _tcp_drift(previous.grasp, equivalent @ transform(profile['T_reference_tcp'][previous.arm]))
+                variants.append((shift, angle, k, equivalent))
+            accepted = [v for v in variants if v[0] <= .02 and v[1] <= .15]
+            compatible = compatible and len(accepted) == 1
+            shift, angle, k, equivalent = accepted[0] if len(accepted) == 1 else min(variants, key=lambda v: v[1])
+            detail.update(tcp_shift_m=shift, tcp_angle_rad=angle, symmetry_order=order, symmetry_index=k)
+            if compatible:
+                aligned[index] = equivalent
         detail['compatible'] = compatible
         evidence.append(detail)
         if compatible:
@@ -110,6 +125,9 @@ def associate_model_pose(data, reference_point, reference_stamp_ns, *, object_na
     for index, row in enumerate(result['objects']):
         if row.get('name') == object_name and index != selected:
             row['unassociated_name'], row['name'] = row['name'], None
+        if index in aligned:
+            row['T_pelvis_object_observed'] = row['T_pelvis_object']
+            row['T_pelvis_object'] = aligned[index].tolist()
     result['target_association'] = dict(reference_point=point.tolist(), reference_stamp_ns=reference_stamp_ns,
                                        selected_index=selected, candidates=evidence)
     return result
@@ -189,6 +207,7 @@ def candidate(data, now_s, obj, container, db, after_stamp_ns, attempt=1, profil
                            tuple(center_tcp), tuple(map(tuple, corners_tcp)), dict(data['exposure_key']), key)
     result.observed_center = tuple(center)
     result.contact_object_id = obj.track_id
+    result.orientation_mode = row.get('orientation_mode', '')
     place(result, container, db)  # reject a known footprint mismatch before touching the object
     return result
 

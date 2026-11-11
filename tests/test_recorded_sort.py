@@ -104,6 +104,54 @@ class RecordedSortTests(unittest.TestCase):
         np.testing.assert_allclose(goal.carry_inward_xy, -.08*np.array([.34,.08])/np.linalg.norm([.34,.08]))
         self.assertEqual(goal.mode, 'carry_fixed')
 
+    def test_saved_c2_flip_preserves_fresh_pose_and_pregrasp_basis(self):
+        fixture = json.loads(Path(__file__).with_name('fixtures').joinpath('philips_c2_flip_seed7.json').read_text())
+        opened, descend = fixture['open'], fixture['descend']
+        name = opened['object']
+        def response(key, rows):
+            return dict(schema='hack_perception.model_poses/v1', status='ok', frame_id='pelvis',
+                        stamp_ns=key['stamp_ns'], exposure_key=deepcopy(key), objects=deepcopy(rows))
+        raw = response(opened['exposure'], [opened['model_pose']])
+        before = pick.candidate(raw, raw['stamp_ns']/1e9+.1, detected(name), tray(), DB, 0,
+                                profile_key='philips_right')
+        fresh = response(descend['exposure'], descend['objects'])
+        point = opened['association']['reference_point']
+        def associate(data):
+            return pick.associate_model_pose(data, point, raw['stamp_ns'], object_name=name, previous=before)
+        result = associate(fresh)
+        detail = result['target_association']['candidates'][0]
+        self.assertEqual((detail['symmetry_order'], detail['symmetry_index']), (2, 1))
+        self.assertLess(detail['tcp_shift_m'], .02)
+        self.assertLess(detail['tcp_angle_rad'], .15)
+        np.testing.assert_allclose(np.asarray(result['objects'][0]['T_pelvis_object'])[:3, 3],
+                                   np.asarray(fresh['objects'][0]['T_pelvis_object'])[:3, 3])
+        self.assertEqual(result['objects'][0]['T_pelvis_object_observed'], fresh['objects'][0]['T_pelvis_object'])
+        self.assertEqual(result['objects'][0]['center_pelvis_m'], fresh['objects'][0]['center_pelvis_m'])
+        current = pick.candidate(result, result['stamp_ns']/1e9+.1, detected(name), tray(), DB, raw['stamp_ns'],
+                                 profile_key='philips_right')
+        self.assertIs(pick.refreshed(before, current), current)
+        self.assertEqual(current.exposure, fresh['exposure_key'])
+        self.assertEqual(fresh['objects'], descend['objects'])  # input never rewritten
+        # Do not turn symmetry handling into selection among separate instances.
+        duplicate = deepcopy(fresh); duplicate['objects'].append(deepcopy(fresh['objects'][0]))
+        with self.assertRaisesRegex(ValueError, 'ambiguous'):
+            associate(duplicate)
+        for change in ('translation', 'rotation', 'full', 'mixed_epoch'):
+            bad = deepcopy(fresh); row = bad['objects'][0]
+            if change == 'translation':
+                row['T_pelvis_object'][0][3] += .05; row['center_pelvis_m'][0] += .05
+            elif change == 'rotation':
+                row['T_pelvis_object'] = (np.asarray(row['T_pelvis_object']) @ pick.axis_angle([0, 0, 1], .3)).tolist()
+            elif change == 'full':
+                row['orientation_mode'] = 'full'
+            else:
+                row['exposure_key']['epoch'] += 1
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                associate(bad)
+        with self.assertRaises(ValueError):
+            pick.candidate(result, result['stamp_ns']/1e9+2, detected(name), tray(), DB, raw['stamp_ns'],
+                           profile_key='philips_right')
+
     def test_targets_rotate_and_translate_in_object_frame(self):
         world = np.array([[0., -1., 0., .4], [1., 0., 0., -.3], [0., 0., 1., -.1], [0., 0., 0., 1.]])
         result = pick.targets(world, RHINO)

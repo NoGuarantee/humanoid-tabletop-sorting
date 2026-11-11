@@ -43,6 +43,32 @@ DB = pick.evaluation_db({}, True)
 
 
 class RecordedSortTests(unittest.TestCase):
+    def test_descent_association_applies_existing_pose_drift_gate_before_ambiguity(self):
+        name = PROFILES['philips_right']['object_name']
+        raw = observation(name)
+        previous = pick.candidate(raw, 10.1, detected(name), tray(), DB, 0, profile_key='philips_right')
+        data = deepcopy(raw)
+        data['stamp_ns'] = data['exposure_key']['stamp_ns'] = 11_000_000_000
+        original = data['objects'][0]
+        original['exposure_key'] = deepcopy(data['exposure_key'])
+        flipped = deepcopy(original)
+        flipped['T_pelvis_object'] = np.diag([-1.,-1.,1.,1.]).tolist()
+        for rows in ([original,flipped],[flipped,original]):
+            data['objects'] = deepcopy(rows)
+            with self.assertRaisesRegex(ValueError,'ambiguous'):
+                pick.associate_model_pose(data, [0.,0.,0.], 10_000_000_000, object_name=name)
+            selected = pick.associate_model_pose(data, [0.,0.,0.], 10_000_000_000,
+                                                  object_name=name, previous=previous)
+            np.testing.assert_allclose(pick.observed_pose(selected,11.1,object_name=name),np.eye(4))
+            self.assertEqual(sum(r['compatible'] for r in selected['target_association']['candidates']),1)
+        # Two genuinely compatible poses remain ambiguous; no score/nearest tie-break.
+        data['objects'] = [deepcopy(original),deepcopy(original)]
+        with self.assertRaisesRegex(ValueError,'ambiguous'):
+            pick.associate_model_pose(data,[0.,0.,0.],10_000_000_000,object_name=name,previous=previous)
+        data['objects'] = [flipped]
+        with self.assertRaisesRegex(ValueError,'unmatched'):
+            pick.associate_model_pose(data,[0.,0.,0.],10_000_000_000,object_name=name,previous=previous)
+
     def test_philips_transfer_requests_native_inward_offset_from_observed_center(self):
         from hack_brain.context import State
         name = PROFILES['philips_right']['object_name']

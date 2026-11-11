@@ -60,13 +60,21 @@ def selected_object(scene, target):
     return matches[0]
 
 
-def associate_model_pose(data, reference_point, reference_stamp_ns, *, object_name):
+def _tcp_drift(previous_pose, current_matrix):
+    shift = np.linalg.norm(np.array([getattr(previous_pose.position, k) for k in 'xyz']) - current_matrix[:3, 3])
+    relative = np.asarray(matrix_from_quat(previous_pose.orientation)).T @ current_matrix[:3, :3]
+    angle = np.arccos(np.clip((np.trace(relative)-1)/2, -1, 1))
+    return float(shift), float(angle)
+
+
+def associate_model_pose(data, reference_point, reference_stamp_ns, *, object_name, previous=None):
     """Bind a canonical hypothesis to an independently selected measured surface.
 
     A visible surface centre need not be the complete model centre. It must lie
     inside exactly one fitted model's oriented bounds, with 2 cm allowance for
     depth/fit error. No score/nearest tie-break; unrelated regions remain in the
-    response. DESCEND uses the accepted OPEN centre and still checks pose drift.
+    response. DESCEND also applies the existing 2 cm / .15 rad pregrasp drift
+    gate before counting compatible poses, rather than after picking one.
     """
     point = np.asarray(reference_point, dtype=float)
     if point.shape != (3,) or not np.isfinite(point).all() or data.get('stamp_ns', 0) <= reference_stamp_ns:
@@ -85,7 +93,14 @@ def associate_model_pose(data, reference_point, reference_stamp_ns, *, object_na
             raise ValueError('invalid_recorded_pose_bounds')
         gap = np.maximum(np.abs((point-center) @ world[:3, :3]) - size/2, 0.)
         compatible = bool(np.max(gap) <= .02)
-        evidence.append(dict(index=index, outside_m=gap.tolist(), compatible=compatible))
+        detail = dict(index=index, outside_m=gap.tolist())
+        if previous is not None:
+            profile = PROFILES[previous.profile_key]
+            shift, angle = _tcp_drift(previous.grasp, world @ transform(profile['T_reference_tcp'][previous.arm]))
+            compatible = compatible and shift <= .02 and angle <= .15
+            detail.update(tcp_shift_m=shift, tcp_angle_rad=angle)
+        detail['compatible'] = compatible
+        evidence.append(detail)
         if compatible:
             matches.append(index)
     if len(matches) != 1:
@@ -186,10 +201,10 @@ def refreshed(previous, current):
         raise ValueError('recorded_pose_episode_changed')
     if current.exposure['stamp_ns'] <= previous.exposure['stamp_ns']:
         raise ValueError('recorded_pose_not_refreshed')
-    a, b = previous.grasp, current.grasp
-    shift = np.linalg.norm([getattr(a.position, k) - getattr(b.position, k) for k in 'xyz'])
-    relative = np.asarray(matrix_from_quat(a.orientation)).T @ matrix_from_quat(b.orientation)
-    angle = np.arccos(np.clip((np.trace(relative) - 1) / 2, -1, 1))
+    matrix = np.eye(4)
+    matrix[:3, :3] = matrix_from_quat(current.grasp.orientation)
+    matrix[:3, 3] = [getattr(current.grasp.position, k) for k in 'xyz']
+    shift, angle = _tcp_drift(previous.grasp, matrix)
     if shift > .02 or angle > .15:
         raise ValueError('recorded_pose_moved_after_pregrasp')
     return current

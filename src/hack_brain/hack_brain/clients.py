@@ -296,7 +296,7 @@ class Clients:
             return
         if self.model_future is not None and self.model_future.done():
             future, self.model_future = self.model_future, None
-            data = None
+            data, payload = None, None
             try:
                 response = future.result()
                 payload = json.loads(response.message)
@@ -311,13 +311,19 @@ class Clients:
                     else:
                         reference = self.skills.grasp.observed_center
                         reference_stamp = self.skills.grasp.exposure['stamp_ns']
-                    data = associate_model_pose(payload, reference, reference_stamp, object_name=effect.target.name)
+                    data = associate_model_pose(payload, reference, reference_stamp, object_name=effect.target.name,
+                                                previous=self.skills.grasp if effect.phase == State.DESCEND else None)
                     observed_pose(data, context.sim, int(context.active.sim_start * 1e9), object_name=effect.target.name)
                 elif payload.get('status') != 'awaiting_fresh_pose' or not self.model_pose_error:
                     # A later pending poll must not erase the actual pose rejection.
                     self.model_pose_error = payload.get('status', 'unsuccessful_response')
             except Exception as exc:
                 self.model_pose_error = str(exc)
+                if isinstance(payload, dict) and payload.get('objects'):
+                    self.node.get_logger().info('recorded pose rejected: ' + json.dumps(dict(
+                        error=str(exc), object=effect.target.name, phase=effect.phase.value,
+                        exposure=payload.get('exposure_key'), objects=[row for row in payload['objects']
+                            if isinstance(row, dict) and row.get('name') == effect.target.name])))
                 data = None
             if data is not None:
                 self.model_pending = None

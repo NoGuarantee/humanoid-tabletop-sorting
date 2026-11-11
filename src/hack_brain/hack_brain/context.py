@@ -13,6 +13,7 @@ class State(str, Enum):
     OBSERVE = 'OBSERVE'
     OPEN = 'OPEN'
     APPROACH = 'APPROACH'
+    LOOK_GRASP = 'LOOK_GRASP'
     DESCEND = 'DESCEND'
     CLOSE = 'CLOSE'
     VERIFY_GRASP = 'VERIFY_GRASP'

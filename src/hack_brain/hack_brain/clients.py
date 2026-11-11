@@ -141,7 +141,16 @@ class Clients:
         try:
             # Only owner thread updates this cache from result payloads via accept_scene.
             scene = self.scenes.get('destination' if effect.phase == State.TRANSFER else 'table')
-            name, goal = self.skills.command(effect, scene, context.history[effect.target.id].attempts if effect.target else 0)
+            kwargs = {}
+            if effect.phase == State.LOOK_GRASP:
+                with self.measurements.lock:
+                    samples = self.measurements.samples['joints']
+                    latest = samples[-1] if samples else None
+                if latest is None or not 0 <= context.sim-latest[0] <= .5:
+                    raise ValueError('stale_grasp_look_joints')
+                kwargs['joint_positions'] = latest[1]
+            name, goal = self.skills.command(effect, scene, context.history[effect.target.id].attempts if effect.target else 0,
+                                            **kwargs)
             self.send_motion(effect, name, goal, context.sim)
         except Exception as exc:
             self.emit(Event('REJECTED', effect.op_id, repr(exc), ok=False, stopped=True))

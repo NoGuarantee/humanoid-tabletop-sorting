@@ -8,6 +8,23 @@ from fakes import Fake, sort_spec, tubes_spec
 
 
 class MissionTests(unittest.TestCase):
+    def test_recorded_approach_looks_with_head_before_fresh_descent(self):
+        for enabled in (False, True):
+            f = Fake(objects=[Object('p', 'figure', name='p')],
+                     config=Config(recorded_arms=(('p', ('right',)),) if enabled else ()))
+            f.until(State.APPROACH)
+            f.answer()
+            self.assertEqual(f.c.state, State.LOOK_GRASP if enabled else State.DESCEND)
+            if enabled:
+                f.answer()
+                self.assertEqual(f.c.state, State.DESCEND)
+        failed = Fake(objects=[Object('p', 'figure', name='p')],
+                      config=Config(recorded_arms=(('p', ('right',)),)))
+        failed.until(State.LOOK_GRASP)
+        failed.answer(ok=False)
+        self.assertEqual(failed.c.state, State.RECOVER)
+        self.assertFalse(any(e.phase == State.DESCEND for e in failed.commands))
+
     def test_weak_recorded_cluster_can_request_canonical_validation(self):
         obj = Object('philips', 'figure', name='philips', confidence=.331, track_id='obj_0')
         normal = Fake(objects=[obj])

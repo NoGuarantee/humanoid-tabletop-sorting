@@ -9,6 +9,7 @@ from .verification import evidence, fresh, placement
 VERIFY = {State.VERIFY_EMPTY, State.VERIFY_GRASP, State.VERIFY_LIFT, State.VERIFY_TIGHTEN, State.VERIFY_REORIENT,
           State.VERIFY_HOLD, State.VERIFY_TRANSFER, State.VERIFY_PLACE, State.RECOVER}
 NEXT = {State.OPEN: State.APPROACH, State.APPROACH: State.DESCEND, State.DESCEND: State.CLOSE,
+        State.LOOK_GRASP: State.DESCEND,
         State.CLOSE: State.VERIFY_GRASP, State.LIFT: State.VERIFY_LIFT,
         State.TIGHTEN: State.VERIFY_TIGHTEN,
         State.REORIENT: State.VERIFY_REORIENT, State.TRANSFER: State.VERIFY_HOLD,
@@ -452,4 +453,7 @@ def _result(c, e, op, effects):
                 c.destination, c.slot = destination_in_scene(c, scene, obj) or ('', None)
                 _enter(c, State.OPEN, effects)
     elif state in NEXT:
-        _enter(c, NEXT[state], effects)
+        following = NEXT[state]
+        if state == State.APPROACH and c.target.name in dict(c.config.recorded_arms):
+            following = State.LOOK_GRASP
+        _enter(c, following, effects)

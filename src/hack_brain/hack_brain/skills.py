@@ -78,7 +78,7 @@ class Skills:
         cand = recorded_grasps.candidate(data, now, obj, container, self.db, after_stamp_ns, attempt, key, disabled_arm)
         self.grasp = recorded_grasps.refreshed(self.grasp, cand) if effect.phase == State.DESCEND else cand
 
-    def command(self, effect, scene, attempt=1):
+    def command(self, effect, scene, attempt=1, *, joint_positions=None):
         from hack_interfaces.action import Hand, MoveJoints, MoveTcp
         phase = effect.phase
         if phase == State.LOOK_TABLE:
@@ -109,6 +109,23 @@ class Skills:
         if self.grasp is None:
             raise ValueError('missing_grasp_plan')
         g = self.grasp
+        if phase == State.LOOK_GRASP:
+            # APPROACH may turn the shared waist. On seed 13051 it turned
+            # +0.576 rad and put Philips outside both cameras. Turn only the
+            # head towards the measured object before requesting a new pose;
+            # changing body yaw here would also move the pregrasp TCP.
+            if not isinstance(g, recorded_grasps.RecordedGrasp):
+                raise ValueError('missing_recorded_model_pose')
+            body_yaw = (joint_positions or {}).get('body_yaw_joint')
+            if body_yaw is None or not math.isfinite(body_yaw):
+                raise ValueError('missing_measured_body_yaw')
+            x, y = g.observed_center[:2]
+            yaw = math.atan2(y, x) - body_yaw
+            yaw = math.atan2(math.sin(yaw), math.cos(yaw))
+            from hack_motion.robot import JOINTS
+            lo, hi = JOINTS['head_yaw_joint'][2:]
+            return 'joints', MoveJoints.Goal(joints=['head_pitch_joint', 'head_yaw_joint'],
+                                            positions=[0.4, max(lo, min(hi, yaw))])
         if phase == State.CLEAR:  # the arm of the last grasp, to the side and out of the head camera view
             return 'tcp', MoveTcp.Goal(arm=g.arm, target=Pose(), mode='ready')
         if phase in (State.CLOSE, State.RELEASE):

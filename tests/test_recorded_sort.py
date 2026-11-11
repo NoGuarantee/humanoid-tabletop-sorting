@@ -43,6 +43,26 @@ DB = pick.evaluation_db({}, True)
 
 
 class RecordedSortTests(unittest.TestCase):
+    def test_recorded_head_look_compensates_waist_without_moving_pregrasp_arm(self):
+        from hack_brain.context import State
+        name = PROFILES['philips_right']['object_name']
+        data = observation(name)
+        data['objects'][0]['center_pelvis_m'] = [.414847, -.419326, -.094912]
+        skills = skills_module.Skills(DB)
+        skills.grasp = pick.candidate(data, 10.1, detected(name), tray(), DB, 0, profile_key='philips_right')
+        effect = NS(phase=State.LOOK_GRASP)
+        with patch.dict('sys.modules', {'hack_interfaces.action': NS(Hand=NS(Goal=NS), MoveTcp=NS(Goal=NS), MoveJoints=NS(Goal=NS))}):
+            kind, goal = skills.command(effect, None, joint_positions={'body_yaw_joint': .576378})
+            self.assertEqual(kind, 'joints')
+            self.assertEqual(goal.joints, ['head_pitch_joint', 'head_yaw_joint'])
+            self.assertAlmostEqual(goal.positions[1] + .576378, np.arctan2(-.419326, .414847))
+            self.assertTrue(-1.57 <= goal.positions[1] <= 1.57)
+            for q in (None, {}, {'body_yaw_joint': float('nan')}):
+                with self.assertRaisesRegex(ValueError, 'body_yaw'):
+                    skills.command(effect, None, joint_positions=q)
+            _, clamped = skills.command(effect, None, joint_positions={'body_yaw_joint': 1.5})
+            self.assertEqual(clamped.positions[1], -1.57)
+
     def test_descent_association_applies_existing_pose_drift_gate_before_ambiguity(self):
         name = PROFILES['philips_right']['object_name']
         raw = observation(name)
@@ -220,7 +240,7 @@ class RecordedSortTests(unittest.TestCase):
                         data['exposure_key']['stamp_ns'] = data['stamp_ns']
                         data['objects'][0]['exposure_key'] = data['exposure_key'].copy()
                         skills.prepare_recorded(effect, scene, data, f.sim, int(f.c.active.sim_start*1e9))
-                    action, goal = skills.command(effect, scene)
+                    action, goal = skills.command(effect, scene, joint_positions={'body_yaw_joint': 0.})
                     if phase == State.DESCEND:
                         self.assertEqual(goal.contact_object, scene.objects[0].track_id)
                         self.assertEqual(goal.contact_center, list(skills.grasp.observed_center))

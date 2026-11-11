@@ -1,0 +1,181 @@
+{
+  "candidate": "3b11f8a",
+  "seed": 13051,
+  "server": "nssr-rtx6000",
+  "simulator_commit": "08247fc6ac9ed9f194d7bd2d1bfde434ea9cd578",
+  "qualified": false,
+  "official": {
+    "in_right_tray": 2,
+    "in_wrong_tray": 0,
+    "not_in_tray": 7,
+    "objects": {
+      "Schleich_African_Black_Rhino": {
+        "tray": null,
+        "ok": false
+      },
+      "3D_Dollhouse_Sink": {
+        "tray": "tray_left",
+        "ok": true
+      },
+      "LADYBUG_BEAD": {
+        "tray": null,
+        "ok": false
+      },
+      "Threshold_Bamboo_Ceramic_Soap_Dish": {
+        "tray": null,
+        "ok": false
+      },
+      "Cole_Hardware_Bowl_Scirocco_YellowBlue": {
+        "tray": null,
+        "ok": false
+      },
+      "Ecoforms_Cup_B4_SAN": {
+        "tray": null,
+        "ok": false
+      },
+      "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g": {
+        "tray": null,
+        "ok": false
+      },
+      "Brother_Ink_Cartridge_Magenta_LC75M": {
+        "tray": null,
+        "ok": false
+      },
+      "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack": {
+        "tray": "tray_center",
+        "ok": true
+      }
+    },
+    "total": 9,
+    "task": "sort3",
+    "sim_step": 24246
+  },
+  "summary": "Philips and Sink placed; Brother lost on direct free-yaw fallback after straight carry was rejected. Reproduces team report. The destination center remained a fitted rim; the wrist descended about 25 cm during carry.",
+  "trajectory_method": "Offline FK of measured /joint_states using the checked-in robot URDF. This is diagnostic reconstruction, not native simulator pose ground truth.",
+  "carry_samples": [
+    {
+      "sim": 98.319997802,
+      "tcp_xyz_m": [
+        0.364382543179519,
+        0.3947216294665797,
+        0.2697597584566876
+      ],
+      "yaw_deg": 77.62652342372512,
+      "tilt_deg": 0.8047471037062944
+    },
+    {
+      "sim": 99.969997765,
+      "tcp_xyz_m": [
+        0.36160441249674213,
+        0.3924285768917425,
+        0.3496984764155653
+      ],
+      "yaw_deg": 77.79344198730993,
+      "tilt_deg": 0.25132975217397224
+    },
+    {
+      "sim": 100.959997743,
+      "tcp_xyz_m": [
+        0.34174793428256806,
+        0.4525218552031808,
+        0.2937330467757996
+      ],
+      "yaw_deg": 89.18537249375613,
+      "tilt_deg": 1.503882532934478
+    },
+    {
+      "sim": 101.949997721,
+      "tcp_xyz_m": [
+        0.33109778070528406,
+        0.4931242664676128,
+        0.1944497961610795
+      ],
+      "yaw_deg": 101.80449428292724,
+      "tilt_deg": 2.417474305099633
+    },
+    {
+      "sim": 103.049997696,
+      "tcp_xyz_m": [
+        0.343295043516546,
+        0.4913356069725424,
+        0.1141817227336049
+      ],
+      "yaw_deg": 109.02194159350445,
+      "tilt_deg": 2.4818425471999204
+    },
+    {
+      "sim": 103.489997686,
+      "tcp_xyz_m": [
+        0.36287940470767327,
+        0.493533115842564,
+        0.10129125885174593
+      ],
+      "yaw_deg": 110.4205663094364,
+      "tilt_deg": 3.2970014553145037
+    }
+  ],
+  "destination_scenes": [
+    {
+      "sim": 97.879997812,
+      "containers": [
+        {
+          "id": "tray_center",
+          "kind": "tray",
+          "color": "green",
+          "pose": {
+            "position": {
+              "x": 0.5366750366109803,
+              "y": 5.460232035075764e-05,
+              "z": -0.07040059165743716
+            },
+            "orientation": {
+              "x": 0.0,
+              "y": 0.0,
+              "z": 1.945561331261219e-06,
+              "w": 0.9999999999981074
+            }
+          },
+          "size": {
+            "x": 0.22,
+            "y": 0.32,
+            "z": 0.07
+          },
+          "slots": [],
+          "slot_occupied": []
+        },
+        {
+          "id": "tray_right",
+          "kind": "tray",
+          "color": "blue",
+          "pose": {
+            "position": {
+              "x": 0.3478553132619974,
+              "y": -0.6885064044012662,
+              "z": -0.08367041616758125
+            },
+            "orientation": {
+              "x": 0.0,
+              "y": 0.0,
+              "z": 1.945561331261219e-06,
+              "w": 0.9999999999981074
+            }
+          },
+          "size": {
+            "x": 0.22,
+            "y": 0.32,
+            "z": 0.07
+          },
+          "slots": [],
+          "slot_occupied": []
+        }
+      ]
+    }
+  ],
+  "source_sha256": {
+    "solution.log": "52340c4e84432289f5028482334609e0902ddab500f5acb305b6432c0c582792",
+    "joint_states.jsonl": "fb342fd97da0451440bdae1adac30903a99983cb015b55372226a56af2bb137a",
+    "perception_scenes.jsonl": "a8b4b257de78a88ec17f53c6ce293d5efa3c0902bcb9e8e4587e0e5a86c99b9a",
+    "result.json": "11afd6fab42b21da5bb7d557df7d93004163b4bafdfd92bed9bb33936968ddca"
+  },
+  "fix": "72e27c3: enabled evaluation routes legacy Brother through existing carry_fixed; all waypoints of strict loaded paths must stay above min(start_z,goal_z)-pos_tol. Legacy grasp remains unchanged. Test series 13051/7/146 pending."
+}

@@ -1,0 +1,1263 @@
+{
+  "candidate": "72e27c3",
+  "server": "nssr-rtx6000",
+  "scope": "sort3 --pool 4; recorded_objects=philips; bounded carry for legacy Brother",
+  "simulator_commit": "08247fc6ac9ed9f194d7bd2d1bfde434ea9cd578",
+  "qualified": false,
+  "brother_full_cycle": "3/3, no contact loss; full release and retreat before final official check",
+  "philips_full_cycle": "2/3; seed7 not lifted: primary descent rejected, alternate pregrasp IK rejected",
+  "rows": [
+    {
+      "case": "candidate_seed13051_72e27c3",
+      "status": "completed",
+      "right": 3,
+      "wrong": 0,
+      "sim_step": 23994,
+      "philips": {
+        "tray": "tray_center",
+        "ok": true
+      },
+      "philips_transitions": [
+        {
+          "sim": 129.149997113,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 132.46999703900002,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 139.339996885,
+          "from": "APPROACH",
+          "to": "LOOK_GRASP",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 143.189996799,
+          "from": "LOOK_GRASP",
+          "to": "DESCEND",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 146.569996723,
+          "from": "DESCEND",
+          "to": "RECOVER",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 146.87999671600002,
+          "from": "RECOVER",
+          "to": "BACK_OFF",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 151.589996611,
+          "from": "BACK_OFF",
+          "to": "CLEAR",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 160.239996418,
+          "from": "CLEAR",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 161.49999639,
+          "from": "LOOK_TABLE",
+          "to": "OBSERVE",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 161.65999638600002,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 163.829996338,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 171.129996174,
+          "from": "APPROACH",
+          "to": "LOOK_GRASP",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 174.10999610800002,
+          "from": "LOOK_GRASP",
+          "to": "DESCEND",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 180.72999596000002,
+          "from": "DESCEND",
+          "to": "CLOSE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 184.139995884,
+          "from": "CLOSE",
+          "to": "VERIFY_GRASP",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 184.479995876,
+          "from": "VERIFY_GRASP",
+          "to": "LIFT",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 187.129995817,
+          "from": "LIFT",
+          "to": "VERIFY_LIFT",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "UNKNOWN"
+        },
+        {
+          "sim": 187.469995809,
+          "from": "VERIFY_LIFT",
+          "to": "DESTINATION",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 187.629995806,
+          "from": "DESTINATION",
+          "to": "VERIFY_TRANSFER",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 187.949995798,
+          "from": "VERIFY_TRANSFER",
+          "to": "TRANSFER",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 204.71999542400002,
+          "from": "TRANSFER",
+          "to": "VERIFY_HOLD",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 205.039995416,
+          "from": "VERIFY_HOLD",
+          "to": "LOWER",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 207.88999535300002,
+          "from": "LOWER",
+          "to": "RELEASE",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 210.79999528800002,
+          "from": "RELEASE",
+          "to": "RETREAT",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 213.36999523,
+          "from": "RETREAT",
+          "to": "CLEAR",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 220.499995071,
+          "from": "CLEAR",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 221.01999505900002,
+          "from": "LOOK_TABLE",
+          "to": "VERIFY_PLACE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 221.35999505200002,
+          "from": "VERIFY_PLACE",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 221.689995044,
+          "from": "VERIFY_EMPTY",
+          "to": "OPEN_HANDS",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 225.00999497,
+          "from": "OPEN_HANDS",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 225.36999496200002,
+          "from": "LOOK_TABLE",
+          "to": "OBSERVE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 225.53999495800002,
+          "from": "OBSERVE",
+          "to": "ARMS_READY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 236.279994718,
+          "from": "ARMS_READY",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        }
+      ],
+      "exit_code": "0",
+      "official": {
+        "in_right_tray": 3,
+        "in_wrong_tray": 0,
+        "not_in_tray": 6,
+        "objects": {
+          "Schleich_African_Black_Rhino": {
+            "tray": null,
+            "ok": false
+          },
+          "3D_Dollhouse_Sink": {
+            "tray": "tray_left",
+            "ok": true
+          },
+          "LADYBUG_BEAD": {
+            "tray": null,
+            "ok": false
+          },
+          "Threshold_Bamboo_Ceramic_Soap_Dish": {
+            "tray": null,
+            "ok": false
+          },
+          "Cole_Hardware_Bowl_Scirocco_YellowBlue": {
+            "tray": null,
+            "ok": false
+          },
+          "Ecoforms_Cup_B4_SAN": {
+            "tray": null,
+            "ok": false
+          },
+          "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g": {
+            "tray": null,
+            "ok": false
+          },
+          "Brother_Ink_Cartridge_Magenta_LC75M": {
+            "tray": "tray_center",
+            "ok": true
+          },
+          "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack": {
+            "tray": "tray_center",
+            "ok": true
+          }
+        },
+        "total": 9,
+        "task": "sort3",
+        "sim_step": 23994
+      },
+      "source_sha256": {
+        "solution.log": "d6d46c965d0562db16881140b25c153d648fa0b1d681ad68f1e9337129eec6c4",
+        "result.json": "8a118136ae11aee28301a5517cdf39a70d752850a1c965b8dfde199932666db4",
+        "perception_scenes.jsonl": "bcea7723e5969442d7c9208d1908e5dc2ea4393386040fed2c5c202bf979b5ad",
+        "joint_states.jsonl": "cd6e7e2c7d940fd7a050da266f46f8dc7c021428f18d83ba9c1e82e5e64e085f"
+      },
+      "brother_transitions": [
+        {
+          "sim": 79.239998228,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 81.549998177,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 97.309997824,
+          "from": "APPROACH",
+          "to": "DESCEND",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 99.039997786,
+          "from": "DESCEND",
+          "to": "CLOSE",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 101.559997729,
+          "from": "CLOSE",
+          "to": "VERIFY_GRASP",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 101.889997722,
+          "from": "VERIFY_GRASP",
+          "to": "LIFT",
+          "hand": "HOLDING",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 104.08999767300001,
+          "from": "LIFT",
+          "to": "VERIFY_LIFT",
+          "hand": "HOLDING",
+          "lift": "UNKNOWN",
+          "reason": ""
+        },
+        {
+          "sim": 104.40999766600001,
+          "from": "VERIFY_LIFT",
+          "to": "DESTINATION",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 104.53999766300001,
+          "from": "DESTINATION",
+          "to": "VERIFY_TRANSFER",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 104.869997655,
+          "from": "VERIFY_TRANSFER",
+          "to": "TRANSFER",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 112.519997484,
+          "from": "TRANSFER",
+          "to": "VERIFY_HOLD",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 112.82999747800001,
+          "from": "VERIFY_HOLD",
+          "to": "LOWER",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 115.10999742700001,
+          "from": "LOWER",
+          "to": "RELEASE",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 117.03999738300001,
+          "from": "RELEASE",
+          "to": "RETREAT",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 119.33999733200001,
+          "from": "RETREAT",
+          "to": "CLEAR",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 127.66999714600001,
+          "from": "CLEAR",
+          "to": "LOOK_TABLE",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 128.019997138,
+          "from": "LOOK_TABLE",
+          "to": "VERIFY_PLACE",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 128.329997131,
+          "from": "VERIFY_PLACE",
+          "to": "VERIFY_EMPTY",
+          "hand": "EMPTY",
+          "lift": "LIFTED",
+          "reason": ""
+        }
+      ],
+      "brother": {
+        "tray": "tray_center",
+        "ok": true
+      }
+    },
+    {
+      "case": "candidate_seed146_72e27c3",
+      "status": "completed",
+      "right": 3,
+      "wrong": 0,
+      "sim_step": 21129,
+      "philips": {
+        "tray": "tray_center",
+        "ok": true
+      },
+      "philips_transitions": [
+        {
+          "sim": 131.989997049,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 135.60999696800002,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 148.729996675,
+          "from": "APPROACH",
+          "to": "LOOK_GRASP",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 152.74999658500002,
+          "from": "LOOK_GRASP",
+          "to": "DESCEND",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 160.42999641400002,
+          "from": "DESCEND",
+          "to": "CLOSE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 163.859996337,
+          "from": "CLOSE",
+          "to": "VERIFY_GRASP",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 164.17999633000002,
+          "from": "VERIFY_GRASP",
+          "to": "LIFT",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 169.029996221,
+          "from": "LIFT",
+          "to": "VERIFY_LIFT",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "UNKNOWN"
+        },
+        {
+          "sim": 169.34999621400002,
+          "from": "VERIFY_LIFT",
+          "to": "DESTINATION",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 169.50999621100001,
+          "from": "DESTINATION",
+          "to": "VERIFY_TRANSFER",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 169.84999620300002,
+          "from": "VERIFY_TRANSFER",
+          "to": "TRANSFER",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 186.259995836,
+          "from": "TRANSFER",
+          "to": "VERIFY_HOLD",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 186.589995829,
+          "from": "VERIFY_HOLD",
+          "to": "LOWER",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 188.83999577900002,
+          "from": "LOWER",
+          "to": "RELEASE",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 191.76999571300001,
+          "from": "RELEASE",
+          "to": "RETREAT",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 195.67999562600002,
+          "from": "RETREAT",
+          "to": "CLEAR",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 206.02999539400003,
+          "from": "CLEAR",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 207.13999537,
+          "from": "LOOK_TABLE",
+          "to": "VERIFY_PLACE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 207.459995362,
+          "from": "VERIFY_PLACE",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "LIFTED"
+        }
+      ],
+      "exit_code": "0",
+      "official": {
+        "in_right_tray": 3,
+        "in_wrong_tray": 0,
+        "not_in_tray": 6,
+        "objects": {
+          "Schleich_African_Black_Rhino": {
+            "tray": null,
+            "ok": false
+          },
+          "3D_Dollhouse_Sink": {
+            "tray": "tray_left",
+            "ok": true
+          },
+          "LADYBUG_BEAD": {
+            "tray": null,
+            "ok": false
+          },
+          "Threshold_Bamboo_Ceramic_Soap_Dish": {
+            "tray": null,
+            "ok": false
+          },
+          "Cole_Hardware_Bowl_Scirocco_YellowBlue": {
+            "tray": null,
+            "ok": false
+          },
+          "Ecoforms_Cup_B4_SAN": {
+            "tray": null,
+            "ok": false
+          },
+          "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g": {
+            "tray": null,
+            "ok": false
+          },
+          "Brother_Ink_Cartridge_Magenta_LC75M": {
+            "tray": "tray_center",
+            "ok": true
+          },
+          "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack": {
+            "tray": "tray_center",
+            "ok": true
+          }
+        },
+        "total": 9,
+        "task": "sort3",
+        "sim_step": 21129
+      },
+      "source_sha256": {
+        "solution.log": "f57ca940d838d89247591496bd2afae4e6dbe6c0d884063a3666c6375b857903",
+        "result.json": "5d89619dafa923183b83df06dbdaa7357e63fc57f5784c25b39e8ce078be5951",
+        "perception_scenes.jsonl": "8c66b0cbafb174072a86a19e350bd3f9b417bf7c6f82ffc265916b8c17ee6bf5",
+        "joint_states.jsonl": "8668232782d3ae9f66f34701c81936ce46369541146f3f0819c14da7063a0c9f"
+      },
+      "brother_transitions": [
+        {
+          "sim": 78.70999824,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 81.039998188,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 88.99999801,
+          "from": "APPROACH",
+          "to": "DESCEND",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 91.95999794400001,
+          "from": "DESCEND",
+          "to": "CLOSE",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 94.50999788700001,
+          "from": "CLOSE",
+          "to": "VERIFY_GRASP",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 94.82999788000001,
+          "from": "VERIFY_GRASP",
+          "to": "LIFT",
+          "hand": "HOLDING",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 98.06999780700001,
+          "from": "LIFT",
+          "to": "VERIFY_LIFT",
+          "hand": "HOLDING",
+          "lift": "UNKNOWN",
+          "reason": ""
+        },
+        {
+          "sim": 98.4099978,
+          "from": "VERIFY_LIFT",
+          "to": "DESTINATION",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 98.53999779700001,
+          "from": "DESTINATION",
+          "to": "VERIFY_TRANSFER",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 98.86999779,
+          "from": "VERIFY_TRANSFER",
+          "to": "TRANSFER",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 117.079997383,
+          "from": "TRANSFER",
+          "to": "VERIFY_HOLD",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 117.39999737500001,
+          "from": "VERIFY_HOLD",
+          "to": "LOWER",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 119.60999732600001,
+          "from": "LOWER",
+          "to": "RELEASE",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 121.27999728900001,
+          "from": "RELEASE",
+          "to": "RETREAT",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 123.56999723700001,
+          "from": "RETREAT",
+          "to": "CLEAR",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 130.32999708600002,
+          "from": "CLEAR",
+          "to": "LOOK_TABLE",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 130.74999707700002,
+          "from": "LOOK_TABLE",
+          "to": "VERIFY_PLACE",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 131.08999706900002,
+          "from": "VERIFY_PLACE",
+          "to": "VERIFY_EMPTY",
+          "hand": "EMPTY",
+          "lift": "LIFTED",
+          "reason": ""
+        }
+      ],
+      "brother": {
+        "tray": "tray_center",
+        "ok": true
+      }
+    },
+    {
+      "case": "candidate_seed7_72e27c3",
+      "status": "completed",
+      "right": 2,
+      "wrong": 0,
+      "sim_step": 19866,
+      "philips": {
+        "tray": null,
+        "ok": false
+      },
+      "philips_transitions": [
+        {
+          "sim": 99.84999776800001,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 103.239997692,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 110.509997529,
+          "from": "APPROACH",
+          "to": "LOOK_GRASP",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 114.67999743600001,
+          "from": "LOOK_GRASP",
+          "to": "DESCEND",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 121.249997289,
+          "from": "DESCEND",
+          "to": "RECOVER",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 139.429996883,
+          "from": "RECOVER",
+          "to": "OPEN_HANDS",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 141.629996834,
+          "from": "OPEN_HANDS",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 143.269996797,
+          "from": "LOOK_TABLE",
+          "to": "OBSERVE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 143.449996793,
+          "from": "OBSERVE",
+          "to": "ARMS_READY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 161.65999638600002,
+          "from": "ARMS_READY",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 163.28999635000002,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 165.91999629100002,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 169.399996213,
+          "from": "APPROACH",
+          "to": "RECOVER",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 187.559995807,
+          "from": "RECOVER",
+          "to": "OPEN_HANDS",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 189.789995757,
+          "from": "OPEN_HANDS",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 190.15999574900002,
+          "from": "LOOK_TABLE",
+          "to": "OBSERVE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 190.32999574500002,
+          "from": "OBSERVE",
+          "to": "ARMS_READY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 193.839995667,
+          "from": "ARMS_READY",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        }
+      ],
+      "exit_code": "0",
+      "official": {
+        "in_right_tray": 2,
+        "in_wrong_tray": 0,
+        "not_in_tray": 7,
+        "objects": {
+          "Schleich_African_Black_Rhino": {
+            "tray": null,
+            "ok": false
+          },
+          "3D_Dollhouse_Sink": {
+            "tray": "tray_left",
+            "ok": true
+          },
+          "LADYBUG_BEAD": {
+            "tray": null,
+            "ok": false
+          },
+          "Threshold_Bamboo_Ceramic_Soap_Dish": {
+            "tray": null,
+            "ok": false
+          },
+          "Cole_Hardware_Bowl_Scirocco_YellowBlue": {
+            "tray": null,
+            "ok": false
+          },
+          "Ecoforms_Cup_B4_SAN": {
+            "tray": null,
+            "ok": false
+          },
+          "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g": {
+            "tray": null,
+            "ok": false
+          },
+          "Brother_Ink_Cartridge_Magenta_LC75M": {
+            "tray": "tray_center",
+            "ok": true
+          },
+          "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack": {
+            "tray": null,
+            "ok": false
+          }
+        },
+        "total": 9,
+        "task": "sort3",
+        "sim_step": 19866
+      },
+      "source_sha256": {
+        "solution.log": "b040e1baa2ff43e06ddd3ede8c353c0e70e16b8d8f741170d8f07aa5b7991798",
+        "result.json": "0a0f4b0e79853b252f18790e286b8bdd70ac4be6b3d3cab296cbf2a3017d537d",
+        "perception_scenes.jsonl": "f4d02ecd888875be1fdd0905e2722f4b25508d3af8002a0292a90c1a8d41d5e8",
+        "joint_states.jsonl": "94d09bf3f37d1a4d6574eb06bf4683006b336f28bb7fe6bd69b336e65bb51019"
+      },
+      "brother_transitions": [
+        {
+          "sim": 60.979998636000005,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 63.289998585000006,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 68.829998461,
+          "from": "APPROACH",
+          "to": "DESCEND",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 71.739998396,
+          "from": "DESCEND",
+          "to": "CLOSE",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 74.539998333,
+          "from": "CLOSE",
+          "to": "VERIFY_GRASP",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 74.879998326,
+          "from": "VERIFY_GRASP",
+          "to": "LIFT",
+          "hand": "HOLDING",
+          "lift": "NEVER_LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 76.789998283,
+          "from": "LIFT",
+          "to": "VERIFY_LIFT",
+          "hand": "HOLDING",
+          "lift": "UNKNOWN",
+          "reason": ""
+        },
+        {
+          "sim": 77.119998276,
+          "from": "VERIFY_LIFT",
+          "to": "DESTINATION",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 77.25999827300001,
+          "from": "DESTINATION",
+          "to": "VERIFY_TRANSFER",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 77.59999826500001,
+          "from": "VERIFY_TRANSFER",
+          "to": "TRANSFER",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 85.08999809800001,
+          "from": "TRANSFER",
+          "to": "VERIFY_HOLD",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 85.42999809000001,
+          "from": "VERIFY_HOLD",
+          "to": "LOWER",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 87.579998042,
+          "from": "LOWER",
+          "to": "RELEASE",
+          "hand": "HOLDING",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 89.229998005,
+          "from": "RELEASE",
+          "to": "RETREAT",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 90.749997971,
+          "from": "RETREAT",
+          "to": "CLEAR",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 98.26999780300001,
+          "from": "CLEAR",
+          "to": "LOOK_TABLE",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 98.679997794,
+          "from": "LOOK_TABLE",
+          "to": "VERIFY_PLACE",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED",
+          "reason": ""
+        },
+        {
+          "sim": 99.009997786,
+          "from": "VERIFY_PLACE",
+          "to": "VERIFY_EMPTY",
+          "hand": "EMPTY",
+          "lift": "LIFTED",
+          "reason": ""
+        }
+      ],
+      "brother": {
+        "tray": "tray_center",
+        "ok": true
+      }
+    }
+  ],
+  "brother_carry_diagnostic": {
+    "method": "offline URDF FK from measured joint states",
+    "carry_start_sim": 104.87,
+    "carry_end_sim": 112.52,
+    "sample_count": 69,
+    "after_raise_min_z_m": 0.33563115582981295,
+    "after_raise_max_z_m": 0.34829032864458775,
+    "max_tilt_deg": 1.169775285056997,
+    "yaw_range_deg": [
+      75.94635933283972,
+      77.74618980942705
+    ]
+  },
+  "brother_video_extraction": {
+    "first": {
+      "index": 883,
+      "wall_elapsed_s": 186.0814797161147,
+      "stamps": {
+        "cam_head": 103.969997676,
+        "cam_torso": 103.939997677
+      }
+    },
+    "last": {
+      "index": 1106,
+      "wall_elapsed_s": 233.10176116181538,
+      "stamps": {
+        "cam_head": 129.019997116,
+        "cam_torso": 129.019997116
+      }
+    },
+    "speed": "4x relative to 5 fps source recording; camera overlay uses sim time",
+    "frames": 224,
+    "source_sha256": "ddc945261e950517fe25112048b303aca6a8a178de4ed4b9842b295c74f2ade8",
+    "clip_sha256": "ae48e2f99dfe276cfb2dd7902774bc7c81a72d849e43c136ec63f3088daa0f8f",
+    "bytes": 3503064
+  },
+  "artifacts_sha256": {
+    "final_seed146_72e27c3.jpg": "2fc2be69791dddf6d0e2c57c8c84dea803e93766fa3426ecce3ddb77aca02a6e",
+    "brother_seed13051_72e27c3_4x.mp4": "83379839a927b438eb799bc57a71b8fd1aea02539cbfafd5bc4b663a4650d874",
+    "final_seed7_72e27c3.jpg": "93e804f5baef411afff8dd46bd0d08e142a42ba195d8c7c0049014c2904e30cc",
+    "final_seed13051_72e27c3.jpg": "d533d05382408cbae95a8ba79ca60acd63715a848c9e8f9c8344154966d0f53e"
+  },
+  "same_server_main_evidence": "series_rtx6000_943e716.json",
+  "note": "First series stopped at seed7; the remaining requested seed146 was then run separately on the unchanged runtime to finish the Brother regression check. No successes from other code versions were substituted."
+}

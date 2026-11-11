@@ -515,11 +515,12 @@
         "effort": "ROS trial limit; no native force equivalence",
         "preshape": "ROS six actuator targets; native encoder-bias approach controller is not replayed",
         "motion": "main MoveTcp planning and tracking; native world and joint paths are not replayed",
-        "placement": "main observed-tray placement; native measured seating is not reproduced",
+        "placement": "observed-tray placement with -30 deg pelvis-Y carry pitch; native measured seating is not reproduced",
         "native_seat_before_release": false
       },
       "placement": {
-        "carry_clearance_m": 0.15
+        "carry_clearance_m": 0.15,
+        "pitch_preference_rad": -0.5235987755982988
       }
     },
     {

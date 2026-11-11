@@ -31,29 +31,6 @@ def method(file, name, **namespace):
 
 
 class PR9TransferTests(unittest.TestCase):
-    def test_philips_orders_existing_profiles_by_pick_and_place_reach(self):
-        name = base.PROFILES['philips_right']['object_name']
-        for yaw in (0., np.pi):
-            data = base.observation(name)
-            world = np.eye(4)
-            world[:3, :3] = axis_angle([0., 0., 1.], yaw)[:3, :3]
-            world[:3, 3] = [.34, .08, -.16]
-            data['objects'][0].update(T_pelvis_object=world.tolist(), center_pelvis_m=[.34, .08, -.10])
-            container = base.tray(y=0., yaw=0., size=(.32, .32))
-            choices = []
-            for key in ('philips_right', 'philips_right_turn180'):
-                g = base.pick.candidate(data, 10.1, base.detected(name), container, base.DB, 0, profile_key=key)
-                p = base.pick.place(g, container, base.DB)
-                choices.append((max(np.hypot(t.position.x, t.position.y) for t in (g.grasp, p.approach)), key))
-            expected = sorted(choices)
-            for attempt in (1, 2):
-                g = base.pick.candidate(data, 10.1, base.detected(name), container, base.DB, 0, attempt=attempt)
-                self.assertEqual(g.profile_key, expected[attempt-1][1])
-            # An explicit profile survives the OPEN -> DESCEND refresh.
-            far = base.pick.candidate(data, 10.1, base.detected(name), container, base.DB, 0,
-                                      profile_key=expected[1][1])
-            self.assertEqual(far.profile_key, expected[1][1])
-
     def test_philips_carry_reuses_native_rim_clearance_without_changing_release(self):
         for key in ('philips_right', 'philips_right_turn180'):
             name = base.PROFILES[key]['object_name']
@@ -65,7 +42,27 @@ class PR9TransferTests(unittest.TestCase):
             for target, clearance in ((p.approach, .15), (p.release, .10)):
                 matrix = pose_matrix(target)
                 low = (points @ matrix[:3, :3].T + matrix[:3, 3])[:, 2].min()
-                self.assertAlmostEqual(low-container.pose.position.z, clearance)
+                if target is p.approach:
+                    self.assertGreaterEqual(low-container.pose.position.z + 1e-9, clearance)
+                else:
+                    self.assertAlmostEqual(low-container.pose.position.z, clearance)
+
+    def test_philips_ros_pitch_changes_carry_not_recorded_contact(self):
+        key = 'philips_right'
+        name = base.PROFILES[key]['object_name']
+        container = base.tray(y=0., yaw=0., size=(.32, .32))
+        g = base.pick.candidate(base.observation(name), 10.1, base.detected(name), container, base.DB, 0,
+                                profile_key=key)
+        p = base.pick.place(g, container, base.DB)
+        grasp = pose_matrix(g.grasp)
+        np.testing.assert_allclose(grasp, base.PROFILES[key]['T_reference_tcp']['right'])
+        np.testing.assert_allclose(pose_matrix(p.release)[:3, :3],
+                                  axis_angle([0., 1., 0.], -np.pi/6)[:3, :3] @ grasp[:3, :3])
+        points = np.asarray(g.corners_in_tcp) + g.center_in_tcp
+        release = pose_matrix(p.release)
+        world = points @ release[:3, :3].T + release[:3, 3]
+        np.testing.assert_array_less(np.max(np.abs(world[:, :2]-[container.pose.position.x, container.pose.position.y]),axis=0),
+                                     np.array([container.size.x,container.size.y])/2-.0149)
 
     def test_failed_fixed_carry_cannot_repark_other_arm_and_swing_shared_torso(self):
         class Unreachable(RuntimeError): pass

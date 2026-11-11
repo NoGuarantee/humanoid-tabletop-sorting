@@ -60,19 +60,29 @@ class RecordedStartupTests(unittest.TestCase):
             ros.chmod(0o755)
             env = {k:v for k,v in os.environ.items() if not k.startswith('NSSR_')}
             env['PATH'] = str(root/'bin')+os.pathsep+env['PATH']
-            def launch(**extra):
-                p = subprocess.run(['bash','run.sh'],cwd=root,env=dict(env,**extra),capture_output=True,text=True,check=True)
-                return json.loads(p.stdout)['env']
-            self.assertEqual(launch()['NSSR_RECORDED_GRASPS'],'false')
+            def invoke(*args, **extra):
+                p = subprocess.run(['bash','run.sh',*args],cwd=root,env=dict(env,**extra),capture_output=True,text=True,check=True)
+                return json.loads(p.stdout)
+            def launch(*args, **extra): return invoke(*args, **extra)['env']
+            unavailable=invoke('recorded_grasps:=true')
+            self.assertEqual(unavailable['env']['NSSR_RECORDED_GRASPS'],'false')
+            self.assertEqual(unavailable['args'][-1],'recorded_grasps:=false')
             (root/'weights').mkdir(); (root/'weights/.rgbd-ready').touch()
             self.assertEqual(launch()['NSSR_RECORDED_GRASPS'],'false')
             bundle = root/'weights'/('rgbd-'+DIGEST[:12]);bundle.mkdir();(bundle/'bundle.json').write_text('{}')
             result=launch()
             self.assertEqual(result['NSSR_RECORDED_GRASPS'],'false')
+            self.assertNotIn('NSSR_RGBD_MODEL_DIR',result)
+            self.assertNotIn('NSSR_RGBD_ON_DEMAND',result)
+            result=launch('recorded_grasps:=true')
+            self.assertEqual(result['NSSR_RECORDED_GRASPS'],'true')
             self.assertEqual(result['NSSR_RECORDED_OBJECTS'],'philips')
             self.assertEqual(result['NSSR_RGBD_ON_DEMAND'],'true')
             self.assertEqual(launch(NSSR_RECORDED_GRASPS='true')['NSSR_RECORDED_GRASPS'],'true')
             self.assertEqual(launch(NSSR_RECORDED_GRASPS='false')['NSSR_RECORDED_GRASPS'],'false')
+            opted_out=launch('recorded_grasps:=false',NSSR_RECORDED_GRASPS='true')
+            self.assertEqual(opted_out['NSSR_RECORDED_GRASPS'],'false')
+            self.assertNotIn('NSSR_RGBD_MODEL_DIR',opted_out)
             self.assertEqual(launch(NSSR_RECORDED_OBJECTS='brother')['NSSR_RECORDED_OBJECTS'],'brother')
 
     def test_failed_setup_returns_zero_and_clears_previous_ready_marker(self):

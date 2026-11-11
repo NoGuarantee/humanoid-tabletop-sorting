@@ -69,6 +69,11 @@ def convert(key, data, source):
         # Main's generic 20 cm makes this tilted TCP unreachable on seed 7.
         # Retain main's release clearance; native floor seating is not copied.
         profile['placement'] = dict(carry_clearance_m=.15)
+        if key == 'philips_right':
+            # ROS carry adaptation, not part of the native demonstration:
+            # tip the held box toward the robot to avoid the ROS wrist stop.
+            profile['placement']['pitch_preference_rad'] = -np.pi/6
+            profile['adaptations']['placement'] = 'observed-tray placement with -30 deg pelvis-Y carry pitch; native measured seating is not reproduced'
     return profile
 
 

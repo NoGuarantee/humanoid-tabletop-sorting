@@ -1,5 +1,32 @@
 """Validate one fresh, explicitly selected contact object for a recorded descent."""
 import math
+import time
+
+
+def measured_contact(goal, objects, read_now, read_tcp, carrying=False, cancelled=lambda: False):
+    """Sample TF before the clock; allow their independent subscriptions to catch up.
+
+    No motor commands or relaxed age limits. A fresh TF may arrive one tick
+    ahead of /clock; keep that sample while waiting instead of chasing the
+    next future TF. Missing/stale TF gets a new sample within the wall budget.
+    """
+    deadline = time.monotonic() + .5
+    tcp = read_tcp()
+    while True:
+        if cancelled():
+            raise ValueError('recorded_contact_cancelled')
+        now = read_now()
+        try:
+            return contact_object(goal, objects, now, tcp, carrying)
+        except ValueError as exc:
+            if str(exc).split(':', 1)[0] not in ('stale_recorded_contact_tcp', 'recorded_contact_requires_measured_tcp'):
+                raise
+            if time.monotonic() >= deadline:
+                raise
+        time.sleep(.01)
+        stamp = tcp.header.stamp.sec + tcp.header.stamp.nanosec/1e9 if tcp is not None else None
+        if stamp is None or stamp <= now:
+            tcp = read_tcp()
 
 
 def contact_object(goal, objects, now, tcp, carrying=False):
@@ -29,7 +56,7 @@ def contact_object(goal, objects, now, tcp, carrying=False):
         raise ValueError('recorded_contact_requires_measured_tcp')
     measured_stamp = tcp.header.stamp.sec + tcp.header.stamp.nanosec/1e9
     if not 0 <= now-measured_stamp <= .5:
-        raise ValueError('stale_recorded_contact_tcp')
+        raise ValueError(f'stale_recorded_contact_tcp: age={now-measured_stamp:.9f}s now={now:.9f} stamp={measured_stamp:.9f}')
     target, start = goal.target.position, tcp.transform.translation
     end = (target.x, target.y, target.z)
     before = (start.x, start.y, start.z)

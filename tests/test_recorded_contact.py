@@ -4,8 +4,9 @@ from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace as NS
 import unittest
+from unittest.mock import Mock, patch
 
-from hack_motion.recorded_contact import contact_object
+from hack_motion.recorded_contact import contact_object, measured_contact
 
 
 def setup():
@@ -23,6 +24,32 @@ class RecordedContactTests(unittest.TestCase):
         goal, objects, tcp = setup()
         self.assertEqual(contact_object(goal, objects, 10.2, tcp), 'selected')
         self.assertEqual(contact_object(NS(), objects, 10.2, None), '')
+
+    def test_fresh_tf_one_tick_ahead_waits_for_clock_without_relaxing_gate(self):
+        goal, objects, tcp = setup()
+        with self.assertRaisesRegex(ValueError, 'stale_recorded_contact_tcp'):
+            contact_object(goal, objects, 10.09, tcp)
+        read_tcp = Mock(return_value=tcp)
+        read_now = Mock(side_effect=[10.09, 10.10])
+        with patch('hack_motion.recorded_contact.time.sleep') as sleep:
+            self.assertEqual(measured_contact(goal, objects, read_now, read_tcp), 'selected')
+        self.assertEqual(read_tcp.call_count, 1)
+        sleep.assert_called_once_with(.01)
+
+    def test_contact_refresh_wait_is_bounded_and_preserves_cancel_and_pose_expiry(self):
+        goal, objects, tcp = setup()
+        old = deepcopy(tcp); old.header.stamp.sec = 9
+        read_tcp = Mock(side_effect=[old, tcp])
+        with patch('hack_motion.recorded_contact.time.sleep'):
+            self.assertEqual(measured_contact(goal, objects, lambda: 10.2, read_tcp), 'selected')
+        for sample in (old, None):
+            with patch('hack_motion.recorded_contact.time.monotonic', side_effect=[0., .51]):
+                with self.assertRaises(ValueError):
+                    measured_contact(goal, objects, lambda: 10.2, lambda: sample)
+        with self.assertRaisesRegex(ValueError, 'cancelled'):
+            measured_contact(goal, objects, lambda: 10.2, lambda: tcp, cancelled=lambda: True)
+        with self.assertRaisesRegex(ValueError, 'stale_recorded_contact$'):
+            measured_contact(goal, objects, lambda: 12., lambda: tcp)
 
     def test_stale_future_moved_missing_and_duplicate_targets_reject(self):
         goal, objects, tcp = setup()

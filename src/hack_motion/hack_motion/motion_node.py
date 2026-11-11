@@ -32,7 +32,7 @@ from tf2_ros import Buffer, TransformListener
 from .curobo_planner import Unreachable
 from .recorded_grasp import HAND_TARGETS, hand_steps, profile_for_preset
 from .recorded_carry import carry_waypoints, pose_matrix, with_matrix
-from .recorded_contact import contact_object
+from .recorded_contact import measured_contact
 from .robot import (ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, READY_STEP, TCP_LINK, TRAY_IDS, VERTICAL, clip,
                     raise_steps, ready_pose, tilt, top_down, yaw)
 
@@ -917,7 +917,7 @@ class MotionNode(Node):
             with self.lock:
                 objects, carrying = self.scene_objects, self.carrying
             try:
-                contact_object(g, objects, self.now(), self.tcp_tf(g.arm), carrying)
+                measured_contact(g, objects, self.now, lambda: self.tcp_tf(g.arm), carrying, self.cancelled)
             except ValueError as exc:
                 return self._refused(g, mode, str(exc))
         free_yaw = False
@@ -945,9 +945,9 @@ class MotionNode(Node):
                     planner.objects = self.scene_objects
                     planner.carrying = self.carrying
                 try:
-                    contact = contact_object(g, planner.objects, self.now(),
-                                             self.tcp_tf(g.arm) if getattr(g, 'contact_object', '') else None,
-                                             planner.carrying)
+                    contact = (measured_contact(g, planner.objects, self.now, lambda: self.tcp_tf(g.arm),
+                                                planner.carrying, self.cancelled)
+                               if getattr(g, 'contact_object', '') else '')
                 except ValueError as exc:
                     raise Unreachable(str(exc)) from exc
                 if contact:

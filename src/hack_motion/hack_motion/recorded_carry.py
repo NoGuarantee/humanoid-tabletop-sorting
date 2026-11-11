@@ -7,6 +7,16 @@ from .recorded_geometry import interpolate, rotation_error, as_transform, quater
 CARRY_ROTATION_STEP = .04
 
 
+def check_carry_height(heights, start_z, finish_z, tolerance):
+    """A loaded detour must not descend below either endpoint's clearance."""
+    values = np.asarray([start_z, finish_z, tolerance, *heights], dtype=float)
+    if not np.isfinite(values).all() or tolerance < 0:
+        raise ValueError('invalid_carry_height')
+    floor = min(start_z, finish_z) - tolerance
+    if np.min(values[3:], initial=min(start_z, finish_z)) < floor:
+        raise ValueError('carry_path_below_endpoint_clearance')
+
+
 def orientation_arc_deviation(quaternions, start, finish, tolerance):
     """Largest angular departure from the requested short SLERP arc (wxyz).
 

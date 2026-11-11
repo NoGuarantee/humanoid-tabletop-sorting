@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 from scipy.spatial.transform import Rotation, Slerp
 
-from hack_motion.recorded_carry import orientation_arc_deviation
+from hack_motion.recorded_carry import orientation_arc_deviation, check_carry_height
 
 
 def quat(vector):
@@ -11,6 +11,16 @@ def quat(vector):
 
 
 class CarryOrientationTests(unittest.TestCase):
+    def test_level_wrist_does_not_license_dipping_the_cartridge_back_to_table(self):
+        # seed13051: the free-yaw detour kept tilt small but descended from
+        # .350 to .101 before reaching the tray; contact was lost on the way.
+        with self.assertRaisesRegex(ValueError, 'below_endpoint_clearance'):
+            check_carry_height([.350, .294, .194, .114, .101, .340], .350, .340, .01)
+        check_carry_height([.350, .345, .335, .340], .350, .340, .01)
+        check_carry_height([.270, .300, .340], .270, .340, .01)
+        with self.assertRaisesRegex(ValueError, 'invalid_carry_height'):
+            check_carry_height([float('nan')], .350, .340, .01)
+
     def test_measured_start_lag_does_not_count_as_uncommanded_rotation(self):
         # The 4090 replay rejected the next 0.04-rad segment at 0.050211 rad
         # from its goal, although the path was making the requested turn.

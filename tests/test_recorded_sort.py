@@ -43,6 +43,38 @@ DB = pick.evaluation_db({}, True)
 
 
 class RecordedSortTests(unittest.TestCase):
+    def test_legacy_brother_uses_bounded_carry_only_in_enabled_evaluation(self):
+        from hack_brain.context import State
+        brother = PROFILES['brother_left_wide']['object_name']
+        sink = '3D_Dollhouse_Sink'
+        baseline = {'by_name': {brother: {'preset': 'pinch', 'force': .7}}}
+        dest = tray(y=0.)
+        scene = NS(containers=[dest])
+        q = planner.quat_from_rpy(0., 0., 1.36)
+        grasp = planner.GraspCandidate('left', planner.pose(.36,.4,.23,q),
+            planner.pose(.36,.4,.12,q), planner.pose(.36,.4,.27,q), 'pinch', .7, 1.)
+        stubs = NS(Hand=NS(Goal=NS), MoveTcp=NS(Goal=NS), MoveJoints=NS(Goal=NS))
+        with patch.dict('sys.modules', {'hack_interfaces.action': stubs}):
+            for enabled in (False, True):
+                db = pick.evaluation_db(baseline, enabled, 'philips')
+                self.assertFalse(pick.uses_recorded(db, brother))
+                skills = skills_module.Skills(db)
+                skills.grasp = deepcopy(grasp)
+                for name in (brother, sink):
+                    effect = NS(phase=State.TRANSFER, target=NS(id=name, name=name), destination=dest.id)
+                    _, goal = skills.command(effect, scene)
+                    checked = enabled and name == brother
+                    self.assertEqual(goal.mode, 'carry_fixed' if checked else 'carry')
+                    self.assertEqual(goal.rot_tol, .05 if checked else 0.)
+                    self.assertFalse(getattr(goal, 'contact_object', ''))
+                    self.assertFalse(getattr(goal, 'carry_inward_xy', ()))
+                # The grasp/lift remain the legacy policy; only carry changes.
+                effect = NS(phase=State.LIFT, target=NS(id=brother, name=brother))
+                _, goal = skills.command(effect, scene)
+                self.assertEqual(goal.mode, 'linear')
+                self.assertEqual(skills.grasp, grasp)
+        self.assertNotIn('bounded_carry', baseline['by_name'][brother])
+
     def test_recorded_head_look_compensates_waist_without_moving_pregrasp_arm(self):
         from hack_brain.context import State
         name = PROFILES['philips_right']['object_name']

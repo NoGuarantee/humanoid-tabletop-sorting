@@ -28,6 +28,12 @@ def evaluation_db(db, enabled, selection='rhino,brother,philips,nescafe'):
         for name in {p['object_name'] for p in PROFILES.values() if p['family'] in families}:
             keys = [key for key, p in PROFILES.items() if p['object_name'] == name]
             result.setdefault('by_name', {}).setdefault(name, {}).update(skip=False, recorded_profiles=keys)
+        # The legacy Brother pinch also needs the checked carry in this mode.
+        # seed13051: a failed straight leg fell back to a free-yaw joint path
+        # and lost the cartridge. Reuse the bounded orientation-preserving
+        # route without changing its grasp or enabling another recorded object.
+        brother = PROFILES['brother_left_wide']['object_name']
+        result.setdefault('by_name', {}).setdefault(brother, {})['bounded_carry'] = True
     return result
 
 

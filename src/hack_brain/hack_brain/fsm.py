@@ -457,6 +457,20 @@ def _result(c, e, op, effects):
                     _free_hands(c, effects, raise_arms=True)
                 else:
                     _done(c, effects, 'candidates_exhausted')
+            elif (obj.name in recorded and not c.recorded_rescanned
+                  and c.hand == Hand.EMPTY and not c.disabled_arm):
+                # The previous placement can leave the free arm away from
+                # ready with fingers no longer fully open. Motion then cannot
+                # park it, and both recorded pregrasps spend their attempts
+                # on IK failures (seed7). Reuse the one bounded empty-hand
+                # preparation before the first recorded attempt, then obtain
+                # a new scene/model; never reset attempts or a held object.
+                c.recorded_rescanned = True
+                c.empty_observations = 0
+                c.scene = None
+                c.target = None
+                c.last_recovery = 'recorded_pregrasp_prepare'
+                _free_hands(c, effects, raise_arms=True)
             else:
                 c.empty_observations = 0
                 # Recoveries are budgeted per attempt: five 'no /joint_states yet' rejections while motion started

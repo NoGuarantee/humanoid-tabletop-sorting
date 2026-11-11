@@ -8,6 +8,23 @@ from fakes import Fake, sort_spec, tubes_spec
 
 
 class MissionTests(unittest.TestCase):
+    def test_visible_recorded_object_prepares_empty_arms_before_spending_attempt(self):
+        objects = [Object('a','figure',name='sink'), Object('p','figure',name='philips')]
+        f = Fake(objects=objects, config=Config(recorded_arms=(('philips',('right',)),)))
+        f.until(State.OPEN)
+        self.assertEqual(f.c.target.id, 'a')
+        f.until(State.ARMS_READY)
+        self.assertTrue(f.c.history['a'].placed)
+        self.assertTrue(f.c.recorded_rescanned)
+        self.assertNotIn('p', f.c.history)
+        self.assertEqual(f.c.last_recovery, 'recorded_pregrasp_prepare')
+        f.until(State.OPEN)
+        self.assertEqual(f.c.target.id, 'p')
+        self.assertEqual(f.c.history['p'].attempts, 1)
+        f.run()
+        self.assertTrue(f.c.history['p'].placed)
+        self.assertEqual(sum(e.phase == State.ARMS_READY for e in f.commands), 2)
+
     def test_missing_unattempted_recorded_object_gets_one_empty_hand_rescan(self):
         objects = [Object('a', 'figure', name='sink'), Object('p', 'figure', name='philips')]
         f = Fake(objects=objects, config=Config(recorded_arms=(('philips', ('right',)),)))

@@ -172,6 +172,10 @@ class Context:
     serial: int = 0
     recoveries: int = 0
     empty_observations: int = 0
+    # A previously observed enabled profile can become hidden behind a parked
+    # arm before its first attempt. One empty-hand clear/rescan is allowed.
+    recorded_seen: set = field(default_factory=set)
+    recorded_rescanned: bool = False
     # The arm may be down at the object (DESCEND was accepted and no LIFT or BACK_OFF since).
     arm_low: bool = False
     # An arm may be over the table, in the head camera view (APPROACH was accepted and no CLEAR since).

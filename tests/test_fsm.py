@@ -1,6 +1,6 @@
 import unittest
 from dataclasses import replace
-from hack_brain.context import Context, Config, Container, Event, Evidence, Hand, History, Lift, Object, Scene, State
+from hack_brain.context import Context, Config, Container, Event, Evidence, Hand, Lift, Object, Scene, State
 from hack_brain.fsm import transition
 from hack_brain.policies import destinations
 from hack_brain.task import TaskSpec, parse_task
@@ -8,22 +8,31 @@ from fakes import Fake, sort_spec, tubes_spec
 
 
 class MissionTests(unittest.TestCase):
-    def test_enabled_recorded_object_is_attempted_before_baseline_can_occlude_it(self):
-        objects = [Object('a_sink', 'figure', name='a_sink'),
-                   Object('b_brother', 'figure', name='b_brother'),
-                   Object('p_philips', 'figure', name='p_philips', confidence=.84)]
-        for enabled, expected in ((False, 'a_sink'), (True, 'p_philips')):
+    def test_missing_unattempted_recorded_object_gets_one_empty_hand_rescan(self):
+        objects = [Object('a', 'figure', name='sink'), Object('p', 'figure', name='philips')]
+        f = Fake(objects=objects, config=Config(recorded_arms=(('philips', ('right',)),)))
+        f.until(State.OPEN)
+        self.assertEqual(f.c.target.id, 'a')  # baseline ordering stays intact
+        f.objects = objects[:1]  # recorded object hidden after the first placement
+        f.until(State.ARMS_READY)
+        self.assertTrue(f.c.history['a'].placed)
+        self.assertTrue(f.c.recorded_rescanned)
+        self.assertNotIn('p', f.c.history)
+        f.objects = objects  # fresh observation after clearing sees it again
+        f.until(State.OPEN)
+        self.assertEqual(f.c.target.id, 'p')
+        self.assertEqual(f.c.history['p'].attempts, 1)
+
+    def test_recorded_rescan_is_bounded_and_absent_from_baseline(self):
+        for enabled, ready_count in ((True, 2), (False, 0)):
+            objects = [Object('a', 'figure', name='sink'), Object('p', 'figure', name='philips')]
             f = Fake(objects=objects, config=Config(
-                recorded_arms=(('p_philips', ('right',)),) if enabled else ()))
+                recorded_arms=(('philips', ('right',)),) if enabled else ()))
             f.until(State.OPEN)
-            self.assertEqual(f.c.target.id, expected)
-        # An already lifted baseline object still takes precedence, even when
-        # a visible recorded profile has never been attempted.
-        f = Fake(objects=objects, config=Config(recorded_arms=(('p_philips', ('right',)),)))
-        f.until(State.OBSERVE)
-        f.c = replace(f.c, history={'a_sink': History(lift=Lift.LIFTED)})
-        f.answer()
-        self.assertEqual(f.c.target.id, 'a_sink')
+            f.objects = objects[:1]
+            f.run()
+            self.assertEqual(f.c.reason, 'candidates_exhausted')
+            self.assertEqual(sum(e.phase == State.ARMS_READY for e in f.commands), ready_count)
 
     def test_recorded_approach_looks_with_head_before_fresh_descent(self):
         for enabled in (False, True):

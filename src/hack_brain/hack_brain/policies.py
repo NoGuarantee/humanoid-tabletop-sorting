@@ -67,11 +67,7 @@ def select(c, scene):
                     or arms is None and arm_for(scene, obj, destinations(c.spec, obj)) == c.disabled_arm):
                 continue
         candidates.append(obj)
-    # Recover a known lifted object first. In recorded mode validate its enabled
-    # profiles while the table is still visible: an earlier baseline placement
-    # can leave an arm over an unattempted object after a failed retreat.
-    # OPEN still requires canonical identification before any recorded motion.
-    candidates.sort(key=lambda o: (c.history.get(o.id, History()).lift != Lift.LIFTED,
-                                   o.name not in recorded, o.id,
+    # Known lifted objects deserve recovery priority. No geometric identity guesses.
+    candidates.sort(key=lambda o: (c.history.get(o.id, History()).lift != Lift.LIFTED, o.id,
                                    -o.confidence if o.name in recorded else 0.))
     return candidates[0] if candidates else None

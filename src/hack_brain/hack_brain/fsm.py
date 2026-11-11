@@ -418,6 +418,8 @@ def _result(c, e, op, effects):
             _recover(c, effects, 'stale_scene')
             return
         c.scene = scene
+        recorded = dict(c.config.recorded_arms)
+        c.recorded_seen.update(o.id for o in scene.objects if o.name in recorded)
         if state == State.DESTINATION:
             dest = destination_in_scene(c, scene, c.target)
             if dest is None:
@@ -440,7 +442,21 @@ def _result(c, e, op, effects):
                 c.scene = None
                 _look(c, effects)
             elif obj is None:
-                _done(c, effects, 'candidates_exhausted')
+                unseen_attempts = any(c.history.get(oid, History()).attempts == 0
+                                      for oid in c.recorded_seen)
+                if (unseen_attempts and not c.recorded_rescanned
+                        and c.hand == Hand.EMPTY and not c.disabled_arm):
+                    # Preserve baseline order: placing Philips first exposed it
+                    # to a later sink carry (13051). Recover its missing view
+                    # only after normal candidates are exhausted, with empty
+                    # hands and without resetting any grasp attempt/history.
+                    c.recorded_rescanned = True
+                    c.empty_observations = 0
+                    c.scene = None
+                    c.last_recovery = 'recorded_view_rescan'
+                    _free_hands(c, effects, raise_arms=True)
+                else:
+                    _done(c, effects, 'candidates_exhausted')
             else:
                 c.empty_observations = 0
                 # Recoveries are budgeted per attempt: five 'no /joint_states yet' rejections while motion started

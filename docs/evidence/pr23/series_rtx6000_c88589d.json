@@ -1,0 +1,2133 @@
+{
+  "candidate": "c88589d6f987c69a3309d83377c4c705cd63850e",
+  "server": "nssr-rtx6000",
+  "remote_copy": "/home/spiridonov/nssr/work/pr23-review-philips/nssr-sol-team-049",
+  "remote_results": "/home/spiridonov/nssr/work/pr23-review-philips/evidence/20261111/rtx6000_c88589d/results",
+  "simulator_commit": "08247fc6ac9ed9f194d7bd2d1bfde434ea9cd578",
+  "image": "nssr-dev:6aca3036b3c8",
+  "image_id": "sha256:643104dde369b234250b0711c3428925b7571cf449a06d2498c6696c370190c1",
+  "task": "sort3 --pool 4",
+  "run": "bash run.sh recorded_grasps:=true recorded_objects:=philips",
+  "qualified": true,
+  "qualification_scope": "Philips full lift/carry/release/retreat and final placement on 7/13051/146; per-seed count >= main and no new minus10 observed. Not a general reliability estimate.",
+  "legacy_brother_uninterrupted_full_cycles": "2/3: seed146 slipped into correct tray before release; final placement 3/3",
+  "main_comparison": {
+    "checked": "e48f0db54df6a797c0412960ce282b1d5cba0130",
+    "current_runtime_identical": "d6de1e45285cefec0d5c734aeea84583acd5ca25",
+    "right_by_seed": {
+      "7": 2,
+      "13051": 2,
+      "146": 1
+    },
+    "team_best_146": 2
+  },
+  "method": {
+    "official": "Fresh external /sim/task/check after DONE, not part of submitted solution. result.json reports placement, not numeric score.",
+    "penalty_audit": "All possibly lifted targets placed; seed13051 Sink never lifted, two empty grasps; final camera images show remaining objects on table. No new -10 observed.",
+    "series_order": "7,13051; old all-three-targets gate stopped at 2/9. Seed146 then ran separately with identical c88589d runtime and actual review gate. No failed result replaced.",
+    "after_runs": "Only setup.sh/run.sh default changed to true, documentation and startup tests; qualified runtime was explicitly enabled already.",
+    "setup": "Prepared image reused. No new cold setup. Team measured same installer RGB-D 16-17s, total 280-450s.",
+    "setup_source": "https://github.com/nssr-hackathon/nssr-sol-team-049/pull/23#issuecomment-6799340410",
+    "video": "Robot cameras, 4x recorded wall time; sim time overlaid. Not Isaac-window screencast."
+  },
+  "tests": {
+    "mac_passed": 297,
+    "mac_skipped": 10,
+    "separate_torch_cpu_passed": 2,
+    "check_rules": "OK",
+    "ros_packages_built": 5
+  },
+  "source_sha256": {
+    "run.sh": "d6a69d1c2d52dbb0ff564c0a0b40f983b5f3e705e851e4a51cb9b667c6fd1d69",
+    "src/hack_brain/config/grasp_db.yaml": "04c9530e6cf2e1e7c0f6eb2dd04608dc1b0197943521bc0381f7a0de1a6a2536",
+    "src/hack_brain/hack_brain/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/hack_brain/hack_brain/blocking.py": "b99d23e73f9f3e909be2044a20c64825d9d4aff38052a924b2db5e45889baa81",
+    "src/hack_brain/hack_brain/brain_node.py": "415f9a05601e064ff61f3fb0edfe49c19709ad472925acbf6243c558aa955531",
+    "src/hack_brain/hack_brain/clients.py": "c02b9185ee583722e49b4b7e9fc37ad1753c0e36fc665793ebc96a2cecce39c8",
+    "src/hack_brain/hack_brain/context.py": "86e9046858c83f2934183c2b2bd538a815f5f33be48fa3f608036b7af2f2e152",
+    "src/hack_brain/hack_brain/fsm.py": "77b9f4b95530aef3766b94df3f41a004617d9f4ce7f2f9a8ec27325315f6000c",
+    "src/hack_brain/hack_brain/grasp_planner.py": "034b2e95fedf861391cabcfa042980c3024c4fa98f3a4f22f72e36c5c15223c4",
+    "src/hack_brain/hack_brain/physical.py": "4e8858e6d140f5ae8d74eb180ddd2fff368c047a26304d4bd91d0c35e79cd155",
+    "src/hack_brain/hack_brain/policies.py": "119221bc9930e2542964984afc6a8ff19ee9763104ec8771f89df60bfaeedacc",
+    "src/hack_brain/hack_brain/recorded_grasps.py": "a7ba70bd6ed2bcc6cbe868a76f88c18234ed2441e112ee7039659235a35cbb0c",
+    "src/hack_brain/hack_brain/sensors.py": "7676e11d1a7a041bac6ad3091bde2962e4b261290d46ad3f24aacfed2198fbbf",
+    "src/hack_brain/hack_brain/skills.py": "15378b0b08e6134268db7967cb30a078c9e28d4b5d221287b363d68eda631da2",
+    "src/hack_brain/hack_brain/task.py": "f6deb79ccff918c31f3197c00a45fec77fcca5707c5bc6639db43112c5d92a4c",
+    "src/hack_brain/hack_brain/transport.py": "5cdedba47c7ef491cd44c9e99c8dfa9664bc9e3ca877f3801473b3a915cb04fb",
+    "src/hack_brain/hack_brain/verification.py": "b0607efaac4b68809e165a4c23bc3465b566d8ceeba956d29f4aba95233dddb3",
+    "src/hack_brain/package.xml": "d0d99d17322d85e62eff40c3327d94ac0cf36caf5fbfe8bcc34b1a598fd5142c",
+    "src/hack_brain/resource/hack_brain": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/hack_brain/setup.cfg": "984dec951cb26f4dff8fa93bf46f39277a0ce4f6b5fabfaaee84cffbe05628c6",
+    "src/hack_brain/setup.py": "261a13757a601fd98df02a4eabd6c8286fe43b8a84a87e23fd49be152f46537b",
+    "src/hack_bringup/launch/solution.launch.py": "7a9a2aa3d2d651ec9a302d83c51c7cbfea863701894afa40c4c5fa7a9bb2c721",
+    "src/hack_bringup/package.xml": "54b53420562d5c03f3ef7aa437e6f7636222d8b8ce3e9ee2e85d43a2b965613a",
+    "src/hack_bringup/resource/hack_bringup": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/hack_bringup/setup.cfg": "08d197ab77abce708e19c064aac7a94aac2593e3010e89568699e764d1f987a0",
+    "src/hack_bringup/setup.py": "6e58e5e5b0188191617f86a7a73a6e71ec173780dc3f064ec13c50bcd84c83b8",
+    "src/hack_interfaces/CMakeLists.txt": "7b97908e1d4439f4a913399aa219131ad96a524a92110712dc1e76ada0eb8913",
+    "src/hack_interfaces/action/Hand.action": "ba00437c8b12af02094267606aefdc62ff08deac8bcdcd064fd2860befb64fd9",
+    "src/hack_interfaces/action/MoveJoints.action": "4c68a3144c634606e62fb0f7c6290fad45c70e8cf91fe02562d5456284c3996a",
+    "src/hack_interfaces/action/MoveTcp.action": "8495338965219364a7849009361a1244702350ea2ec7e76c8b571c9401ca8d9e",
+    "src/hack_interfaces/msg/Container.msg": "c3afdc16f9907d20c9dbd6e26dfeb1daee36bb5e35d766cdd0f54d7594340c20",
+    "src/hack_interfaces/msg/DetectedObject.msg": "6e8cefcf5293e4659c7d447e1a19840ea98ec41161e0a017841a140ff44a6308",
+    "src/hack_interfaces/msg/SceneObjects.msg": "0d060c2d4043d4007bef5ae43b91cadc19a129157c6c1be9c7d9c4c1cee000ce",
+    "src/hack_interfaces/package.xml": "cde8211c818297f5a0d477ef5accba9615c525fd2ee9220c4d58baf0b0e96cf9",
+    "src/hack_interfaces/srv/Perceive.srv": "a49c0e3d0ed78884c142ec07f167ed296463816ea84229ac7739d220f377e230",
+    "src/hack_motion/hack_motion/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/hack_motion/hack_motion/curobo_planner.py": "badd15e426ecd70fa00dc7b7a6f68e829d7a23edc5c4ee91665f678bdd7c0f67",
+    "src/hack_motion/hack_motion/curobo_robot.py": "df113ebc3fdb4db976e599582eac3b9b7d0c8d6b77f34f843a6ca1eaac85b3a6",
+    "src/hack_motion/hack_motion/ik.py": "0ffda560f49dd961c493c8f002a6e33a4e7c2e91b16207f5726b76097028a926",
+    "src/hack_motion/hack_motion/motion_node.py": "1a43d04a6f47ec1c554106fa1d29ff0bd0557ecf550655074251e7f25f15ac38",
+    "src/hack_motion/hack_motion/perception_robot_geometry.py": "8a22aff1ea7ada8fa4efa03929c8a9a6b6067f1286f4858ab732b562875cea7e",
+    "src/hack_motion/hack_motion/profiles/boxes.json": "b7eb55acb79aef20a8c5a8f7f670d010af92e04f823377cd2e0910c6d0445262",
+    "src/hack_motion/hack_motion/profiles/rhino_e71.json": "10bd60ae855b308f18b831c616716316c68a3495c22406ac0c88fed1642f3487",
+    "src/hack_motion/hack_motion/recorded_carry.py": "779e94fbf66fbc02775055018e35037f3ac1b47d23801c5126ea83cb629cac01",
+    "src/hack_motion/hack_motion/recorded_contact.py": "48238bfcf83f21060fb0a59b70f70b17e9acc36c54a0cfba47cfc5a1f0459ba2",
+    "src/hack_motion/hack_motion/recorded_geometry.py": "2f666ef21ba705fad1f0b4558f2806bac32b43420ec8878b88ec1729ca763dc2",
+    "src/hack_motion/hack_motion/recorded_grasp.py": "84e323d646c7f891ef090e4dabdce47e1193597e7375073444bdb46e852f0d11",
+    "src/hack_motion/hack_motion/robot.py": "aa559927a52e7b138f04b3595b4ccac13f9d5e11550588ca6d85d4f59f3980f7",
+    "src/hack_motion/package.xml": "bd29c305bf551ef694917a854a4d94c03b7dbfea40e2c407ec99a4e4ad92c2cf",
+    "src/hack_motion/resource/hack_motion": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/hack_motion/robot/LICENSE.TienKung_URDF": "467fde9cb4e129c0c974f63400e45e8747f3950a4a74fc1a37b5f8220aa9cfe4",
+    "src/hack_motion/robot/NATIVE_BODY_VISUAL_HULLS.md": "f83102c7b77f3c76523f664d516606516f0397d49be3551307f356356ef24fbe",
+    "src/hack_motion/robot/README.md": "bba01605d032bfcccfc7fd14766f565d72a231ed77940aa1dade50fda327124f",
+    "src/hack_motion/robot/native_body_visual_hulls.json": "9cbb5f1c8340b89fc179cf765619938cafb2d2d0dc6de2bbdb574b0fe1ab4ebe",
+    "src/hack_motion/robot/native_hand_collision.json": "69a783d66b27f93625f921b07895fc44f5589486d039bdd4acff22f14a8280df",
+    "src/hack_motion/robot/tiangong2pro_with_hands.urdf": "a688bb504e67d4f61c359a84aa3fd1b7ba4676a7f641a5f525ef3021b40c84ca",
+    "src/hack_motion/robot/tienkung_curobo.yml": "cd54586c9ea0de11c67eac1d8b020e00fb6e900562a4d120629140f2e1b9e312",
+    "src/hack_motion/setup.cfg": "5acd007e4ca9671e7a17e2ed58178e11cf27a605f497777d1d95e31a9c63aa39",
+    "src/hack_motion/setup.py": "1fc8bff6c0d6a3746cfb7dc12de4a97617b0618cefcf3a52a495edd0e9c07e7c",
+    "src/hack_perception/hack_perception/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/hack_perception/hack_perception/cdr_image.py": "13d76ac9bed2e2830d6757d77208b06969f948c23e49262be21908a8f8563e17",
+    "src/hack_perception/hack_perception/classify.py": "20ba0876441aee38e0c9b65dc16b3c342a24ae1ad73615932128c6d52bda91d1",
+    "src/hack_perception/hack_perception/diagnostics.py": "2da7798b29406ec2cefa097802454eab71d4af8be8b7e058bb53328f8000ba60",
+    "src/hack_perception/hack_perception/geometry.py": "ebf0317573b5182c074eb74a07fc3a2cecd065411665ea2c8681e1d8e081d4a4",
+    "src/hack_perception/hack_perception/perception_node.py": "e1e52b9f8641871fcf57a0a3f43fae0b0733b5bb64433e706ab1dcf432a7f945",
+    "src/hack_perception/hack_perception/rgbd/__init__.py": "b731ca9ab9d45cc051e6eae76b8655462b956d9fac4cfb5741884d8980db29f5",
+    "src/hack_perception/hack_perception/rgbd/detection.py": "cdd8d52847e3da65a3d3cb3b97888e8e13f9df745fb6ee6642cd8a316b8bc3bf",
+    "src/hack_perception/hack_perception/rgbd/fit_rgbd_templates.py": "4579af555cdc3c81258cf661eb58d0e97e71ab7b17e4a8cd1104fd777fc7791e",
+    "src/hack_perception/hack_perception/rgbd/full_pose_nn.py": "4d7e43ff0fadc0b9537a2d965f0c628bf73b098316a3064dbecfe9c2d56f2750",
+    "src/hack_perception/hack_perception/rgbd/geometry.py": "c420c7db679a716fe190e4ae83d6e9d54cefe6163fb857c923b5785df6c82999",
+    "src/hack_perception/hack_perception/rgbd/multiview_association.py": "23c82dc987b8e2abed3f47585b8ed4664f8ae22168a316193d1620081c3ee630",
+    "src/hack_perception/hack_perception/rgbd/paired_box_identity.py": "a7b2745da6d454332c4f4f93e371e18604f595513464043401fde73583c08079",
+    "src/hack_perception/hack_perception/rgbd/pose_backend.py": "6b260b2e5c529329b30385aaa95229aaf5e0a385e5969092c39670a37c0a889e",
+    "src/hack_perception/hack_perception/rgbd/rgbd_free_space.py": "25cd988e92baa0ef3dae0d198beb87eaca8d5acee406e8af91e918a6754a9257",
+    "src/hack_perception/hack_perception/rgbd/rgbd_identity.py": "23a7a5e4816f883768987e8124bcababd90103b3d146f92e9c4e7c2ad8ebc7bd",
+    "src/hack_perception/hack_perception/rgbd/rgbd_template_refinement.py": "04dfcdec9b31e418341bb5504057ca77e8a295fa00838ffb3c6c6f2665fdeda5",
+    "src/hack_perception/hack_perception/rgbd/scene_geometry.py": "0ad7af4817fb744275b4b49394ef4ca04a981577187ea32e6f57e663f944f65f",
+    "src/hack_perception/hack_perception/rgbd/seeded_icp.py": "b7057893f28229170f3880541c64ac6807dbc10e611da870fa23371983b2d132",
+    "src/hack_perception/hack_perception/rgbd/tube_end_ranker.py": "8ac96d26748b9482009d728e851fbf4b704245cd0d8a9b5db644fff32cb59422",
+    "src/hack_perception/hack_perception/rgbd/tube_nn_features.py": "6fbd0649c8d94b434feea64cd90117459d7aba15f1f1849a2199c918d648f521",
+    "src/hack_perception/hack_perception/rgbd/yolo_pose_head.py": "75a268f9646f70202f5b12a0f1b4cd79b7d87284a8ee4b1e463aa9b6f6db12f7",
+    "src/hack_perception/hack_perception/rgbd_frames.py": "fcabcb09347d7be0cf6310b77f6fe07a35f4b7c7a3a7cad59a3263e1c88b15a2",
+    "src/hack_perception/hack_perception/rgbd_labels.py": "c2f770f247de66be751c4e457d533b1b256b13dffc71e7b53326a58868af1f16",
+    "src/hack_perception/hack_perception/rgbd_response.py": "111224bc6cf17cff39a2b8749466b03f5c09e04f256fd1de5df37e2116cdedd8",
+    "src/hack_perception/hack_perception/rgbd_robot_filter.py": "ad9ce56ff6d1816f2027891aac757d0bcae63327ed2e74344fca0050a0ae54fb",
+    "src/hack_perception/hack_perception/rgbd_service.py": "365bfb83d28d0c62d2aec40378725dc7c4835792cfde3f614051b393d4154d32",
+    "src/hack_perception/hack_perception/rgbd_worker.py": "9be72d3544d75da50008792b2d4deaa64df2c663fb371bb61da8e7d3415c150a",
+    "src/hack_perception/hack_perception/robot_self_mask.py": "cfaf8b2253dd70359c22c59fc30b5978da0382dcc36d23aeea73af15e44cb911",
+    "src/hack_perception/hack_perception/robot_visual_mask.py": "3928ce059b7de6c6ba3115f15914444e2a1d230b3d73fa2cb2f35692dd52d17e",
+    "src/hack_perception/hack_perception/table_clusters.py": "cc73147c6b7250e3349227caff2dde4984252118ee1a0efe7a1879ddc2b6f077",
+    "src/hack_perception/hack_perception/tray_rims.py": "7b6eaf24cd258fb5527958a69e11399cc57ed9658aa50596c454fe90b3123511",
+    "src/hack_perception/package.xml": "a138cfee166ac9ba0f3b29e403a45ef3523526c7875df1d1600ae847771b0cf7",
+    "src/hack_perception/resource/hack_perception": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/hack_perception/setup.cfg": "2972deb547be115bf7a7fc8075db8c55d14212e4b3bd8d962f079ae2887c2b8f",
+    "src/hack_perception/setup.py": "ba4c8612fc5cbc3847ba2d253b7bf26626dea1903fcdbbd10943a1450f4c8fe1",
+    "tools/curobo_install.sh": "002b1e9aaf68dc9fbc7ddbbbc42d3a4b167155aca84012d07060cd8046dd6752",
+    "setup.sh": "b473fdb8ddd360a9c81933c872ecfeef74d7ad262c7db4ad06b7233c84db312e"
+  },
+  "rows": [
+    {
+      "seed": 7,
+      "case": "candidate_seed7_c88589d",
+      "official_result": {
+        "in_right_tray": 3,
+        "in_wrong_tray": 0,
+        "not_in_tray": 6,
+        "objects": {
+          "Schleich_African_Black_Rhino": {
+            "tray": null,
+            "ok": false
+          },
+          "3D_Dollhouse_Sink": {
+            "tray": "tray_left",
+            "ok": true
+          },
+          "LADYBUG_BEAD": {
+            "tray": null,
+            "ok": false
+          },
+          "Threshold_Bamboo_Ceramic_Soap_Dish": {
+            "tray": null,
+            "ok": false
+          },
+          "Cole_Hardware_Bowl_Scirocco_YellowBlue": {
+            "tray": null,
+            "ok": false
+          },
+          "Ecoforms_Cup_B4_SAN": {
+            "tray": null,
+            "ok": false
+          },
+          "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g": {
+            "tray": null,
+            "ok": false
+          },
+          "Brother_Ink_Cartridge_Magenta_LC75M": {
+            "tray": "tray_center",
+            "ok": true
+          },
+          "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack": {
+            "tray": "tray_center",
+            "ok": true
+          }
+        },
+        "total": 9,
+        "task": "sort3",
+        "sim_step": 18672
+      },
+      "exit_code": 0,
+      "done_sim": 184.999995864,
+      "possibly_lifted_targets": [
+        "3D_Dollhouse_Sink",
+        "Brother_Ink_Cartridge_Magenta_LC75M",
+        "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack"
+      ],
+      "unplaced_possibly_lifted": [],
+      "philips": {
+        "official": {
+          "tray": "tray_center",
+          "ok": true
+        },
+        "uninterrupted_cycle": true,
+        "transitions": [
+          {
+            "sim": 109.219997558,
+            "from": "OBSERVE",
+            "to": "OPEN",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 112.95999747500001,
+            "from": "OPEN",
+            "to": "APPROACH",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 122.41999726300001,
+            "from": "APPROACH",
+            "to": "LOOK_GRASP",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 126.43999717300001,
+            "from": "LOOK_GRASP",
+            "to": "DESCEND",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 133.29999702,
+            "from": "DESCEND",
+            "to": "CLOSE",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 136.719996944,
+            "from": "CLOSE",
+            "to": "VERIFY_GRASP",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 137.049996936,
+            "from": "VERIFY_GRASP",
+            "to": "LIFT",
+            "hand": "HOLDING",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 141.489996837,
+            "from": "LIFT",
+            "to": "VERIFY_LIFT",
+            "hand": "HOLDING",
+            "lift": "UNKNOWN",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 141.80999683000002,
+            "from": "VERIFY_LIFT",
+            "to": "DESTINATION",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 141.959996826,
+            "from": "DESTINATION",
+            "to": "VERIFY_TRANSFER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 142.27999681900002,
+            "from": "VERIFY_TRANSFER",
+            "to": "TRANSFER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 163.859996337,
+            "from": "TRANSFER",
+            "to": "VERIFY_HOLD",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 164.18999633,
+            "from": "VERIFY_HOLD",
+            "to": "LOWER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 166.42999627900002,
+            "from": "LOWER",
+            "to": "RELEASE",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 169.33999621400002,
+            "from": "RELEASE",
+            "to": "RETREAT",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 171.57999616400002,
+            "from": "RETREAT",
+            "to": "CLEAR",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 181.50999594200002,
+            "from": "CLEAR",
+            "to": "LOOK_TABLE",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 182.719995915,
+            "from": "LOOK_TABLE",
+            "to": "VERIFY_PLACE",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 183.05999590800002,
+            "from": "VERIFY_PLACE",
+            "to": "VERIFY_EMPTY",
+            "hand": "EMPTY",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          }
+        ]
+      },
+      "brother": {
+        "official": {
+          "tray": "tray_center",
+          "ok": true
+        },
+        "uninterrupted_cycle": true,
+        "transitions": [
+          {
+            "sim": 61.629998622,
+            "from": "OBSERVE",
+            "to": "OPEN",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 63.949998570000005,
+            "from": "OPEN",
+            "to": "APPROACH",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 69.499998446,
+            "from": "APPROACH",
+            "to": "DESCEND",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 72.139998387,
+            "from": "DESCEND",
+            "to": "CLOSE",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 75.729998307,
+            "from": "CLOSE",
+            "to": "VERIFY_GRASP",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 76.069998299,
+            "from": "VERIFY_GRASP",
+            "to": "LIFT",
+            "hand": "HOLDING",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 78.009998256,
+            "from": "LIFT",
+            "to": "VERIFY_LIFT",
+            "hand": "HOLDING",
+            "lift": "UNKNOWN",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 78.31999824900001,
+            "from": "VERIFY_LIFT",
+            "to": "DESTINATION",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 78.469998246,
+            "from": "DESTINATION",
+            "to": "VERIFY_TRANSFER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 78.799998238,
+            "from": "VERIFY_TRANSFER",
+            "to": "TRANSFER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 86.989998055,
+            "from": "TRANSFER",
+            "to": "VERIFY_HOLD",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 87.319998048,
+            "from": "VERIFY_HOLD",
+            "to": "LOWER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 88.679998017,
+            "from": "LOWER",
+            "to": "RELEASE",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 90.47999797700001,
+            "from": "RELEASE",
+            "to": "RETREAT",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 92.079997941,
+            "from": "RETREAT",
+            "to": "CLEAR",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 99.409997778,
+            "from": "CLEAR",
+            "to": "LOOK_TABLE",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 99.82999776800001,
+            "from": "LOOK_TABLE",
+            "to": "VERIFY_PLACE",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 100.17999776,
+            "from": "VERIFY_PLACE",
+            "to": "VERIFY_EMPTY",
+            "hand": "EMPTY",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          }
+        ]
+      },
+      "sink": {
+        "official": {
+          "tray": "tray_left",
+          "ok": true
+        },
+        "uninterrupted_cycle": true,
+        "transitions": [
+          {
+            "sim": 4.339999902000001,
+            "from": "OBSERVE",
+            "to": "OPEN",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 6.639999851000001,
+            "from": "OPEN",
+            "to": "APPROACH",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 33.499999251000006,
+            "from": "APPROACH",
+            "to": "DESCEND",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 35.079999215,
+            "from": "DESCEND",
+            "to": "CLOSE",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 37.939999151,
+            "from": "CLOSE",
+            "to": "VERIFY_GRASP",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 38.269999144,
+            "from": "VERIFY_GRASP",
+            "to": "LIFT",
+            "hand": "HOLDING",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 40.309999099,
+            "from": "LIFT",
+            "to": "VERIFY_LIFT",
+            "hand": "HOLDING",
+            "lift": "UNKNOWN",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 40.649999091000005,
+            "from": "VERIFY_LIFT",
+            "to": "DESTINATION",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 40.869999086,
+            "from": "DESTINATION",
+            "to": "VERIFY_TRANSFER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 41.189999079,
+            "from": "VERIFY_TRANSFER",
+            "to": "TRANSFER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 47.02999894800001,
+            "from": "TRANSFER",
+            "to": "VERIFY_HOLD",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 47.349998941,
+            "from": "VERIFY_HOLD",
+            "to": "LOWER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 48.679998911000006,
+            "from": "LOWER",
+            "to": "RELEASE",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 50.499998871,
+            "from": "RELEASE",
+            "to": "RETREAT",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 52.009998837000005,
+            "from": "RETREAT",
+            "to": "CLEAR",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 60.029998658000004,
+            "from": "CLEAR",
+            "to": "LOOK_TABLE",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 60.429998649000005,
+            "from": "LOOK_TABLE",
+            "to": "VERIFY_PLACE",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          },
+          {
+            "sim": 60.769998641,
+            "from": "VERIFY_PLACE",
+            "to": "VERIFY_EMPTY",
+            "hand": "EMPTY",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hack_interfaces.action.MoveJoints_Result(success=False, max_error=0.0, message='no /joint_states yet')"
+          }
+        ]
+      },
+      "raw_sha256": {
+        "solution.log": "b7e411b4d1fb1de8323e27c9b2ed372b83c27b9207a1588ffc1e46ae31c9d95a",
+        "result.json": "a5ef506ed48ba7f0aaccb4585ea6152a1b6c4f174dcff4b4caa8de97a0653b00",
+        "joint_states.jsonl": "093fc1b6caee2d08b126e5cd75042535069bcdd89b287447651de75397ec6b4a",
+        "perception_scenes.jsonl": "40970a952692744b8b72901dbcdfc4daf3cd8f08019b51a68e2b494a31928eef",
+        "video/frames.jsonl": "54b9cba3345ec8c5cd53f06f894f5567b574399b63dcca1d04ccf0e70b9cd5ed"
+      },
+      "video": {
+        "source_record": {
+          "first": {
+            "index": 835,
+            "wall_elapsed_s": 176.83393739489838,
+            "stamps": {
+              "cam_head": 109.039997563,
+              "cam_torso": 109.039997563
+            }
+          },
+          "last": {
+            "index": 1476,
+            "wall_elapsed_s": 310.2279684310779,
+            "stamps": {
+              "cam_head": 184.969995866,
+              "cam_torso": 184.969995866
+            }
+          },
+          "speed": "4x relative to 5 fps source recording; camera overlay uses sim time",
+          "frames": 642,
+          "source_sha256": "89cd5f3c648377a04d2209acf4ed339dee69407692084db599bae82d02c797d0",
+          "clip_sha256": "dc2111cba668ed6d699602f8c6101daab76e5530712101ee11f021b40f6535c7",
+          "bytes": 9090834
+        },
+        "published_path": "docs/evidence/pr23/philips_seed7_c88589d_4x.mp4",
+        "published_sha256": "cc6785119847ea45de2484e16f04e21b58e6bffdc675ca83254a517f6b5d539e",
+        "published_bytes": 2538419,
+        "probe": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 360,
+          "nb_frames": "642"
+        }
+      },
+      "final_frame": {
+        "path": "docs/evidence/pr23/final_seed7_c88589d.jpg",
+        "sha256": "13e22e79b856a41cd2aceb423b5c6c6816f461494531f1925a22aa5981734099",
+        "requested_sim": 185
+      }
+    },
+    {
+      "seed": 13051,
+      "case": "candidate_seed13051_c88589d",
+      "official_result": {
+        "in_right_tray": 2,
+        "in_wrong_tray": 0,
+        "not_in_tray": 7,
+        "objects": {
+          "Schleich_African_Black_Rhino": {
+            "tray": null,
+            "ok": false
+          },
+          "3D_Dollhouse_Sink": {
+            "tray": null,
+            "ok": false
+          },
+          "LADYBUG_BEAD": {
+            "tray": null,
+            "ok": false
+          },
+          "Threshold_Bamboo_Ceramic_Soap_Dish": {
+            "tray": null,
+            "ok": false
+          },
+          "Cole_Hardware_Bowl_Scirocco_YellowBlue": {
+            "tray": null,
+            "ok": false
+          },
+          "Ecoforms_Cup_B4_SAN": {
+            "tray": null,
+            "ok": false
+          },
+          "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g": {
+            "tray": null,
+            "ok": false
+          },
+          "Brother_Ink_Cartridge_Magenta_LC75M": {
+            "tray": "tray_center",
+            "ok": true
+          },
+          "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack": {
+            "tray": "tray_center",
+            "ok": true
+          }
+        },
+        "total": 9,
+        "task": "sort3",
+        "sim_step": 25543
+      },
+      "exit_code": 0,
+      "done_sim": 253.69999432900002,
+      "possibly_lifted_targets": [
+        "Brother_Ink_Cartridge_Magenta_LC75M",
+        "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack"
+      ],
+      "unplaced_possibly_lifted": [],
+      "philips": {
+        "official": {
+          "tray": "tray_center",
+          "ok": true
+        },
+        "uninterrupted_cycle": true,
+        "transitions": [
+          {
+            "sim": 129.85999709700002,
+            "from": "OBSERVE",
+            "to": "OPEN",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 133.36999701800002,
+            "from": "OPEN",
+            "to": "APPROACH",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 140.309996863,
+            "from": "APPROACH",
+            "to": "LOOK_GRASP",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 144.739996764,
+            "from": "LOOK_GRASP",
+            "to": "DESCEND",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 150.74999663,
+            "from": "DESCEND",
+            "to": "RECOVER",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "fresh_recorded_pose_unavailable"
+          },
+          {
+            "sim": 168.939996223,
+            "from": "RECOVER",
+            "to": "OPEN_HANDS",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 171.119996175,
+            "from": "OPEN_HANDS",
+            "to": "LOOK_TABLE",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 172.509996144,
+            "from": "LOOK_TABLE",
+            "to": "OBSERVE",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 172.71999613900002,
+            "from": "OBSERVE",
+            "to": "ARMS_READY",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 188.059995796,
+            "from": "ARMS_READY",
+            "to": "VERIFY_EMPTY",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 189.34999576700002,
+            "from": "OBSERVE",
+            "to": "OPEN",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 191.859995711,
+            "from": "OPEN",
+            "to": "APPROACH",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 197.67999558100001,
+            "from": "APPROACH",
+            "to": "LOOK_GRASP",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 201.84999548800002,
+            "from": "LOOK_GRASP",
+            "to": "DESCEND",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 208.30999534300003,
+            "from": "DESCEND",
+            "to": "CLOSE",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 211.72999526700002,
+            "from": "CLOSE",
+            "to": "VERIFY_GRASP",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 212.06999525900002,
+            "from": "VERIFY_GRASP",
+            "to": "LIFT",
+            "hand": "HOLDING",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 215.32999518600002,
+            "from": "LIFT",
+            "to": "VERIFY_LIFT",
+            "hand": "HOLDING",
+            "lift": "UNKNOWN",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 215.649995179,
+            "from": "VERIFY_LIFT",
+            "to": "DESTINATION",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 215.809995176,
+            "from": "DESTINATION",
+            "to": "VERIFY_TRANSFER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 216.139995168,
+            "from": "VERIFY_TRANSFER",
+            "to": "TRANSFER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 235.11999474400002,
+            "from": "TRANSFER",
+            "to": "VERIFY_HOLD",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 235.45999473700002,
+            "from": "VERIFY_HOLD",
+            "to": "LOWER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 237.94999468100002,
+            "from": "LOWER",
+            "to": "RELEASE",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 240.889994615,
+            "from": "RELEASE",
+            "to": "RETREAT",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 243.279994562,
+            "from": "RETREAT",
+            "to": "CLEAR",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 250.389994403,
+            "from": "CLEAR",
+            "to": "LOOK_TABLE",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 251.40999438000003,
+            "from": "LOOK_TABLE",
+            "to": "VERIFY_PLACE",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          },
+          {
+            "sim": 251.749994372,
+            "from": "VERIFY_PLACE",
+            "to": "VERIFY_EMPTY",
+            "hand": "EMPTY",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "hand_unknown_freed"
+          }
+        ]
+      },
+      "brother": {
+        "official": {
+          "tray": "tray_center",
+          "ok": true
+        },
+        "uninterrupted_cycle": true,
+        "transitions": [
+          {
+            "sim": 73.919998347,
+            "from": "OBSERVE",
+            "to": "OPEN",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 75.64999830900001,
+            "from": "OPEN",
+            "to": "APPROACH",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 84.649998107,
+            "from": "APPROACH",
+            "to": "DESCEND",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 87.22999805,
+            "from": "DESCEND",
+            "to": "CLOSE",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 89.71999799400001,
+            "from": "CLOSE",
+            "to": "VERIFY_GRASP",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 90.039997987,
+            "from": "VERIFY_GRASP",
+            "to": "LIFT",
+            "hand": "HOLDING",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 92.18999793900001,
+            "from": "LIFT",
+            "to": "VERIFY_LIFT",
+            "hand": "HOLDING",
+            "lift": "UNKNOWN",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 92.51999793200001,
+            "from": "VERIFY_LIFT",
+            "to": "DESTINATION",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 92.68999792800001,
+            "from": "DESTINATION",
+            "to": "VERIFY_TRANSFER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 93.01999792000001,
+            "from": "VERIFY_TRANSFER",
+            "to": "TRANSFER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 103.539997685,
+            "from": "TRANSFER",
+            "to": "VERIFY_HOLD",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 103.84999767800001,
+            "from": "VERIFY_HOLD",
+            "to": "LOWER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 106.219997625,
+            "from": "LOWER",
+            "to": "RELEASE",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 108.03999758500001,
+            "from": "RELEASE",
+            "to": "RETREAT",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 109.549997551,
+            "from": "RETREAT",
+            "to": "CLEAR",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 117.779997367,
+            "from": "CLEAR",
+            "to": "LOOK_TABLE",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 118.209997357,
+            "from": "LOOK_TABLE",
+            "to": "VERIFY_PLACE",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 118.52999735,
+            "from": "VERIFY_PLACE",
+            "to": "VERIFY_EMPTY",
+            "hand": "EMPTY",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          }
+        ]
+      },
+      "sink": {
+        "official": {
+          "tray": null,
+          "ok": false
+        },
+        "uninterrupted_cycle": false,
+        "transitions": [
+          {
+            "sim": 5.309999881,
+            "from": "OBSERVE",
+            "to": "OPEN",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 7.639999829000001,
+            "from": "OPEN",
+            "to": "APPROACH",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 32.869999265000004,
+            "from": "APPROACH",
+            "to": "DESCEND",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 34.41999923,
+            "from": "DESCEND",
+            "to": "CLOSE",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 37.269999166000005,
+            "from": "CLOSE",
+            "to": "VERIFY_GRASP",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 37.599999159,
+            "from": "VERIFY_GRASP",
+            "to": "RECOVER",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 37.929999152,
+            "from": "RECOVER",
+            "to": "BACK_OFF",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 39.889999108000005,
+            "from": "BACK_OFF",
+            "to": "CLEAR",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 46.819998953,
+            "from": "CLEAR",
+            "to": "LOOK_TABLE",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 47.25999894300001,
+            "from": "LOOK_TABLE",
+            "to": "OBSERVE",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 47.449998939000004,
+            "from": "OBSERVE",
+            "to": "OPEN",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 49.149998901000004,
+            "from": "OPEN",
+            "to": "APPROACH",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 60.35999865,
+            "from": "APPROACH",
+            "to": "DESCEND",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 61.719998620000005,
+            "from": "DESCEND",
+            "to": "CLOSE",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 64.39999856,
+            "from": "CLOSE",
+            "to": "VERIFY_GRASP",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 64.71999855300001,
+            "from": "VERIFY_GRASP",
+            "to": "RECOVER",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 65.049998546,
+            "from": "RECOVER",
+            "to": "BACK_OFF",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 66.62999851000001,
+            "from": "BACK_OFF",
+            "to": "CLEAR",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 73.279998362,
+            "from": "CLEAR",
+            "to": "LOOK_TABLE",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          },
+          {
+            "sim": 73.719998352,
+            "from": "LOOK_TABLE",
+            "to": "OBSERVE",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "empty_grasp"
+          }
+        ]
+      },
+      "raw_sha256": {
+        "solution.log": "ef6adbe5d8e02a11e8fb8c918879bcd1b7a1bd9175c8a7ad61a5779ce11a71c4",
+        "result.json": "3bc8b7fca12c99ec4572ca7b1ebce01653e1f07f869c91d843606a4ecf1b9cbc",
+        "joint_states.jsonl": "9f0cae540d2b462b66bec82de355bc33593a5930b0876943c13acdc4d2a8cee5",
+        "perception_scenes.jsonl": "28bb15bc12243667c69982a91f40dd53d899c5375f5479ef36b820587bfef250",
+        "video/frames.jsonl": "bebf0e9481fdf4b5533bce86f59fc348b595de70ef43e3f4ab6360505988aa58"
+      },
+      "video": {
+        "source_record": {
+          "first": {
+            "index": 1458,
+            "wall_elapsed_s": 309.874817464035,
+            "stamps": {
+              "cam_head": 188.929995777,
+              "cam_torso": 188.929995777
+            }
+          },
+          "last": {
+            "index": 1978,
+            "wall_elapsed_s": 419.0904801939614,
+            "stamps": {
+              "cam_head": 254.029994322,
+              "cam_torso": 254.029994322
+            }
+          },
+          "speed": "4x relative to 5 fps source recording; camera overlay uses sim time",
+          "frames": 521,
+          "source_sha256": "a586f6ad0f49e8e84acfd2d751988ea428dcc7cb579f73fcdc0221b3650b2c7a",
+          "clip_sha256": "0107cc6e8f47b2b226d1345994ec6157a77d55c29794277edf659aacec02f2c4",
+          "bytes": 6953679
+        },
+        "published_path": "docs/evidence/pr23/philips_seed13051_c88589d_4x.mp4",
+        "published_sha256": "94fc71f1fadaf03900ccbdd7f09345e0733ec5c4be88e3ae101dfecd7ac3246e",
+        "published_bytes": 1972105,
+        "probe": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 360,
+          "nb_frames": "521"
+        }
+      },
+      "final_frame": {
+        "path": "docs/evidence/pr23/final_seed13051_c88589d.jpg",
+        "sha256": "189b746b8b8fe52b4b12536698b96e474d559a9cb53e939eb686d108debfc9f5",
+        "requested_sim": 254
+      }
+    },
+    {
+      "seed": 146,
+      "case": "candidate_seed146_c88589d",
+      "official_result": {
+        "in_right_tray": 3,
+        "in_wrong_tray": 0,
+        "not_in_tray": 6,
+        "objects": {
+          "Schleich_African_Black_Rhino": {
+            "tray": null,
+            "ok": false
+          },
+          "3D_Dollhouse_Sink": {
+            "tray": "tray_left",
+            "ok": true
+          },
+          "LADYBUG_BEAD": {
+            "tray": null,
+            "ok": false
+          },
+          "Threshold_Bamboo_Ceramic_Soap_Dish": {
+            "tray": null,
+            "ok": false
+          },
+          "Cole_Hardware_Bowl_Scirocco_YellowBlue": {
+            "tray": null,
+            "ok": false
+          },
+          "Ecoforms_Cup_B4_SAN": {
+            "tray": null,
+            "ok": false
+          },
+          "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g": {
+            "tray": null,
+            "ok": false
+          },
+          "Brother_Ink_Cartridge_Magenta_LC75M": {
+            "tray": "tray_center",
+            "ok": true
+          },
+          "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack": {
+            "tray": "tray_center",
+            "ok": true
+          }
+        },
+        "total": 9,
+        "task": "sort3",
+        "sim_step": 18420
+      },
+      "exit_code": 0,
+      "done_sim": 180.61999596200002,
+      "possibly_lifted_targets": [
+        "3D_Dollhouse_Sink",
+        "Brother_Ink_Cartridge_Magenta_LC75M",
+        "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack"
+      ],
+      "unplaced_possibly_lifted": [],
+      "philips": {
+        "official": {
+          "tray": "tray_center",
+          "ok": true
+        },
+        "uninterrupted_cycle": true,
+        "transitions": [
+          {
+            "sim": 112.649997482,
+            "from": "OBSERVE",
+            "to": "OPEN",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 116.50999739500001,
+            "from": "OPEN",
+            "to": "APPROACH",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 123.86999723100001,
+            "from": "APPROACH",
+            "to": "LOOK_GRASP",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 127.98999713900001,
+            "from": "LOOK_GRASP",
+            "to": "DESCEND",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 134.779996987,
+            "from": "DESCEND",
+            "to": "CLOSE",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 138.189996911,
+            "from": "CLOSE",
+            "to": "VERIFY_GRASP",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 138.51999690300002,
+            "from": "VERIFY_GRASP",
+            "to": "LIFT",
+            "hand": "HOLDING",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 143.19999679900002,
+            "from": "LIFT",
+            "to": "VERIFY_LIFT",
+            "hand": "HOLDING",
+            "lift": "UNKNOWN",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 143.549996791,
+            "from": "VERIFY_LIFT",
+            "to": "DESTINATION",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 143.719996787,
+            "from": "DESTINATION",
+            "to": "VERIFY_TRANSFER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 144.03999678,
+            "from": "VERIFY_TRANSFER",
+            "to": "TRANSFER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 157.89999647000002,
+            "from": "TRANSFER",
+            "to": "VERIFY_HOLD",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 158.22999646300002,
+            "from": "VERIFY_HOLD",
+            "to": "LOWER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 160.50999641200002,
+            "from": "LOWER",
+            "to": "RELEASE",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 163.41999634700002,
+            "from": "RELEASE",
+            "to": "RETREAT",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 167.30999626000002,
+            "from": "RETREAT",
+            "to": "CLEAR",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 177.169996039,
+            "from": "CLEAR",
+            "to": "LOOK_TABLE",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 178.27999601500002,
+            "from": "LOOK_TABLE",
+            "to": "VERIFY_PLACE",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          },
+          {
+            "sim": 178.609996007,
+            "from": "VERIFY_PLACE",
+            "to": "VERIFY_EMPTY",
+            "hand": "EMPTY",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "recorded_pregrasp_prepare"
+          }
+        ]
+      },
+      "brother": {
+        "official": {
+          "tray": "tray_center",
+          "ok": true
+        },
+        "uninterrupted_cycle": false,
+        "transitions": [
+          {
+            "sim": 68.34999847200001,
+            "from": "OBSERVE",
+            "to": "OPEN",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 70.62999842100001,
+            "from": "OPEN",
+            "to": "APPROACH",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 77.119998276,
+            "from": "APPROACH",
+            "to": "DESCEND",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 81.109998187,
+            "from": "DESCEND",
+            "to": "CLOSE",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 84.479998111,
+            "from": "CLOSE",
+            "to": "VERIFY_GRASP",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 84.809998104,
+            "from": "VERIFY_GRASP",
+            "to": "LIFT",
+            "hand": "HOLDING",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 86.74999806000001,
+            "from": "LIFT",
+            "to": "VERIFY_LIFT",
+            "hand": "HOLDING",
+            "lift": "UNKNOWN",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 87.069998053,
+            "from": "VERIFY_LIFT",
+            "to": "DESTINATION",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 87.19999805,
+            "from": "DESTINATION",
+            "to": "VERIFY_TRANSFER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 87.529998043,
+            "from": "VERIFY_TRANSFER",
+            "to": "TRANSFER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 94.92999787800001,
+            "from": "TRANSFER",
+            "to": "CANCELLING",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "holding_lost_or_unknown",
+            "last_recovery": ""
+          },
+          {
+            "sim": 94.92999787800001,
+            "from": "CANCELLING",
+            "to": "RECOVER",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "object_lost"
+          },
+          {
+            "sim": 95.869997857,
+            "from": "RECOVER",
+            "to": "CLEAR",
+            "hand": "EMPTY",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "object_lost"
+          },
+          {
+            "sim": 103.569997685,
+            "from": "CLEAR",
+            "to": "LOOK_TABLE",
+            "hand": "EMPTY",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "object_lost"
+          },
+          {
+            "sim": 103.939997676,
+            "from": "LOOK_TABLE",
+            "to": "OBSERVE",
+            "hand": "EMPTY",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": "object_lost"
+          }
+        ]
+      },
+      "sink": {
+        "official": {
+          "tray": "tray_left",
+          "ok": true
+        },
+        "uninterrupted_cycle": true,
+        "transitions": [
+          {
+            "sim": 3.919999912,
+            "from": "OBSERVE",
+            "to": "OPEN",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 6.22999986,
+            "from": "OPEN",
+            "to": "APPROACH",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 31.759999290000003,
+            "from": "APPROACH",
+            "to": "DESCEND",
+            "hand": "EMPTY",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 33.429999252,
+            "from": "DESCEND",
+            "to": "CLOSE",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 36.399999186,
+            "from": "CLOSE",
+            "to": "VERIFY_GRASP",
+            "hand": "UNKNOWN",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 36.719999179000006,
+            "from": "VERIFY_GRASP",
+            "to": "LIFT",
+            "hand": "HOLDING",
+            "lift": "NEVER_LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 38.789999132000005,
+            "from": "LIFT",
+            "to": "VERIFY_LIFT",
+            "hand": "HOLDING",
+            "lift": "UNKNOWN",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 39.109999125,
+            "from": "VERIFY_LIFT",
+            "to": "DESTINATION",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 39.319999121,
+            "from": "DESTINATION",
+            "to": "VERIFY_TRANSFER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 39.639999113,
+            "from": "VERIFY_TRANSFER",
+            "to": "TRANSFER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 48.729998910000006,
+            "from": "TRANSFER",
+            "to": "VERIFY_HOLD",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 49.059998903,
+            "from": "VERIFY_HOLD",
+            "to": "LOWER",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 51.769998842,
+            "from": "LOWER",
+            "to": "RELEASE",
+            "hand": "HOLDING",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 53.439998805,
+            "from": "RELEASE",
+            "to": "RETREAT",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 58.1299987,
+            "from": "RETREAT",
+            "to": "CLEAR",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 66.79999850600001,
+            "from": "CLEAR",
+            "to": "LOOK_TABLE",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 67.169998498,
+            "from": "LOOK_TABLE",
+            "to": "VERIFY_PLACE",
+            "hand": "UNKNOWN",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          },
+          {
+            "sim": 67.479998491,
+            "from": "VERIFY_PLACE",
+            "to": "VERIFY_EMPTY",
+            "hand": "EMPTY",
+            "lift": "LIFTED",
+            "reason": "",
+            "last_recovery": ""
+          }
+        ]
+      },
+      "raw_sha256": {
+        "solution.log": "df53d8903e0dce58b5d1a9684e1b343aa020f328973a3fd18907a45708231c80",
+        "result.json": "44c485f4a3e5b07fc77a614b7dad9c6697785e9ac2a63b53f1324fa07b1bb89e",
+        "joint_states.jsonl": "cfef1abf6744fabe004b18cfcd9b234f932348d8bdb9394e782c65a280e675ee",
+        "perception_scenes.jsonl": "ecaf47dc0796c1e8cd2b6ad37636439aa526c2203992e6e633da14e5a7ebd70c",
+        "video/frames.jsonl": "606d81cb2bd4474515624320577a4c91fcf1168df2dabfdc0043113472926387"
+      },
+      "video": {
+        "source_record": {
+          "first": {
+            "index": 872,
+            "wall_elapsed_s": 184.37829725909978,
+            "stamps": {
+              "cam_head": 111.979997497,
+              "cam_torso": 111.949997498
+            }
+          },
+          "last": {
+            "index": 1450,
+            "wall_elapsed_s": 304.293488105759,
+            "stamps": {
+              "cam_head": 181.069995953,
+              "cam_torso": 181.039995953
+            }
+          },
+          "speed": "4x relative to 5 fps source recording; camera overlay uses sim time",
+          "frames": 579,
+          "source_sha256": "94701485ca80e093f5c539d6369b3e22cf783f78f21f650bdf92c191c4b35b40",
+          "clip_sha256": "f962f9205e5f77637c42487f000be952c6c47469889694c874410e361371acdc",
+          "bytes": 8257531
+        },
+        "published_path": "docs/evidence/pr23/philips_seed146_c88589d_4x.mp4",
+        "published_sha256": "47a1400d1255423b1c876a3f9f0962a51f5d3c779b03da42747cc3ae428d4fde",
+        "published_bytes": 2185811,
+        "probe": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 360,
+          "nb_frames": "579"
+        }
+      },
+      "final_frame": {
+        "path": "docs/evidence/pr23/final_seed146_c88589d.jpg",
+        "sha256": "4487140b1b558ae5c3e1c4ebf085c71603908e721ff4f3c521efe6edf71ee784",
+        "requested_sim": 181
+      },
+      "brother_slip_video": {
+        "source_record": {
+          "first": {
+            "index": 641,
+            "wall_elapsed_s": 135.96702410513535,
+            "stamps": {
+              "cam_head": 83.959998123,
+              "cam_torso": 83.959998123
+            }
+          },
+          "last": {
+            "index": 799,
+            "wall_elapsed_s": 169.21857947390527,
+            "stamps": {
+              "cam_head": 103.009997698,
+              "cam_torso": 103.009997698
+            }
+          },
+          "speed": "4x relative to 5 fps source recording; camera overlay uses sim time",
+          "frames": 159,
+          "source_sha256": "94701485ca80e093f5c539d6369b3e22cf783f78f21f650bdf92c191c4b35b40",
+          "clip_sha256": "fd537dd872f59d9c115fec73d317de64aeb75fa0bbf09ac0113fe534781b472d",
+          "bytes": 2684513
+        },
+        "published_path": "docs/evidence/pr23/brother_seed146_c88589d_slip_4x.mp4",
+        "published_sha256": "cf20043ea13615641885369ebda1579157f69fe696383c0c2da12c95b58f317b",
+        "published_bytes": 755285,
+        "probe": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 360,
+          "nb_frames": "159"
+        }
+      }
+    }
+  ]
+}

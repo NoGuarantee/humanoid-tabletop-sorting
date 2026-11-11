@@ -1,5 +1,6 @@
 """Robot constants: motor ids, joint limits, groups. Source: hackathon/docs/INTERFACES.md of the simulator repo."""
 import math
+from .recorded_grasp import HAND_TARGETS
 
 MAX_SPEED = 0.8  # rad/s, hard limit of every arm/head/waist motor in the sim and on the real robot
 
@@ -366,6 +367,7 @@ def raise_steps(arm):
 # Hand presets: Inspire actuators 1 little, 2 ring, 3 middle, 4 index, 5 thumb bend, 6 thumb rotation; 1.0 open, 0.0 closed.
 # Starting points only, tune them on real objects (owner: grasping).
 HAND_PRESETS = {
+    **HAND_TARGETS,
     "open": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
     "power": [0.2, 0.2, 0.2, 0.2, 0.5, 0.2],  # example from INTERFACES.md
     # Index + thumb. A finger presses only as hard as its target is past the contact, whatever the force limit:

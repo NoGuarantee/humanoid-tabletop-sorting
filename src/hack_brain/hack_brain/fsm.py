@@ -6,10 +6,12 @@ from .context import Context, Effect, Event, Hand, History, Lift, Operation, Sce
 from .policies import destination_in_scene, required_capabilities, select
 from .verification import evidence, fresh, placement
 
-VERIFY = {State.VERIFY_EMPTY, State.VERIFY_GRASP, State.VERIFY_LIFT, State.VERIFY_REORIENT,
+VERIFY = {State.VERIFY_EMPTY, State.VERIFY_GRASP, State.VERIFY_LIFT, State.VERIFY_TIGHTEN, State.VERIFY_REORIENT,
           State.VERIFY_HOLD, State.VERIFY_TRANSFER, State.VERIFY_PLACE, State.RECOVER}
 NEXT = {State.OPEN: State.APPROACH, State.APPROACH: State.DESCEND, State.DESCEND: State.CLOSE,
+        State.LOOK_GRASP: State.DESCEND,
         State.CLOSE: State.VERIFY_GRASP, State.LIFT: State.VERIFY_LIFT,
+        State.TIGHTEN: State.VERIFY_TIGHTEN,
         State.REORIENT: State.VERIFY_REORIENT, State.TRANSFER: State.VERIFY_HOLD,
         State.LOWER: State.RELEASE, State.INSERT: State.RELEASE,
         State.RELEASE: State.RETREAT}
@@ -19,12 +21,20 @@ NEXT = {State.OPEN: State.APPROACH, State.APPROACH: State.DESCEND, State.DESCEND
 def _enter(c, state, effects):
     assert c.active is None and not c.blocked and c.state != State.DONE
     c.state = state
+    if state == State.OPEN:
+        c.history[c.target.id].postlift_done = False
     if state == State.LIFT:
         c.history[c.target.id].lift_attempts += 1
     c.serial += 1
     c.active = Operation(c.serial, state, c.sim, c.wall)
     arm = c.look_side if state == State.LOOK_TABLE else c.start_steps[0][1] if c.start_steps else ''
     effects.append(Effect('RUN', c.serial, state, c.target, c.destination, c.slot, arm))
+
+
+def _after_lift(c):
+    if c.target.name in c.config.postlift_names and not c.history[c.target.id].postlift_done:
+        return State.TIGHTEN
+    return State.REORIENT if c.spec.variant == 'lying' and not c.reoriented else State.DESTINATION
 
 
 def _may_have_moved(c, op):
@@ -51,14 +61,15 @@ def _side_to_look(c, scene):
     """The side of a tray the task names and no look has shown, not looked at yet; '' when there is none.
 
     The head camera straight ahead cut off the side trays: perception saw only tray_center, and the objects for the
-    others were never picked (eval 2026-11-09). tray_left is on the left (TASKS.md). A side whose arm is disabled is
-    not worth the look: nothing goes to its tray."""
+    others were never picked (eval 2026-11-09). A recorded hand can also carry
+    across the table, so its opposite tray remains relevant with one arm disabled."""
     if c.spec is None or c.spec.kind != 'sort':
         return ''
     seen = {x.id for x in scene.containers if x.kind == 'tray'}
+    cross_table = any(any(arm != c.disabled_arm for arm in arms) for _, arms in c.config.recorded_arms)
     for tray in sorted(set(c.spec.categories.values()) - seen):
         side = 'left' if 'left' in tray else 'right' if 'right' in tray else ''
-        if side and side not in c.looked_sides and side != c.disabled_arm:
+        if side and side not in c.looked_sides and (side != c.disabled_arm or cross_table):
             return side
     return ''
 
@@ -252,6 +263,9 @@ def _result(c, e, op, effects):
         return
     if state == State.LIFT and e.kind == 'RESULT' and e.ok:
         c.arm_low = False
+    if state in (State.TIGHTEN, State.VERIFY_TIGHTEN) and (e.kind == 'REJECTED' or not e.ok):
+        _done(c, effects, 'postlift_closure_failed')
+        return
     if e.kind == 'REJECTED' or not e.ok:
         if state in VERIFY:
             c.hand = Hand.UNKNOWN
@@ -284,6 +298,14 @@ def _result(c, e, op, effects):
         return
     if state in VERIFY:
         ev = evidence(c, e.data, op.sim_start)
+        if state == State.VERIFY_TIGHTEN:
+            if ev is None or ev.hand != Hand.HOLDING or not ev.lifted:
+                _done(c, effects, 'postlift_closure_unconfirmed')
+            else:
+                c.hand = ev.hand
+                c.history[c.target.id].postlift_done = True
+                _enter(c, _after_lift(c), effects)
+            return
         if ev is None or ev.hand == Hand.UNKNOWN:
             c.hand = Hand.UNKNOWN
             if state == State.VERIFY_EMPTY and not c.start_cleared:
@@ -357,8 +379,7 @@ def _result(c, e, op, effects):
                 else:
                     _look(c, effects)
             elif h.lift == Lift.LIFTED:
-                _enter(c, State.REORIENT if c.spec.variant == 'lying' and not c.reoriented
-                       else State.DESTINATION, effects)
+                _enter(c, _after_lift(c), effects)
             elif h.lift_attempts < c.config.max_attempts:
                 _enter(c, State.LIFT, effects)
             else:
@@ -375,7 +396,7 @@ def _result(c, e, op, effects):
                     _let_go(c, effects)
             else:
                 c.history[c.target.id].lift = Lift.LIFTED
-                _enter(c, State.REORIENT if c.spec.variant == 'lying' else State.DESTINATION, effects)
+                _enter(c, _after_lift(c), effects)
         elif state == State.VERIFY_REORIENT:
             if not ev.upright:
                 _done(c, effects, 'orientation_unconfirmed')
@@ -397,6 +418,8 @@ def _result(c, e, op, effects):
             _recover(c, effects, 'stale_scene')
             return
         c.scene = scene
+        recorded = dict(c.config.recorded_arms)
+        c.recorded_seen.update(o.id for o in scene.objects if o.name in recorded)
         if state == State.DESTINATION:
             dest = destination_in_scene(c, scene, c.target)
             if dest is None:
@@ -419,7 +442,35 @@ def _result(c, e, op, effects):
                 c.scene = None
                 _look(c, effects)
             elif obj is None:
-                _done(c, effects, 'candidates_exhausted')
+                unseen_attempts = any(c.history.get(oid, History()).attempts == 0
+                                      for oid in c.recorded_seen)
+                if (unseen_attempts and not c.recorded_rescanned
+                        and c.hand == Hand.EMPTY and not c.disabled_arm):
+                    # Preserve baseline order: placing Philips first exposed it
+                    # to a later sink carry (13051). Recover its missing view
+                    # only after normal candidates are exhausted, with empty
+                    # hands and without resetting any grasp attempt/history.
+                    c.recorded_rescanned = True
+                    c.empty_observations = 0
+                    c.scene = None
+                    c.last_recovery = 'recorded_view_rescan'
+                    _free_hands(c, effects, raise_arms=True)
+                else:
+                    _done(c, effects, 'candidates_exhausted')
+            elif (obj.name in recorded and not c.recorded_rescanned
+                  and c.hand == Hand.EMPTY and not c.disabled_arm):
+                # The previous placement can leave the free arm away from
+                # ready with fingers no longer fully open. Motion then cannot
+                # park it, and both recorded pregrasps spend their attempts
+                # on IK failures (seed7). Reuse the one bounded empty-hand
+                # preparation before the first recorded attempt, then obtain
+                # a new scene/model; never reset attempts or a held object.
+                c.recorded_rescanned = True
+                c.empty_observations = 0
+                c.scene = None
+                c.target = None
+                c.last_recovery = 'recorded_pregrasp_prepare'
+                _free_hands(c, effects, raise_arms=True)
             else:
                 c.empty_observations = 0
                 # Recoveries are budgeted per attempt: five 'no /joint_states yet' rejections while motion started
@@ -432,4 +483,7 @@ def _result(c, e, op, effects):
                 c.destination, c.slot = destination_in_scene(c, scene, obj) or ('', None)
                 _enter(c, State.OPEN, effects)
     elif state in NEXT:
-        _enter(c, NEXT[state], effects)
+        following = NEXT[state]
+        if state == State.APPROACH and c.target.name in dict(c.config.recorded_arms):
+            following = State.LOOK_GRASP
+        _enter(c, following, effects)

@@ -1,0 +1,431 @@
+[
+  {
+    "object_pose_world_wxyz": [
+      8.185624122619629,
+      6.213347434997559,
+      0.8255879878997803,
+      0.6548352821735708,
+      3.24735853280281e-05,
+      3.9709597258782005e-05,
+      0.7557716259487874
+    ],
+    "target_tcp_pose_world_wxyz": [
+      8.217875172767416,
+      6.337243680809321,
+      1.0259854758563747,
+      0.8170679848216851,
+      -0.13806018619896998,
+      0.43731335554994094,
+      0.34942284158850756
+    ],
+    "pregrasp_tcp_pose_world_wxyz": [
+      8.219720187858902,
+      6.335606267136411,
+      1.1283213787954696,
+      0.8157215049714044,
+      -0.1323719370731937,
+      0.4370654910659156,
+      0.3550350026715504
+    ],
+    "arm_side": "left",
+    "closure_duration_s": 2.0,
+    "closure_settle_s": 1.0,
+    "key": "brother_left_wide",
+    "source": {
+      "input_path": "outputs/box_pose_robustness_20261107/brother_combo100_v187/stages/brother_combo100_v187_b0_s20000/probe/full_arm_input.json",
+      "input_sha256": "3b619f1732d5dca723ebda4f4a83049a326a2f53c4af4ce38868baead90df8cc",
+      "report_path": "outputs/box_pose_robustness_20261107/brother_combo100_v187/remote_progress_latest.json",
+      "report_sha256": "e5521304347b7f0474f3d4a12e81a608fb8523b6efe591cfb0272de8582f364c",
+      "canonical_trace_sha256": "ec07f615e5437ef360e6f9bf72a14e4b421aaaa5030544c4d632445f6edc177f",
+      "native_full_cycle_passed": true,
+      "policy_path": "outputs/box_pose_robustness_20261107/brother_combo100_v187/policy_library.json",
+      "policy_sha256": "5990a4f2a503cd23f6383722b3df8f668f1f4bcec308d0683743003df95bb1fe"
+    },
+    "pregrasp_ratios": [
+      0.73,
+      0.73,
+      0.73,
+      0.73,
+      0.8300000000000001,
+      0.1
+    ],
+    "closed_ratios": [
+      0.29000000000000004,
+      0.29000000000000004,
+      0.29000000000000004,
+      0.29000000000000004,
+      0.39,
+      0.1
+    ]
+  },
+  {
+    "object_pose_world_wxyz": [
+      8.326818466186523,
+      5.783238410949707,
+      0.8255874514579773,
+      0.7932958207924675,
+      1.8221325265115247e-05,
+      1.3897700445502289e-05,
+      0.6088363821159528
+    ],
+    "target_tcp_pose_world_wxyz": [
+      8.405213915155663,
+      5.884447561855885,
+      1.0259881113744913,
+      0.8706141070189104,
+      -0.047416440786678594,
+      0.4561086503806974,
+      0.17817872165521773
+    ],
+    "pregrasp_tcp_pose_world_wxyz": [
+      8.406259979460122,
+      5.882217388623037,
+      1.1283240987465117,
+      0.870422338253334,
+      -0.041894067805214236,
+      0.4547233182734475,
+      0.183947122757372
+    ],
+    "arm_side": "left",
+    "closure_duration_s": 2.0,
+    "closure_settle_s": 1.0,
+    "key": "brother_left_compact",
+    "source": {
+      "input_path": "outputs/box_pose_robustness_20261107/brother_combo100_v187/stages/brother_combo100_v187_b0_s20002/probe/full_arm_input.json",
+      "input_sha256": "b309d0ac0cae5b82b598558cfaeea2d910dcd3178a4b07ec1fdd0ecf3bc7daa2",
+      "report_path": "outputs/box_pose_robustness_20261107/brother_combo100_v187/remote_progress_latest.json",
+      "report_sha256": "e5521304347b7f0474f3d4a12e81a608fb8523b6efe591cfb0272de8582f364c",
+      "canonical_trace_sha256": "5f40cd1e5ec1e215bf90a8bf2ac8930c27c29e6a9ff4b7e3e6b2575a21d63453",
+      "native_full_cycle_passed": true,
+      "policy_path": "outputs/box_pose_robustness_20261107/brother_combo100_v187/policy_library.json",
+      "policy_sha256": "5990a4f2a503cd23f6383722b3df8f668f1f4bcec308d0683743003df95bb1fe"
+    },
+    "pregrasp_ratios": [
+      0.29000000000000004,
+      0.4188666015850025,
+      0.5344938897175736,
+      0.6067612788436114,
+      0.7164098602412792,
+      0.1
+    ],
+    "closed_ratios": [
+      0.29000000000000004,
+      0.29000000000000004,
+      0.29000000000000004,
+      0.29000000000000004,
+      0.39,
+      0.1
+    ]
+  },
+  {
+    "object_pose_world_wxyz": [
+      8.17801570892334,
+      5.640041828155518,
+      0.8245343565940857,
+      0.6897330166692094,
+      0.0061331874578101665,
+      -0.008778828046768624,
+      0.723984586787678
+    ],
+    "target_tcp_pose_world_wxyz": [
+      8.239454780124985,
+      5.6867546214612625,
+      1.0506056549046119,
+      0.7112573952353318,
+      -0.3684175417064928,
+      0.22512539192004072,
+      -0.5547071214603645
+    ],
+    "pregrasp_tcp_pose_world_wxyz": [
+      8.240242653722815,
+      5.683532153304443,
+      1.1507383659765695,
+      0.7112275389556612,
+      -0.3688762980038196,
+      0.22148002989422472,
+      -0.5559067016686561
+    ],
+    "arm_side": "right",
+    "closure_duration_s": 2.0,
+    "closure_settle_s": 1.0,
+    "key": "philips_right",
+    "source": {
+      "input_path": "outputs/box_pose_robustness_20261107/philips100_v224/stages/philips100_v224_b4_s20000/probe/full_arm_input.json",
+      "input_sha256": "8d23cda0195278b3dcdc47e118bef27156bd5f73dda95ed80b34db3e13dbbace",
+      "report_path": "outputs/box_pose_robustness_20261107/philips100_v224/remote_progress_latest.json",
+      "report_sha256": "b648ff27460bacbe877f01e7581132aedbdbf9f737203ca868c36bf144090952",
+      "canonical_trace_sha256": "88611aa82200ba1769714f98741d218dd9259c9dd3b8cd4641934eb4513454d6",
+      "native_full_cycle_passed": true,
+      "policy_path": "outputs/box_pose_robustness_20261107/philips100_v224/policy_library.json",
+      "policy_sha256": "45f5c246fe75d21c7e2ea3f1a17a80f897b2142b2148f593db9d7719716aa4ea"
+    },
+    "pregrasp_ratios": [
+      0.93,
+      0.93,
+      0.93,
+      0.93,
+      1.0,
+      0.1
+    ],
+    "closed_ratios": [
+      0.29,
+      0.29,
+      0.29,
+      0.29,
+      0.39,
+      0.1
+    ]
+  },
+  {
+    "object_pose_world_wxyz": [
+      8.216761589050293,
+      5.722163677215576,
+      0.8245342969894409,
+      0.999648659782276,
+      -0.0018703097606498297,
+      -0.010544230840381034,
+      0.024246198318158097
+    ],
+    "target_tcp_pose_world_wxyz": [
+      8.160543757928659,
+      5.785846665563901,
+      1.0480217864293138,
+      0.8914635432764992,
+      -0.4248331959395627,
+      -0.11990586807138261,
+      0.10213760051388822
+    ],
+    "pregrasp_tcp_pose_world_wxyz": [
+      8.159524364145351,
+      5.787281472654138,
+      1.1481939733744753,
+      0.8922363298105954,
+      -0.4225646297153335,
+      -0.12282751075080955,
+      0.10132555493270715
+    ],
+    "arm_side": "right",
+    "closure_duration_s": 2.0,
+    "closure_settle_s": 1.0,
+    "key": "philips_right_turn180",
+    "source": {
+      "input_path": "outputs/box_pose_robustness_20261107/philips100_v224/stages/philips100_v224_b4_s20007/probe/full_arm_input.json",
+      "input_sha256": "400c58831db70aafb60a482e7218af88b420e82db5c21680492174d17b73e3f6",
+      "report_path": "outputs/box_pose_robustness_20261107/philips100_v224/remote_progress_latest.json",
+      "report_sha256": "b648ff27460bacbe877f01e7581132aedbdbf9f737203ca868c36bf144090952",
+      "canonical_trace_sha256": "b95faf14f874f4d4be8705bc335a396985f681b5c197b338cb8e73083b8ae1a0",
+      "native_full_cycle_passed": true,
+      "policy_path": "outputs/box_pose_robustness_20261107/philips100_v224/policy_library.json",
+      "policy_sha256": "45f5c246fe75d21c7e2ea3f1a17a80f897b2142b2148f593db9d7719716aa4ea"
+    },
+    "pregrasp_ratios": [
+      0.93,
+      0.93,
+      0.93,
+      0.93,
+      1.0,
+      0.1
+    ],
+    "closed_ratios": [
+      0.29,
+      0.29,
+      0.29,
+      0.29,
+      0.39,
+      0.1
+    ]
+  },
+  {
+    "object_pose_world_wxyz": [
+      8.317415237426758,
+      5.644160747528076,
+      0.825148344039917,
+      0.7671062639143333,
+      0.0008437477180006877,
+      -0.00566491555089978,
+      0.6414944868702948
+    ],
+    "target_tcp_pose_world_wxyz": [
+      8.387082435910118,
+      5.694308904639392,
+      1.0860115212371726,
+      0.712621891035955,
+      -0.42865850209425865,
+      0.20254886196342825,
+      -0.5171033625069229
+    ],
+    "pregrasp_tcp_pose_world_wxyz": [
+      8.383845343095162,
+      5.697139162674111,
+      1.1908363695991535,
+      0.7141425606429624,
+      -0.4271792381485302,
+      0.20376432186831972,
+      -0.5157503298173426
+    ],
+    "arm_side": "right",
+    "closure_duration_s": 2.0,
+    "closure_settle_s": 0.5,
+    "postlift_closure_ratios": [
+      0.44,
+      0.44,
+      0.44,
+      0.44,
+      0.59,
+      0.1
+    ],
+    "postlift_closure_duration_s": 2.0,
+    "key": "nescafe_right",
+    "source": {
+      "input_path": "outputs/box_pose_robustness_20261107/coffee100_v215/stages/coffee100_v215_b3_s20000/probe/full_arm_input.json",
+      "input_sha256": "0f5079c6e9864ae3d66fe83c2c6a8afe2fbadfa3c6d8f89ffeb86ab94b5f6e85",
+      "report_path": "outputs/box_pose_robustness_20261107/coffee100_v215/remote_progress_latest.json",
+      "report_sha256": "1ffe063f77477338386cf9a5a7c8484aa9a3c0f9ebc222a6094d0563c2e3d87d",
+      "canonical_trace_sha256": "b65921e61805683be95b3cb447b5744e31245189410bb7a91d9c1cd8c54bbf63",
+      "native_full_cycle_passed": true,
+      "policy_path": "outputs/box_pose_robustness_20261107/coffee100_v215/policy_library.json",
+      "policy_sha256": "1be11c02f23fc42758b8e732fb86f990c299fad6a9276313d1153c2191ef89b0"
+    },
+    "pregrasp_ratios": [
+      0.93,
+      0.93,
+      0.93,
+      0.93,
+      0.8300000000000001,
+      0.1
+    ],
+    "closed_ratios": [
+      0.49,
+      0.49,
+      0.49,
+      0.49,
+      0.64,
+      0.1
+    ]
+  },
+  {
+    "object_pose_world_wxyz": [
+      8.326370239257812,
+      5.761533737182617,
+      0.8251485228538513,
+      0.7105127913074092,
+      0.0013165582953754786,
+      -0.005571124872804683,
+      0.7036609997935516
+    ],
+    "target_tcp_pose_world_wxyz": [
+      8.262105913339019,
+      5.695703366400037,
+      1.0840230985578319,
+      0.45430562451566153,
+      -0.1659641205359384,
+      -0.4542096178039612,
+      0.7481683856743392
+    ],
+    "pregrasp_tcp_pose_world_wxyz": [
+      8.264499465860457,
+      5.691418661670529,
+      1.1888212386952222,
+      0.4528510340805389,
+      -0.16732228800009558,
+      -0.452842425892198,
+      0.7495751664660917
+    ],
+    "arm_side": "right",
+    "closure_duration_s": 2.0,
+    "closure_settle_s": 0.5,
+    "postlift_closure_ratios": [
+      0.44,
+      0.44,
+      0.44,
+      0.44,
+      0.59,
+      0.1
+    ],
+    "postlift_closure_duration_s": 2.0,
+    "key": "nescafe_right_turn180",
+    "source": {
+      "input_path": "outputs/box_pose_robustness_20261107/coffee100_v215/stages/coffee100_v215_b3_s20006/probe/full_arm_input.json",
+      "input_sha256": "075b23af9050c4319f8a81659c50b243dc58cedbb31bc000839555d7ee3611c7",
+      "report_path": "outputs/box_pose_robustness_20261107/coffee100_v215/remote_progress_latest.json",
+      "report_sha256": "1ffe063f77477338386cf9a5a7c8484aa9a3c0f9ebc222a6094d0563c2e3d87d",
+      "canonical_trace_sha256": "0d703d9dc4c8602f234e6b8e0be3e51fae9215a2731fa2df73d9082cc4ba4044",
+      "native_full_cycle_passed": true,
+      "policy_path": "outputs/box_pose_robustness_20261107/coffee100_v215/policy_library.json",
+      "policy_sha256": "1be11c02f23fc42758b8e732fb86f990c299fad6a9276313d1153c2191ef89b0"
+    },
+    "pregrasp_ratios": [
+      0.93,
+      0.93,
+      0.93,
+      0.93,
+      0.8300000000000001,
+      0.1
+    ],
+    "closed_ratios": [
+      0.49,
+      0.49,
+      0.49,
+      0.49,
+      0.64,
+      0.1
+    ]
+  },
+  {
+    "object_pose_world_wxyz": [
+      8.19392059326172,
+      5.90257007598877,
+      0.8265872033059859,
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "target_tcp_pose_world_wxyz": [
+      8.051521324594896,
+      5.8487223638285055,
+      0.9343400599246915,
+      -0.43769055551282793,
+      -0.5828058412308267,
+      -0.13052885737270017,
+      0.6721060529671474
+    ],
+    "pregrasp_tcp_pose_world_wxyz": [
+      7.981991925948572,
+      5.848190352403993,
+      0.9488189045190233,
+      -0.43769055551282793,
+      -0.5828058412308267,
+      -0.13052885737270017,
+      0.6721060529671474
+    ],
+    "arm_side": "right",
+    "closure_duration_s": 2.0,
+    "closure_settle_s": 1.0,
+    "key": "brother_right",
+    "source": {
+      "input_path": "outputs/box_pose_robustness_20261107/pick_evidence_001/results/pick_brother0_v3/input.json",
+      "input_sha256": "15ee1513ceaf6c8072a0f80b5dea143f4fdc62f59266caac9e1c74bee1e23398",
+      "report_path": "outputs/box_pose_robustness_20261107/pick_evidence_001/results/pick_brother0_v3/independent_cycle_audit.json",
+      "report_sha256": "e6da57d5676eaecfd1257e5b2d6a8b2e1c1ca01572e708457a10fd7c4383b3ba",
+      "canonical_trace_sha256": "95235f7fd3c1a2595590aa0f1b353e95c23af50db246ee307baa5350d1e3eab5",
+      "native_full_cycle_passed": true
+    },
+    "pregrasp_ratios": [
+      0.73,
+      0.73,
+      0.73,
+      0.73,
+      0.8300000000000001,
+      0.09999999999999998
+    ],
+    "closed_ratios": [
+      0.29000000000000004,
+      0.29000000000000004,
+      0.29000000000000004,
+      0.29000000000000004,
+      0.39,
+      0.09999999999999998
+    ]
+  }
+]

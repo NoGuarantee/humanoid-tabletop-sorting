@@ -13,11 +13,14 @@ class State(str, Enum):
     OBSERVE = 'OBSERVE'
     OPEN = 'OPEN'
     APPROACH = 'APPROACH'
+    LOOK_GRASP = 'LOOK_GRASP'
     DESCEND = 'DESCEND'
     CLOSE = 'CLOSE'
     VERIFY_GRASP = 'VERIFY_GRASP'
     LIFT = 'LIFT'
     VERIFY_LIFT = 'VERIFY_LIFT'
+    TIGHTEN = 'TIGHTEN'
+    VERIFY_TIGHTEN = 'VERIFY_TIGHTEN'
     REORIENT = 'REORIENT'
     VERIFY_REORIENT = 'VERIFY_REORIENT'
     DESTINATION = 'DESTINATION'
@@ -58,6 +61,7 @@ class Object:
     partial: bool = False
     lying: bool = False
     side: str = ''  # 'left' for y > 0, else 'right': the arm when the tray does not choose it (choose_arm)
+    track_id: str = ''  # selected sensor cluster; history still uses semantic id
 
 
 @dataclass(frozen=True)
@@ -98,6 +102,7 @@ class History:
     placed: bool = False
     released: bool = False  # let go over the destination, placement not confirmed: never picked again
     contacted: bool = False
+    postlift_done: bool = False
 
 
 @dataclass
@@ -132,6 +137,8 @@ class Config:
     # Names left untouched: `skip: true` in grasp_db.yaml. Lifted and dropped is -10, untouched is 0 (SCORING.md).
     # Not a ROS parameter: brain_node fills it from the grasp db.
     skip_names: frozenset = frozenset()
+    postlift_names: frozenset = frozenset()  # recorded profiles with a separate closure above the table
+    recorded_arms: tuple = ()  # (object name, demonstrated hands); tray side does not forbid a cross-table carry
     # (name, floor) pairs: `min_confidence` under by_name in grasp_db.yaml, below min_confidence for a name whose
     # size sits far from every other category in its pool. Filled by brain_node like skip_names.
     confidence_floors: tuple = ()
@@ -165,6 +172,10 @@ class Context:
     serial: int = 0
     recoveries: int = 0
     empty_observations: int = 0
+    # Prepare both empty hands once before a recorded attempt, or recover a
+    # previously seen recorded object's view. The same one-shot budget applies.
+    recorded_seen: set = field(default_factory=set)
+    recorded_rescanned: bool = False
     # The arm may be down at the object (DESCEND was accepted and no LIFT or BACK_OFF since).
     arm_low: bool = False
     # An arm may be over the table, in the head camera view (APPROACH was accepted and no CLEAR since).

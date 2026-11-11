@@ -1,10 +1,12 @@
 """ROS adapter. Callbacks only enqueue events; no callback waits on a future."""
 import math
+import json
 
 from hack_interfaces.action import Hand, MoveJoints, MoveTcp
 from hack_interfaces.srv import Perceive
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
+from std_srvs.srv import Trigger
 
 from .context import Container, Event, Evidence, Object, Scene, State
 from .physical import PhysicalVerifier
@@ -20,6 +22,7 @@ from rclpy.time import Time
 from hack_motion.robot import HAND_PRESETS, JOINTS
 from .fsm import VERIFY
 from .skills import Skills
+from .recorded_grasps import observed_pose, associate_model_pose, selected_object
 from .grasp_planner import tray_side
 from .transport import ActionTransport
 
@@ -57,6 +60,7 @@ class Clients:
         self.node, self.emit = node, emit
         cb = ReentrantCallbackGroup()
         self.perceive_cli = node.create_client(Perceive, 'perception/perceive', callback_group=cb)
+        self.model_cli = node.create_client(Trigger, 'perception/estimate_model_poses', callback_group=cb)
         self.actions = {
             'tcp': ActionClient(node, MoveTcp, 'motion/move_tcp', callback_group=cb),
             'joints': ActionClient(node, MoveJoints, 'motion/move_joints', callback_group=cb),
@@ -83,6 +87,10 @@ class Clients:
         # there and every call took 8-14 s (eval 2026-11-08). A new phase takes the call over instead.
         self.perceive_inflight = None
         self.motion_wait = None
+        self.model_pending = None
+        self.model_future = None
+        self.next_model_request = 0.
+        self.model_pose_error = ''
         self.verify_pending = None
         self.verify_scene = None
         self.verify_future = None
@@ -93,7 +101,12 @@ class Clients:
 
     def execute(self, effect, context):
         if effect.kind == 'CANCEL':
-            if self.motion_wait is not None and self.motion_wait.op_id == effect.op_id:
+            if self.model_pending is not None and self.model_pending.op_id == effect.op_id:
+                self.model_pending = self.model_future = None
+                self.emit(Event('CANCEL_ACK', effect.op_id))
+                self.emit(Event('RESULT', effect.op_id, ok=False, stopped=True))
+                return
+            if self.motion_wait is not None and self.motion_wait[0].op_id == effect.op_id:
                 self.motion_wait = None
                 self.emit(Event('CANCEL_ACK',effect.op_id))
                 self.emit(Event('RESULT',effect.op_id,ok=False,stopped=True))
@@ -116,27 +129,60 @@ class Clients:
             self.scene_future = self.adopt_perceive(self.scene_request(effect.phase, context))
             self.next_scene_request = 0.0
             return
+        if self.skills.needs_model_pose(effect):
+            self.model_pending = effect
+            self.model_pose_error = ''
+            self.model_future = None
+            self.next_model_request = 0.
+            return
+        self.execute_motion(effect, context)
+
+    def execute_motion(self, effect, context):
         try:
             # Only owner thread updates this cache from result payloads via accept_scene.
             scene = self.scenes.get('destination' if effect.phase == State.TRANSFER else 'table')
-            name, goal = self.skills.command(effect, scene, context.history[effect.target.id].attempts if effect.target else 0)
-            if not self.actions[name].server_is_ready():
-                self.motion_wait = effect
-            else:
-                self.motion_wait = None
-                if effect.phase == State.OPEN:
-                    self.verifier.arm = goal.hand
-                    self.verifier.target_id = effect.target.id
-                    self.verifier.closure = None
-                    self.verifier.baseline = None
-                    self.verifier.contact_seen = self.verifier.lifted = self.verifier.contact_lost = False
-                    self.verifier.unsure_since = None
-                if effect.phase == State.CLOSE:
-                    self.verifier.closing(effect.target,goal.hand,HAND_PRESETS[goal.preset],context.sim)
-                self.stop_resources = {effect.op_id: stop_resource(name, goal)}
-                self.transport.send(effect.op_id, self.actions[name], goal)
+            kwargs = {}
+            if effect.phase == State.LOOK_GRASP:
+                with self.measurements.lock:
+                    samples = self.measurements.samples['joints']
+                    # Joint callbacks can be one clock tick ahead of the
+                    # reducer. Use the newest sample at its current sim time.
+                    latest = next((row for row in reversed(samples) if 0 <= context.sim-row[0] <= .5), None)
+                if latest is None:
+                    raise ValueError('stale_grasp_look_joints')
+                kwargs['joint_positions'] = latest[1]
+            name, goal = self.skills.command(effect, scene, context.history[effect.target.id].attempts if effect.target else 0,
+                                            **kwargs)
+            self.send_motion(effect, name, goal, context.sim)
         except Exception as exc:
             self.emit(Event('REJECTED', effect.op_id, repr(exc), ok=False, stopped=True))
+
+    def send_motion(self, effect, name, goal, now):
+        if self.skills.needs_model_pose(effect):
+            exposure = self.skills.grasp.exposure
+            if not 0 <= now - exposure['stamp_ns'] / 1e9 <= 1.75:
+                self.motion_wait = None
+                self.emit(Event('REJECTED', effect.op_id, 'recorded_pose_expired_before_motion', ok=False, stopped=True))
+                return
+        if not self.actions[name].server_is_ready():
+            self.motion_wait = (effect, name, goal)
+            return
+        self.motion_wait = None
+        if effect.phase == State.OPEN:
+            self.verifier.arm = goal.hand
+            self.verifier.target_id = effect.target.id
+            self.verifier.closure = None
+            self.verifier.baseline = None
+            self.verifier.contact_seen = self.verifier.lifted = self.verifier.contact_lost = False
+            self.verifier.unsure_since = None
+        if effect.phase == State.CLOSE:
+            self.verifier.closing(effect.target, goal.hand, HAND_PRESETS[goal.preset], now)
+        if effect.phase == State.TIGHTEN:
+            self.verifier.closure = tuple(HAND_PRESETS[goal.preset])
+            self.verifier.closures[goal.hand] = self.verifier.closure
+            self.verifier.unsure_since = None
+        self.stop_resources = {effect.op_id: stop_resource(name, goal)}
+        self.transport.send(effect.op_id, self.actions[name], goal)
 
     def accept_scene(self, event):
         phase, response = event.data
@@ -147,7 +193,7 @@ class Clients:
         stamp = s.header.stamp.sec + s.header.stamp.nanosec * 1e-9
         objects = tuple(Object(o.name or o.track_id, o.category, o.name, o.cap_color,
                                o.confidence, o.partially_visible, o.lying,
-                               'left' if o.center.y > 0 else 'right') for o in s.objects)
+                               'left' if o.center.y > 0 else 'right', o.track_id) for o in s.objects)
         containers = tuple(Container(x.id, x.kind, tuple(i for i, occupied in enumerate(x.slot_occupied)
                                                         if not occupied and i < len(x.slots)),
                                      tray_side(x)) for x in s.containers)
@@ -181,18 +227,20 @@ class Clients:
 
     def poll(self, context):
         self.transport.poll()
+        self.poll_model_pose(context)
         waiting = self.motion_wait
         if waiting:
             self.motion_wait = None
-            if context.active and context.active.id == waiting.op_id and context.state != State.CANCELLING:
+            effect, name, goal = waiting
+            if context.active and context.active.id == effect.op_id and context.state != State.CANCELLING:
                 if context.sim-context.active.sim_start >= 3.0:
-                    self.emit(Event('REJECTED',waiting.op_id,'motion_unavailable',ok=False,stopped=True))
+                    self.emit(Event('REJECTED',effect.op_id,'motion_unavailable',ok=False,stopped=True))
                 else:
-                    self.execute(waiting,context)
+                    self.send_motion(effect, name, goal, context.sim)
         self.poll_scene(context)
         v = self.verifier
         if (v.contact_seen and context.target and context.hand.value == 'HOLDING'
-                and context.state not in (State.RELEASE,State.RETREAT,State.VERIFY_PLACE,State.CANCELLING,State.DONE)):
+                and context.state not in (State.TIGHTEN,State.RELEASE,State.RETREAT,State.VERIFY_PLACE,State.CANCELLING,State.DONE)):
             sample = self.measurements.hand(v.arm,context.sim,context.sim-.6,v.closure)
             if sample is not None and sample[1] == 'HOLDING':
                 v.unsure_since = None
@@ -232,6 +280,86 @@ class Clients:
             return
         self.verify_pending = None
         self.emit(Event('RESULT',effect.op_id,ev or Evidence(context.sim,source='sensors_unconfirmed')))
+
+    def poll_model_pose(self, context):
+        """Read-only preparation of OPEN/DESCEND, owned by the same operation ID as the action.
+
+        No future callback sends a motor command. Cancellation or a changed operation drops the response.
+        Perception's Trigger schedules fitting and can return 'pending', so retry within the scene budget.
+        """
+        effect = self.model_pending
+        if effect is None:
+            return
+        if not context.active or context.active.id != effect.op_id or context.state == State.CANCELLING:
+            self.model_pending = self.model_future = None
+            return
+        # A freshly started CPU worker can still be loading at the normal
+        # six-second scene deadline (4090 seed 7: ready just after it). Allow
+        # bounded initialization before OPEN, without relaxing exposure age or
+        # waiting longer with the hand already at DESCEND.
+        budget = 15. if effect.phase == State.OPEN and self.model_pose_error == 'worker_loading' else SCENE_WAIT_S
+        if context.sim - context.active.sim_start >= budget:
+            self.model_pending = self.model_future = None
+            self.node.get_logger().warning('recorded pose unavailable: ' + json.dumps({
+                'object': effect.target.name, 'phase': effect.phase.value,
+                'last_response': self.model_pose_error}))
+            self.emit(Event('REJECTED', effect.op_id, 'fresh_recorded_pose_unavailable', ok=False, stopped=True))
+            return
+        if self.model_future is not None and self.model_future.done():
+            future, self.model_future = self.model_future, None
+            data, payload = None, None
+            try:
+                response = future.result()
+                payload = json.loads(response.message)
+                if response.success:
+                    if effect.phase == State.OPEN:
+                        scene = self.scenes['table']
+                        if scene.header.frame_id != 'pelvis' or not 0 <= context.active.sim_start-stamp(scene) <= 2.:
+                            raise ValueError('stale_recorded_selection_scene')
+                        obj = selected_object(scene, effect.target)
+                        reference = [getattr(obj.center, axis) for axis in 'xyz']
+                        reference_stamp = int(stamp(scene)*1e9)
+                    else:
+                        reference = self.skills.grasp.observed_center
+                        reference_stamp = self.skills.grasp.exposure['stamp_ns']
+                    data = associate_model_pose(payload, reference, reference_stamp, object_name=effect.target.name,
+                                                previous=self.skills.grasp if effect.phase == State.DESCEND else None)
+                    observed_pose(data, context.sim, int(context.active.sim_start * 1e9), object_name=effect.target.name)
+                elif payload.get('status') != 'awaiting_fresh_pose' or not self.model_pose_error:
+                    # A later pending poll must not erase the actual pose rejection.
+                    self.model_pose_error = payload.get('status', 'unsuccessful_response')
+            except Exception as exc:
+                self.model_pose_error = str(exc)
+                if isinstance(payload, dict) and payload.get('objects'):
+                    self.node.get_logger().info('recorded pose rejected: ' + json.dumps(dict(
+                        error=str(exc), object=effect.target.name, phase=effect.phase.value,
+                        exposure=payload.get('exposure_key'), objects=[row for row in payload['objects']
+                            if isinstance(row, dict) and row.get('name') == effect.target.name])))
+                data = None
+            if data is not None:
+                self.model_pending = None
+                try:
+                    self.skills.prepare_recorded(effect, self.scenes['table'], data, context.sim,
+                                                 int(context.active.sim_start * 1e9),
+                                                 context.history[effect.target.id].attempts, context.disabled_arm)
+                    self.node.get_logger().info('recorded grasp: ' + json.dumps({
+                        'object': effect.target.name, 'profile': self.skills.grasp.profile_key,
+                        'arm': self.skills.grasp.arm, 'phase': effect.phase.value,
+                        'destination': effect.destination, 'exposure': self.skills.grasp.exposure,
+                        'association': data.get('target_association'),
+                        'model_pose': next((row for row in data.get('objects', [])
+                                            if row.get('name') == effect.target.name), None)}))
+                    self.execute_motion(effect, context)
+                except Exception as exc:
+                    self.emit(Event('REJECTED', effect.op_id, repr(exc), ok=False, stopped=True))
+                return
+            self.next_model_request = context.sim + .1
+        if (self.model_future is None and context.sim >= self.next_model_request
+                and self.model_cli.service_is_ready()):
+            try:
+                self.model_future = self.model_cli.call_async(Trigger.Request())
+            except Exception:
+                self.next_model_request = context.sim + .1
 
     @staticmethod
     def scene_request(phase, context):

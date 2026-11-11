@@ -13,9 +13,11 @@ So a skill must know whether it holds the object, and putting it back on the tab
 Tube insertion/reorientation deliberately have no fabricated geometric implementation.
 """
 from geometry_msgs.msg import Pose
+import math
 
 from .context import State
 from .grasp_planner import FINGERTIP, flat_hold_point, plan_grasps, plan_place, pose, tcp_from_local
+from . import recorded_grasps
 
 # The joint loop accepts 0.01 rad. On a 0.7 m arm that is already about 1 cm at the TCP, and the default
 # MoveTcp limit is 1 cm, so a descent that had arrived was rejected at 1.02 cm and the hand never closed.
@@ -28,6 +30,10 @@ HEAD_SIDE_YAW = 0.6
 # Pre-grasp and above-tray poses are in free air, and the linear move after them plans from the measured pose.
 # An approach that stopped 1.01 cm off was rejected at the 1 cm default and cost the attempt (eval 2026-11-08).
 FREE_POS_TOL = 0.02
+# Free-air approach reached 5.10 mm / 0.049 rad on seed 7 and was rejected
+# by a 5 mm gate, before a fresh pose and a new measured-start descent.
+# Carry similarly reached 6 mm. Contact, lower and retreat still use 5 mm.
+RECORDED_TRANSIT_POS_TOL = 0.01
 
 
 def place_for(cand, container, db):
@@ -36,6 +42,8 @@ def place_for(cand, container, db):
     Keep the grasp orientation: turning the wrist to yaw 0 on the way tips a pinched object out. plan_place aims
     a vertical hand; a leaned (flat pinch) hand holds the object between the pads, not on the TCP axis.
     """
+    if isinstance(cand, recorded_grasps.RecordedGrasp):
+        return recorded_grasps.place(cand, container, db)
     plan = plan_place(cand.arm, container, db)
     q = cand.grasp.orientation
     if cand.leaned:
@@ -60,7 +68,18 @@ class Skills:
         self.grasp = None
         self.place_plan = None
 
-    def command(self, effect, scene, attempt=1):
+    def needs_model_pose(self, effect):
+        return (effect.phase in (State.OPEN, State.DESCEND) and effect.target is not None
+                and recorded_grasps.uses_recorded(self.db, effect.target.name))
+
+    def prepare_recorded(self, effect, scene, data, now, after_stamp_ns, attempt=1, disabled_arm=''):
+        obj = recorded_grasps.selected_object(scene, effect.target)
+        container = next((x for x in scene.containers if x.id == effect.destination and x.kind == 'tray'), None)
+        key = self.grasp.profile_key if effect.phase == State.DESCEND else None
+        cand = recorded_grasps.candidate(data, now, obj, container, self.db, after_stamp_ns, attempt, key, disabled_arm)
+        self.grasp = recorded_grasps.refreshed(self.grasp, cand) if effect.phase == State.DESCEND else cand
+
+    def command(self, effect, scene, attempt=1, *, joint_positions=None):
         from hack_interfaces.action import Hand, MoveJoints, MoveTcp
         phase = effect.phase
         if phase == State.LOOK_TABLE:
@@ -72,12 +91,18 @@ class Skills:
         if phase == State.ARMS_READY:  # then up off the table and whatever the new layout put under the hand
             return 'tcp', MoveTcp.Goal(arm=effect.arm, target=Pose(), mode='ready')
         if phase == State.OPEN:
-            obj = next(o for o in scene.objects if (o.name or o.track_id) == effect.target.id)
+            obj = (recorded_grasps.selected_object(scene, effect.target) if self.needs_model_pose(effect) else
+                   next(o for o in scene.objects if (o.name or o.track_id) == effect.target.id))
             container = next((x for x in scene.containers if x.id == effect.destination and x.kind == 'tray'), None)
-            candidates = plan_grasps(obj, scene, self.db, container)
-            if not candidates:
-                raise ValueError('no_grasp_candidates')
-            self.grasp = candidates[min(attempt - 1, len(candidates) - 1)]
+            self.place_plan = None
+            if recorded_grasps.uses_recorded(self.db, obj.name):
+                if not isinstance(self.grasp, recorded_grasps.RecordedGrasp):
+                    raise ValueError('missing_recorded_model_pose')
+            else:
+                candidates = plan_grasps(obj, scene, self.db, container)
+                if not candidates:
+                    raise ValueError('no_grasp_candidates')
+                self.grasp = candidates[min(attempt - 1, len(candidates) - 1)]
             # The pinch turns the thumb across before the descent (pinch_ready), as pick() does. Turned at the
             # grasp instead, the thumb pushed the cartridge aside and it slipped out on the lift (sort3 seed 1).
             return 'hand', Hand.Goal(hand=self.grasp.arm, preset=self.grasp.approach_preset,
@@ -85,11 +110,33 @@ class Skills:
         if self.grasp is None:
             raise ValueError('missing_grasp_plan')
         g = self.grasp
+        if phase == State.LOOK_GRASP:
+            # APPROACH may turn the shared waist. On seed 13051 it turned
+            # +0.576 rad and put Philips outside both cameras. Restore the
+            # LOOK_TABLE camera heading before requesting a new pose;
+            # changing body yaw here would also move the pregrasp TCP.
+            if not isinstance(g, recorded_grasps.RecordedGrasp):
+                raise ValueError('missing_recorded_model_pose')
+            body_yaw = (joint_positions or {}).get('body_yaw_joint')
+            if body_yaw is None or not math.isfinite(body_yaw):
+                raise ValueError('missing_measured_body_yaw')
+            # Looking directly down the arm at a side object hides it behind
+            # the forearm (seed 13051). The original table view contained it.
+            yaw = -body_yaw
+            yaw = math.atan2(math.sin(yaw), math.cos(yaw))
+            from hack_motion.robot import JOINTS
+            lo, hi = JOINTS['head_yaw_joint'][2:]
+            return 'joints', MoveJoints.Goal(joints=['head_pitch_joint', 'head_yaw_joint'],
+                                            positions=[0.4, max(lo, min(hi, yaw))])
         if phase == State.CLEAR:  # the arm of the last grasp, to the side and out of the head camera view
             return 'tcp', MoveTcp.Goal(arm=g.arm, target=Pose(), mode='ready')
         if phase in (State.CLOSE, State.RELEASE):
-            return 'hand', Hand.Goal(hand=g.arm, preset=g.hand_preset if phase == State.CLOSE else 'open',
-                                     force=float(g.force if phase == State.CLOSE else 0.0))
+            release = (g.profile_key + '_release' if isinstance(g, recorded_grasps.RecordedGrasp)
+                       and 'release' in recorded_grasps.PROFILES[g.profile_key] else 'open')
+            preset = g.hand_preset if phase == State.CLOSE else release
+            return 'hand', Hand.Goal(hand=g.arm, preset=preset, force=float(g.force if preset != 'open' else 0.0))
+        if phase == State.TIGHTEN:
+            return 'hand', Hand.Goal(hand=g.arm, preset=g.profile_key + '_postlift', force=float(g.force))
         if phase == State.TRANSFER:
             container = next(x for x in scene.containers if x.id == effect.destination and x.kind == 'tray')
             self.place_plan = place_for(g, container, self.db)
@@ -99,10 +146,27 @@ class Skills:
                           State.RETREAT: self.place_plan.retreat})
         if phase not in poses:
             raise NotImplementedError('skill unavailable: ' + phase.value)
+        recorded = isinstance(g, recorded_grasps.RecordedGrasp)
+        bounded_carry = (not recorded and phase == State.TRANSFER and
+                         self.db.get('by_name', {}).get(effect.target.name, {}).get('bounded_carry', False))
+        precise = recorded or bounded_carry
+        mode = {State.APPROACH: 'direct', State.TRANSFER: 'carry'}.get(phase, 'linear')
+        contact = {}
+        if recorded and phase == State.TRANSFER:
+            inward = recorded_grasps.PROFILES[g.profile_key].get('placement', {}).get('carry_inward_fallback_m', 0.)
+            x, y = g.observed_center[:2]
+            radius = math.hypot(x, y)
+            contact['carry_inward_xy'] = [-inward*x/radius, -inward*y/radius] if radius > 1e-6 else [0., 0.]
+        if recorded and phase == State.DESCEND:
+            contact = dict(contact_object=g.contact_object_id, contact_center=list(g.observed_center),
+                           contact_stamp_ns=g.exposure['stamp_ns'])
+            if not g.contact_object_id:
+                raise ValueError('missing_recorded_contact_object')
         return 'tcp', MoveTcp.Goal(arm=g.arm, target=poses[phase],
-                                  mode={State.APPROACH: 'direct', State.TRANSFER: 'carry'}.get(phase, 'linear'),
-                                  pos_tol={State.DESCEND: GRASP_POS_TOL, State.APPROACH: FREE_POS_TOL,
-                                           State.TRANSFER: FREE_POS_TOL}.get(phase, 0.0))
+                                  mode=mode + '_fixed' if precise else mode,
+                                  pos_tol=(RECORDED_TRANSIT_POS_TOL if phase in (State.APPROACH, State.TRANSFER) else .005) if precise else {State.DESCEND: GRASP_POS_TOL, State.APPROACH: FREE_POS_TOL,
+                                           State.TRANSFER: FREE_POS_TOL}.get(phase, 0.0),
+                                  rot_tol=.05 if precise else 0.0, **contact)
 
     def holding(self, arm, hand_result):
         # TODO(grasping): also check the weight on /arm_6dof_{arm} after lifting (force along gravity)

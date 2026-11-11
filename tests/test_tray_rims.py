@@ -1,9 +1,12 @@
 """Color/depth fallback must measure a supported rim, including clipped trays."""
 import unittest
+from types import SimpleNamespace as NS
 import numpy as np
 from test_scene_geometry import scene
 from hack_perception import table_clusters as tc
 from hack_perception.tray_rims import color_openings
+from hack_perception import classify
+from hack_perception.rgbd.scene_geometry import Tray
 
 
 def cloud_of(sensor):
@@ -16,6 +19,48 @@ def cloud_of(sensor):
 
 
 class ColorRimTest(unittest.TestCase):
+    def test_measured_rim_wins_over_tray_merged_with_placed_brother(self):
+        # Actual seed-7 cluster after placing Brother; its top includes the
+        # contents. Passive RGB-D rim fits before/after placement both stayed
+        # at z=-0.0704, yaw=0 and the measured 0.22 x 0.32 opening.
+        cluster = NS(rejected='tray', size=(.314804, .254881, .096578),
+                     center=(.549564, -.032376, -.0925), top_z=-.044212,
+                     yaw=1.177363, n_points=100, pixels=np.arange(100))
+        rgb = np.tile(np.array(classify.TRAY_CHROMA['green'])*255, (10, 10, 1)).astype(np.uint8)
+        mapping = {'green':'tray_center'}
+        baseline = classify.merge_trays([], [cluster], rgb, mapping)
+        self.assertAlmostEqual(baseline[0][2][2], -.044212)
+        measured = Tray('tray_center', 'green', np.array([.535934, .001052, -.070497]), 0.)
+        corrected = classify.merge_trays([], [cluster], rgb, mapping, measured=[measured])
+        np.testing.assert_allclose(corrected[0][2], measured.center)
+        self.assertEqual(corrected[0][4], (.22, .32, .07))
+        # Without a supported rim, retain the existing conservative fallback.
+        self.assertEqual(classify.merge_trays([], [cluster], rgb, mapping, measured=[]), baseline)
+
+    def test_model_supported_opening_keeps_priority_over_color_fit(self):
+        model = Tray('tray_center', 'green', np.array([.535, 0., -.07]), 0.)
+        color = Tray('tray_center', 'green', np.array([.536, .001, -.0705]), .01)
+        merged = classify.merge_trays([model], [], None, {'green':'tray_center'}, measured=[color])
+        np.testing.assert_allclose(merged[0][2], model.center)
+
+    def test_missing_recorded_rim_never_replaces_known_tray_with_contents_box(self):
+        # seed146, 4f9219d: DESTINATION at sim166.70 accepted this cluster;
+        # before/after exposure gave a .22 x .32 rim at (.535, .001, -.070).
+        cluster = NS(rejected='tray', size=(.288784, .238595, .096537),
+                     center=(.554460, -.054315, -.092213), top_z=-.043945,
+                     yaw=1.094822, n_points=100, pixels=np.arange(100))
+        rgb = np.tile(np.array(classify.TRAY_CHROMA['green'])*255, (10, 10, 1)).astype(np.uint8)
+        mapping = {'green':'tray_center'}
+        self.assertEqual(classify.merge_trays([], [cluster], rgb, mapping, allow_clusters=False), [])
+        # Disabled RGB-D retains the existing baseline path.
+        self.assertEqual(len(classify.merge_trays([], [cluster], rgb, mapping)), 1)
+        rim = Tray('tray_center', 'green', np.array([.535, .001, -.070]), 0.)
+        for model, measured in (([rim], []), ([], [rim])):
+            accepted = classify.merge_trays(model, [cluster], rgb, mapping, measured, allow_clusters=False)
+            self.assertEqual(len(accepted), 1)
+            np.testing.assert_allclose(accepted[0][2], rim.center)
+            self.assertEqual(accepted[0][4], (.22, .32, .07))
+
     def test_four_or_three_walls_measure_pose_and_use_only_task_color_id(self):
         for walls in (3,4):
             sensor,_,_,center,_ = scene(visible_walls=walls)

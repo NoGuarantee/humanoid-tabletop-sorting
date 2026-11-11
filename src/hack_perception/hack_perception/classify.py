@@ -306,10 +306,12 @@ if __name__ == "__main__":
     raise SystemExit(_check())
 
 
-def merge_trays(model_trays, rejected, rgb, tray_of_color):
-    """Prefer openings fitted from masks. Fill missing IDs from colour clusters."""
+def merge_trays(model_trays, rejected, rgb, tray_of_color, measured=(), *, allow_clusters=True):
+    """Prefer fitted openings, then measured plastic rims, then colour clusters."""
     trays = {t.id: (t.id, t.color, t.center, t.yaw, t.size) for t in model_trays}
-    if set(tray_of_color.values()) - trays.keys():
+    for t in measured:
+        trays.setdefault(t.id, (t.id, t.color, t.center, t.yaw, t.size))
+    if allow_clusters and set(tray_of_color.values()) - trays.keys():
         for t in find_trays(rejected, rgb, tray_of_color):
             trays.setdefault(t["id"], (t["id"], t["color"], t["center"], t["yaw"], t["size"]))
     return list(trays.values())

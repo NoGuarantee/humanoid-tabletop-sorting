@@ -5,6 +5,10 @@ string mode                # direct (joint-space) | linear (straight line in Car
 float32 pos_tol            # metres, 0 = default 0.01
 float32 rot_tol            # radians, 0 = default 0.1
 float32 max_time           # seconds of sim time, 0 = default
+string contact_object      # optional exact perception track_id, only for a recorded linear_fixed descent
+float64[3] contact_center   # freshly associated model centre in pelvis; ignored when contact_object is empty
+int64 contact_stamp_ns      # RGB-D exposure in /clock time; contact permission expires after 1.75 s
+float64[2] carry_inward_xy  # optional <=8 cm inward XY offset for a failed first raise in carry_fixed; zero keeps the route
 ---
 bool success
 float32 pos_error

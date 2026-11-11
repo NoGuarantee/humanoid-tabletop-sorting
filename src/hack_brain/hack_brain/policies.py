@@ -46,17 +46,28 @@ def arm_for(scene, obj, dests):
 
 def select(c, scene):
     candidates = []
+    recorded = dict(c.config.recorded_arms)
     for obj in scene.objects:
         h = c.history.get(obj.id, History())
-        if (not obj.id or obj.partial or not math.isfinite(obj.confidence) or obj.confidence < c.config.min_confidence_for(obj.name) or h.placed or h.released
+        # A named cluster proposes where to run canonical identification; it
+        # does not authorize a recorded motion. OPEN requires a fresh, uniquely
+        # associated model pose before even the hand command. On seed 13051 a
+        # 0.33 size/colour score otherwise prevented that model check entirely.
+        model_proposal = obj.name in recorded and obj.confidence > 0.
+        if (not obj.id or obj.partial or not math.isfinite(obj.confidence)
+                or (obj.confidence < c.config.min_confidence_for(obj.name) and not model_proposal) or h.placed or h.released
                 or h.attempts >= c.config.max_attempts or obj.name in c.config.skip_names
                 or not destinations(c.spec, obj)):
             continue
         if c.spec.kind == 'sort' and destination_in_scene(c, scene, obj) is None:
             continue
-        if c.disabled_arm and arm_for(scene, obj, destinations(c.spec, obj)) == c.disabled_arm:
-            continue
+        if c.disabled_arm:
+            arms = dict(c.config.recorded_arms).get(obj.name)
+            if (arms is not None and not any(a != c.disabled_arm for a in arms)
+                    or arms is None and arm_for(scene, obj, destinations(c.spec, obj)) == c.disabled_arm):
+                continue
         candidates.append(obj)
     # Known lifted objects deserve recovery priority. No geometric identity guesses.
-    candidates.sort(key=lambda o: (c.history.get(o.id, History()).lift != Lift.LIFTED, o.id))
+    candidates.sort(key=lambda o: (c.history.get(o.id, History()).lift != Lift.LIFTED, o.id,
+                                   -o.confidence if o.name in recorded else 0.))
     return candidates[0] if candidates else None

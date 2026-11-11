@@ -7,7 +7,7 @@ from time import monotonic
 from uuid import uuid4
 
 
-def _serve(requests, results, model_dir, model_poses, torch_threads, device='cpu'):
+def _serve(requests, results, model_dir, model_poses, torch_threads, device='cpu', robot_self_filter=False):
     os.environ["YOLO_OFFLINE"] = "true"
     os.environ["YOLO_AUTOINSTALL"] = "false"
     try:
@@ -19,6 +19,9 @@ def _serve(requests, results, model_dir, model_poses, torch_threads, device='cpu
         from .rgbd_frames import CAMERAS
 
         backend = PoseBackend(model_dir, model_poses=model_poses, device=device)
+        if robot_self_filter:
+            from .rgbd_robot_filter import filter_sensor_packets, filter_provenance, load_robot_geometry
+            robot_geometry=load_robot_geometry()
     except Exception as exc:
         results.put(("failed", None, repr(exc), None))
         return
@@ -34,6 +37,12 @@ def _serve(requests, results, model_dir, model_poses, torch_threads, device='cpu
         try:
             if kind == "scene":
                 new_sensors, tray_of_color = data
+                if robot_self_filter:
+                    for sensor in new_sensors:
+                        if sensor is not None and (sensor.get('stamp_ns')!=key[1]
+                                or sensor.get('robot_joint_state',{}).get('generation')!=key[0]):
+                            raise ValueError('robot_filter_exposure_epoch_mismatch')
+                    new_sensors=filter_sensor_packets(new_sensors,robot_geometry)
                 new_prepared = prepare_scene(backend, new_sensors, tray_of_color)
                 cache_key, sensors, prepared = key, new_sensors, new_prepared
                 value = prepared[1:]
@@ -46,6 +55,8 @@ def _serve(requests, results, model_dir, model_poses, torch_threads, device='cpu
                 if isinstance(value, dict):
                     bind_exposure(value, key, session_id,
                                   [camera for camera, sensor in zip(CAMERAS, sensors) if sensor is not None])
+                    if robot_self_filter:
+                        value['robot_self_filter']=filter_provenance(sensors)
             else:
                 raise ValueError("pose request requires the prepared exposure")
         except Exception as exc:
@@ -55,12 +66,12 @@ def _serve(requests, results, model_dir, model_poses, torch_threads, device='cpu
 
 
 class PoseWorker:
-    def __init__(self, model_dir, model_poses, torch_threads, device='cpu'):
+    def __init__(self, model_dir, model_poses, torch_threads, device='cpu', robot_self_filter=False):
         context = get_context("spawn")
         self.requests = context.Queue(maxsize=1)
         self.results = context.Queue(maxsize=1)
         self.process = context.Process(target=_serve, args=(self.requests, self.results, model_dir,
-                                                            model_poses, torch_threads, device), daemon=True)
+                                                            model_poses, torch_threads, device, robot_self_filter), daemon=True)
         self.process.start()
 
     def submit(self, kind, key, data):

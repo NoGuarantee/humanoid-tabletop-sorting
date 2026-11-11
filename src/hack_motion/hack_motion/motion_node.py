@@ -30,11 +30,15 @@ from std_msgs.msg import String
 from tf2_ros import Buffer, TransformListener
 
 from .curobo_planner import Unreachable
+from .recorded_grasp import HAND_TARGETS, hand_steps, profile_for_preset
+from .recorded_carry import carry_waypoints, pose_matrix, with_matrix
+from .recorded_contact import measured_contact
 from .robot import (ARM_JOINTS, HAND_PRESETS, JOINTS, MAX_SPEED, READY_STEP, TCP_LINK, TRAY_IDS, VERTICAL, clip,
                     raise_steps, ready_pose, tilt, top_down, yaw)
 
 KEEP_YAW_XY = 0.03  # m: a linear move this far across or less is vertical, and a top-down hand keeps its yaw on it
 PERIOD = 0.05  # s, real time between control checks
+CLOCK_STALL_WALL_S = 15.0  # watchdog only: abort if /clock stops advancing; motion timing uses sim time
 # Inspire actuator 6, thumb rotation. It turns across before the other fingers close.
 THUMB = 5
 # /inspire_hand/set_speed: 1.0 is a full stroke in 0.8 s. Half of that keeps the close from kicking the object out.
@@ -94,6 +98,10 @@ HELD_TOL = 0.05  # rad, the arm MoveTcp did not ask for: it only holds its pose
 # Joint step of one follow segment. 0.3 rad left the 10 cm grasp descent (21 planned waypoints, no joint
 # past 0.3) as a single joint-space chord, so the hand did not travel the straight line cuRobo had planned.
 PATH_STEP = 0.1
+# A 0.01 rad endpoint error can already exceed the recorded grasp's 5 mm TCP
+# budget at arm reach. Keep the same planned path and Cartesian acceptance,
+# but let the existing droop controller converge further at its final point.
+RECORDED_PRECISE_JOINT_TOL = 0.003
 
 
 class MotionNode(Node):
@@ -103,6 +111,7 @@ class MotionNode(Node):
         self._execution_lock = threading.Lock()
         self._execution = threading.local()
         self.q = {}
+        self.joint_stamp = None
         self.compensation = {}  # joint -> rad on top of the target, kept between moves (see move_joints)
         self.hand_state = {"left": None, "right": None}
         # What the last Hand goal of each side found: False after a close that met nothing or an open, True after a
@@ -202,7 +211,11 @@ class MotionNode(Node):
             # A tray the arm hides keeps the pose it was last seen at: trays are not moved during the task.
             self.seen_trays.update(seen)
         table = f"z = {-plane[3] / plane[2]:.4f} + {-plane[0] / plane[2]:.4f} x" if found else "none"
-        self.get_logger().info(f"perception scene: {len(objs)} objects, trays {sorted(seen)}, table {table}")
+        geometry = [{"id": t[0], "center": list(t[1:4]), "yaw": t[4], "size": list(t[5:8])}
+                    for _, t in sorted(seen.items())]
+        self.get_logger().info(
+            f"perception scene: {len(objs)} objects, trays {sorted(seen)}, table {table}; "
+            f"tray_geometry={json.dumps(geometry)}")
 
     def _world(self):
         """(table plane, trays) for the cuRobo world: what perception measured, limited to the trays of the task."""
@@ -214,6 +227,7 @@ class MotionNode(Node):
     def on_joints(self, msg):
         with self.lock:
             self.q.update(zip(msg.name, msg.position))
+            self.joint_stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
 
     def on_hand(self, side, msg):
         with self.lock:
@@ -381,6 +395,36 @@ class MotionNode(Node):
             finally:
                 self._execution.handle = None
 
+    def _wait_head_settled(self, names):
+        """Do not bake the head collision model while the drives still coast.
+
+        The joint move accepts 0.02 rad; the head then moved another 0.03 rad
+        on seed 13051, invalidating the just-prepared model. Require fresh
+        measurements over 0.3 sim seconds with at most 0.005 rad spread.
+        """
+        start, wall = self.now(), time.monotonic()
+        recent = []
+        while rclpy.ok() and self.now()-start <= 3.:
+            if self.cancelled() or time.monotonic()-wall > 30.:
+                return False
+            time.sleep(PERIOD)
+            with self.lock:
+                stamp = self.joint_stamp
+                values = [self.q.get(n) for n in names]
+            if (stamp is None or stamp < start or not 0 <= self.now()-stamp <= .2
+                    or any(v is None or not math.isfinite(v) for v in values)):
+                continue
+            if recent and stamp <= recent[-1][0]:
+                continue
+            recent.append((stamp, values))
+            while len(recent) > 1 and recent[1][0] <= stamp-.3:
+                recent.pop(0)
+            if (len(recent) >= 3 and stamp-recent[0][0] >= .3
+                    and all(max(q[i] for _, q in recent)-min(q[i] for _, q in recent) <= .005
+                            for i in range(len(names)))):
+                return True
+        return False
+
     def exec_move_joints(self, handle):
         def run():
             g = handle.request
@@ -389,6 +433,21 @@ class MotionNode(Node):
                 fb.max_error = float(e)
                 handle.publish_feedback(fb)
             ok, err, msg = self.move_joints(list(g.joints), list(g.positions), g.speed, g.tol, g.max_time, feedback)
+            if ok and g.joints and all(n.startswith('head_') for n in g.joints) and self._planner is not None:
+                # cuRobo bakes head joints into its collision model. Rebuild
+                # here, before LOOK_GRASP finishes and brain requests a fresh
+                # exposure. Rebuilding during DESCEND consumed the contact
+                # pose's 1.75 s age budget on seed 7. No motor command below.
+                if not self._wait_head_settled(list(g.joints)):
+                    return MoveJoints.Result(success=False, max_error=float(err), message='head_not_settled')
+                with self._tcp_lock:
+                    planner = self._planner_obj()
+                    with self.lock:
+                        snapshot = dict(self.q)
+                        planner.objects, planner.carrying = self.scene_objects, self.carrying
+                    note = planner.load(snapshot)
+                    if note != 'curobo already loaded':
+                        self.get_logger().info('head look prepared planner: ' + note)
             return MoveJoints.Result(success=ok, max_error=float(err), message=msg)
         return self.execute(handle,MoveJoints,run)
 
@@ -402,6 +461,8 @@ class MotionNode(Node):
             res.success = False
             return res
         target = [float(v) for v in HAND_PRESETS[g.preset]]
+        if g.preset in HAND_TARGETS:
+            return self.recorded_hand(handle, target)
         # 0 keeps the limit already set (Hand.action). 1.0 pushes the object out; grasps pass 0.3-0.5.
         if g.force > 0 and not self._set_hand_limit(g.hand, g.force):
             self.get_logger().warn(f"set_force {g.hand} {g.force:.2f} was not applied")
@@ -438,6 +499,59 @@ class MotionNode(Node):
         res.success = (st is not None and len(st.position) >= 6 and
                        abs(self.now()-(st.header.stamp.sec+st.header.stamp.nanosec*1e-9)) <= .5)
         return res
+
+    def recorded_hand(self, handle, target):
+        """Run a named profile's finger schedule under the normal motor/action lock."""
+        goal = handle.request
+        profile = profile_for_preset(goal.preset)
+        force = float(goal.force)
+        # Hand.force is float32: an encoded 0.6 becomes 0.6000000238 in Python.
+        if goal.hand != profile['hand'] or not math.isfinite(force) or not 0 < force <= profile['effort_limit'] + 1e-7:
+            return Hand.Result(success=False)
+        force = min(force, profile['effort_limit'])
+        self.hand_holds[goal.hand] = None
+        if not self._set_hand_limit(goal.hand, force) or not self._set_hand_speed(goal.hand, 1.0):
+            return Hand.Result(success=False)
+        clock_progress_wall = time.monotonic()
+        start = last = self.now()
+        elapsed = 0.
+        for positions, duration in hand_steps(goal.preset):
+            now = self.now()
+            sample = self._finger_sample(goal.hand)
+            if (self.cancelled() or now < last or sample is None or abs(now - sample[0]) > .5
+                    or not all(math.isfinite(p) for p in sample[1])):
+                return Hand.Result(success=False)
+            elapsed += duration
+            self._command_fingers(goal.hand, positions)
+            while rclpy.ok():
+                now = self.now()
+                sample = self._finger_sample(goal.hand)
+                if now > last:
+                    clock_progress_wall = time.monotonic()
+                if time.monotonic() - clock_progress_wall >= CLOCK_STALL_WALL_S:
+                    self.get_logger().warn('recorded hand: /clock stopped advancing for 15 wall seconds')
+                    return Hand.Result(success=False)
+                if (self.cancelled() or now < last
+                        or sample is None or abs(now - sample[0]) > .5
+                        or not all(math.isfinite(p) for p in sample[1])):
+                    return Hand.Result(success=False)
+                handle.publish_feedback(Hand.Feedback(position=sample[1]))
+                last = now
+                if now - start >= elapsed:
+                    break
+                time.sleep(PERIOD)
+            else:
+                return Hand.Result(success=False)
+        with self.lock:
+            state = self.hand_state[goal.hand]
+        positions = [float(p) for p in state.position[:6]]
+        efforts = [float(e) for e in state.effort[:6]]
+        detected = len(efforts) == 6 and any(
+            t < .9 and p > t + .05 and e > .1 for p, t, e in zip(positions[:4], target[:4], efforts[:4]))
+        self.hand_holds[goal.hand] = bool(detected)
+        self.get_logger().info(f"recorded hand {goal.hand} {goal.preset}: "
+                               f"position {positions}, effort {efforts}, contact {detected}")
+        return Hand.Result(success=True, object_detected=detected, position=positions, effort=efforts)
 
     def _finger_pos(self, side):
         with self.lock:
@@ -655,6 +769,8 @@ class MotionNode(Node):
                 self.carrying = False
 
     def _carry_legs(self, g, tf):
+        if g.mode == 'carry_fixed':
+            return self._recorded_carry_legs(g, tf)
         legs = []
         if tf is not None and tf.transform.translation.z < g.target.position.z - 0.01:
             up = copy.deepcopy(g.target)
@@ -663,8 +779,8 @@ class MotionNode(Node):
             legs.append(up)
         legs.append(g.target)
         for target in legs:
-            leg = MoveTcp.Goal(arm=g.arm, target=target, mode="linear", pos_tol=g.pos_tol, rot_tol=g.rot_tol,
-                               max_time=g.max_time)
+            leg = MoveTcp.Goal(arm=g.arm, target=target, mode="linear",
+                               pos_tol=g.pos_tol, rot_tol=g.rot_tol, max_time=g.max_time)
             result = self.move_tcp(leg)
             if self.cancelled():
                 return MoveTcp.Result(success=False, message='cancelled')
@@ -673,8 +789,60 @@ class MotionNode(Node):
                 break
         else:
             return result
-        return self.move_tcp(MoveTcp.Goal(arm=g.arm, target=g.target, mode="direct", pos_tol=g.pos_tol,
-                                          rot_tol=g.rot_tol, max_time=g.max_time))
+        return self.move_tcp(MoveTcp.Goal(arm=g.arm, target=g.target, mode="direct",
+                                          pos_tol=g.pos_tol, rot_tol=g.rot_tol, max_time=g.max_time))
+
+    def _recorded_carry_legs(self, g, tf):
+        if tf is None:
+            return MoveTcp.Result(success=False, message='recorded_carry_requires_measured_tcp')
+        stamp = tf.header.stamp.sec + tf.header.stamp.nanosec * 1e-9
+        if not -.05 <= self.now() - stamp <= .5:
+            return MoveTcp.Result(success=False, message='recorded_carry_tcp_stale')
+        start = copy.deepcopy(g.target)
+        for k in 'xyz':
+            setattr(start.position, k, getattr(tf.transform.translation, k))
+        start.orientation = copy.deepcopy(tf.transform.rotation)
+        try:
+            waypoints = carry_waypoints(pose_matrix(start), pose_matrix(g.target))
+            inward = list(getattr(g, 'carry_inward_xy', (0., 0.)))
+            fallback = (carry_waypoints(pose_matrix(start), pose_matrix(g.target), raise_offset=inward)
+                        if any(inward) and g.target.position.z > start.position.z+.001 else None)
+            self.get_logger().info('recorded carry: ' + json.dumps(dict(
+                arm=g.arm, start=pose_matrix(start).tolist(), target=pose_matrix(g.target).tolist(),
+                pos_tol=g.pos_tol, rot_tol=g.rot_tol, waypoints=len(waypoints), inward_xy=inward)))
+        except ValueError as exc:
+            return MoveTcp.Result(success=False, message=str(exc))
+        for index, matrix in enumerate(waypoints):
+            if self.cancelled():
+                return MoveTcp.Result(success=False, message='cancelled')
+            target = with_matrix(g.target, matrix)
+            result = self.move_tcp(MoveTcp.Goal(arm=g.arm, target=target, mode='linear_fixed',
+                                  pos_tol=g.pos_tol, rot_tol=g.rot_tol, max_time=g.max_time))
+            if self.cancelled():
+                return MoveTcp.Result(success=False, message='cancelled')
+            if not result.success:
+                # Retry only this bounded segment; never turn a failed first
+                # leg into one unchecked rotation all the way to the tray.
+                result = self.move_tcp(MoveTcp.Goal(arm=g.arm, target=target, mode='direct_fixed',
+                                      pos_tol=g.pos_tol, rot_tol=g.rot_tol, max_time=g.max_time))
+                if self.cancelled():
+                    return MoveTcp.Result(success=False, message='cancelled')
+                if (not result.success and index == 0 and fallback is not None
+                        and result.message.startswith('unreachable:')):
+                    # Native clear_table raises and retracts together. Try it
+                    # only after a planning failure of the original first raise;
+                    # successful routes and later steps remain unchanged.
+                    self.get_logger().info('recorded carry: first raise retry inward ' + json.dumps(inward))
+                    result = self.move_tcp(MoveTcp.Goal(arm=g.arm, target=with_matrix(g.target, fallback[0]),
+                                          mode='direct_fixed', pos_tol=g.pos_tol, rot_tol=g.rot_tol,
+                                          max_time=g.max_time))
+                    if self.cancelled():
+                        return MoveTcp.Result(success=False, message='cancelled')
+                    if result.success:
+                        waypoints[1:] = fallback[1:]
+                if not result.success:
+                    return result
+        return result
 
     def _keep_yaw(self, g, rot_tol):
         """A vertical `linear` move of a top-down hand keeps the hand's yaw instead of the goal's.
@@ -734,14 +902,28 @@ class MotionNode(Node):
         if backend != "curobo":
             return MoveTcp.Result(success=False, message=f"not_implemented: planner {backend}")
         mode = g.mode or "direct"
+        if any(getattr(g, 'carry_inward_xy', (0., 0.))) and mode != 'carry_fixed':
+            return MoveTcp.Result(success=False, message='carry_inward_offset_requires_carry_fixed')
+        keep_orientation = mode in ('direct_fixed', 'linear_fixed', 'carry_fixed')
+        if keep_orientation:
+            mode = mode.removesuffix('_fixed')
         if mode not in ("direct", "linear", "ready", "carry"):
             return MoveTcp.Result(success=False, message=f"unknown mode {mode}")
         if mode == "carry":
             return self._carry(g)
         pos_tol = g.pos_tol or 0.01
         rot_tol = g.rot_tol or 0.1
-        if mode == "linear":
+        if mode == "linear" and not keep_orientation:
             g = self._keep_yaw(g, rot_tol)
+        # Reject stale/mismatched contact permission before even the automatic
+        # arm raise. Recheck below after planning-model preparation as well.
+        if getattr(g, 'contact_object', ''):
+            with self.lock:
+                objects, carrying = self.scene_objects, self.carrying
+            try:
+                measured_contact(g, objects, self.now, lambda: self.tcp_tf(g.arm), carrying, self.cancelled)
+            except ValueError as exc:
+                return self._refused(g, mode, str(exc))
         free_yaw = False
         with self._tcp_lock:
             try:
@@ -767,19 +949,40 @@ class MotionNode(Node):
                     planner.objects = self.scene_objects
                     planner.carrying = self.carrying
                 try:
+                    contact = (measured_contact(g, planner.objects, self.now, lambda: self.tcp_tf(g.arm),
+                                                planner.carrying, self.cancelled)
+                               if getattr(g, 'contact_object', '') else '')
+                except ValueError as exc:
+                    raise Unreachable(str(exc)) from exc
+                if contact:
+                    self.get_logger().info(f'recorded contact: {contact}, exposure {g.contact_stamp_ns}')
+                try:
                     names, waypoints, dt = planner.plan(
-                        g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol)
+                        g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol,
+                        keep_orientation=keep_orientation, contact_object=contact)
                 except Unreachable as e:
-                    if mode != "direct" or not self._other_arm_to_ready(planner, g.arm, e):
+                    # READY also resets the shared body yaw. Holding the other
+                    # arm's joints does not hold its TCP in pelvis: a fallback
+                    # must not silently swing a recorded grasp with the torso.
+                    if (mode != "direct" or (keep_orientation and planner.carrying)
+                            or not self._other_arm_to_ready(planner, g.arm, e)):
                         raise
                     with self.lock:
                         snapshot = dict(self.q)
                     names, waypoints, dt = planner.plan(
-                        g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol)
+                        g.arm, g.target, snapshot, mode, pos_tol=pos_tol, rot_tol=rot_tol,
+                        keep_orientation=keep_orientation)
                     planner.scene_note += ", after the other arm went to ready"
             except Unreachable as e:
                 try:
                     report = planner.start_report(snapshot)
+                    if keep_orientation:
+                        p, o = g.target.position, g.target.orientation
+                        self.get_logger().info('recorded planning rejection: ' + json.dumps(dict(
+                            arm=g.arm, mode=mode, target_xyz_xyzw=[p.x, p.y, p.z, o.x, o.y, o.z, o.w],
+                            joints=snapshot, table=planner.table, trays=planner.trays,
+                            objects=planner.objects, carrying=planner.carrying, error=str(e),
+                            contact_object=getattr(g, 'contact_object', ''))))
                 except Exception as err:  # the report must not hide the failure it explains
                     report = f"no report: {err!r}"
                 return self._refused(g, mode, f"unreachable: {e}", f"start {report}; {planner.scene_note}")
@@ -795,7 +998,8 @@ class MotionNode(Node):
                                    f"start moved {planner.start_moved:.3f} rad, {planner.scene_note}")
             free_yaw = planner.free_yaw
             other = next(joints for arm, joints in ARM_JOINTS.items() if arm != g.arm)
-            ok, err, msg = self.follow(names, waypoints, dt, tol=0.01, max_time=g.max_time, held=other)
+            joint_tol = RECORDED_PRECISE_JOINT_TOL if keep_orientation and pos_tol <= .005 else .01
+            ok, err, msg = self.follow(names, waypoints, dt, tol=joint_tol, max_time=g.max_time, held=other)
         if mode == "ready":  # the goal is joints, the target pose is not used
             reached = ok or (msg == "timeout" and err <= READY_TOL)
             note = f" ({planner.ready_note})" if planner.ready_note else ""
@@ -818,6 +1022,12 @@ class MotionNode(Node):
             message = "tolerance"
         else:
             message = msg
+        if not reached and keep_orientation:
+            self.get_logger().info('recorded endpoint rejection: ' + json.dumps(dict(
+                arm=g.arm, mode=mode, joint_tolerance=joint_tol,
+                position_error=pos_err, rotation_error=rot_err,
+                target_joints=dict(zip(names, waypoints[-1])),
+                measured_joints=dict(zip(names, self.joints(names))))))
         self.get_logger().info(
             f"move_tcp {g.arm} {mode}: tcp {pos_err * 100:.2f} cm, {math.degrees(rot_err):.1f} deg, {message}")
         return MoveTcp.Result(success=reached, pos_error=float(pos_err), rot_error=float(rot_err), message=message)

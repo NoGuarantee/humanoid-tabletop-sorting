@@ -12,6 +12,7 @@ import time
 from types import SimpleNamespace
 
 from .curobo_robot import load_robot_cfg
+from .recorded_carry import orientation_arc_deviation, check_carry_height
 from .robot import (
     ARM_JOINTS, CUBOID_CACHE, JOINTS, TCP_LINK, VERTICAL, clearance_z, fingertip, footprint_gap, on_the_way,
     plan_limits, ready_pose, sphere_cuboid_overlap, spheres_hit, tilt, world_scene)
@@ -183,7 +184,7 @@ class CuroboPlanner:
         return {"ik_s": round(ik_s, 2), "warmup_s": round(warm_s, 2), "ik_ok": ok,
                 "ik_pos_mm": None if err is None else round(err * 1e3, 3), "cspace_ok": cspace_ok}
 
-    def plan(self, arm, target, q_by_name, mode, pos_tol=0.01, rot_tol=0.1):
+    def plan(self, arm, target, q_by_name, mode, pos_tol=0.01, rot_tol=0.1, keep_orientation=False, contact_object=''):
         """Return (joint names, waypoints [N x dof], dt or None).
 
         `direct` is one IK solution, then a collision-free joint-space path to it. A straight line in joint
@@ -203,12 +204,27 @@ class CuroboPlanner:
             # does not plan. main had no objects in the world for this move either.
             self.sync_world(None, objects=False)
             return self._plan_ready(arm, q_by_name)
-        self.sync_world(target)
+        # An explicit recorded contact grants only this object, not whatever
+        # happens to lie under main's approximate fingertip point.
+        self.sync_world(None if contact_object else target)
+        if contact_object:
+            if (mode != 'linear' or not keep_orientation or self.carrying
+                    or contact_object not in self._object_cuboids()):
+                raise Unreachable('invalid_recorded_contact_permission')
+            result = self._without([contact_object], lambda: self._plan_in_world(
+                arm, target, q_by_name, mode, pos_tol, rot_tol, keep_orientation, explicit_contact=True))
+            self.scene_note += f', contact with selected {contact_object}'
+            return result
         held = self._held(q_by_name)
         if not held:
-            return self._plan_in_world(arm, target, q_by_name, mode, pos_tol, rot_tol)
-        result = self._without(held, lambda: self._plan_in_world(arm, target, q_by_name, mode, pos_tol, rot_tol))
-        self.scene_note += f", without {', '.join(held)} (carried, the start touches them)"
+            result = self._plan_in_world(arm, target, q_by_name, mode, pos_tol, rot_tol, keep_orientation)
+        else:
+            result = self._without(held, lambda: self._plan_in_world(arm, target, q_by_name, mode, pos_tol, rot_tol, keep_orientation))
+            self.scene_note += f", without {', '.join(held)} (carried, the start touches them)"
+        if keep_orientation and self.carrying and mode == 'linear':
+            goal, state = self._goal(arm, target, q_by_name)
+            if self._carry_deviation(arm, result, goal, state, rot_tol, pos_tol) > rot_tol:
+                raise Unreachable('recorded carry linear path changes the object orientation')
         return result
 
     def _held(self, q_by_name):
@@ -224,11 +240,11 @@ class CuroboPlanner:
         trays = set(self._tray_names())
         return [name for name in self._touching(q_by_name) if name not in trays and name != "table"]
 
-    def _plan_in_world(self, arm, target, q_by_name, mode, pos_tol, rot_tol):
+    def _plan_in_world(self, arm, target, q_by_name, mode, pos_tol, rot_tol, keep_orientation=False, *, explicit_contact=False):
         """plan() after sync_world: `direct` with a detour, or `linear` without what the start touches."""
         if mode == "direct":
             if self.carrying:
-                return self._plan_carry(arm, target, q_by_name, pos_tol, rot_tol)
+                return self._plan_carry(arm, target, q_by_name, pos_tol, rot_tol, keep_orientation)
             try:
                 return self._plan_direct(arm, target, q_by_name, pos_tol, rot_tol)
             except Unreachable:
@@ -238,24 +254,27 @@ class CuroboPlanner:
                 return detour
         goal, state = self._goal(arm, target, q_by_name)
         try:
-            return self._plan_linear(arm, goal, state)
+            return self._plan_linear(arm, goal, state, world_axes=keep_orientation,
+                                     axis_tolerance=pos_tol if explicit_contact else None)
         except Unreachable as failed:
+            if explicit_contact:
+                raise  # never widen one selected contact to neighbouring objects
             touching = self._touching(q_by_name)
             trays = set(self._tray_names())
             tcp_z = self._tcp_z(arm, goal, state)
             rising = float(target.position.z) >= tcp_z + 0.01
             if not touching and float(target.position.z) <= tcp_z - 0.01:
-                return self._descend_past_objects(arm, goal, state, target, failed)
+                return self._descend_past_objects(arm, goal, state, target, failed, world_axes=keep_orientation)
             if not touching or not (rising or set(touching) <= trays):
                 raise
             # cuRobo plans nothing from a start in collision. A hand that let go in a tray is inside a solid block
             # here, the trays being hollow in the scene; a hand at a low grasp is within a centimetre of the table
             # or of the object it holds. A move up, or out of a tray, goes away from them: plan it without them.
-            result = self._without(touching, lambda: self._plan_linear(arm, goal, state))
+            result = self._without(touching, lambda: self._plan_linear(arm, goal, state, world_axes=keep_orientation))
             self.scene_note += f", planned without {', '.join(touching)} (the start touches them)"
             return result
 
-    def _plan_carry(self, arm, target, q_by_name, pos_tol, rot_tol):
+    def _plan_carry(self, arm, target, q_by_name, pos_tol, rot_tol, keep_orientation=False):
         """`direct` for a hand that holds an object: a path that keeps the hand's orientation, then the plain one.
 
         The plain joint path to an IK solution turns the wrist on the way. Carrying the cup to tray_right it was
@@ -267,10 +286,15 @@ class CuroboPlanner:
         A path that tips the hand more than CARRY_TURN is not taken.
         """
         notes = []
-        tries = [False, True] if tilt(_xyzw(target)) <= VERTICAL else [False]
+        strict = keep_orientation
+        tries = [False, True] if not strict and tilt(_xyzw(target)) <= VERTICAL else [False]
         for free_yaw in tries:
             try:
                 plan, turn = self._plan_level(arm, target, q_by_name, free_yaw)
+                if strict:
+                    goal, state = self._goal(arm, target, q_by_name)
+                    if self._carry_deviation(arm, plan, goal, state, rot_tol, pos_tol) > rot_tol:
+                        raise Unreachable('recorded carry changes the object orientation')
             except Unreachable as e:
                 notes.append(f"level{' any yaw' if free_yaw else ''}: {e}")
                 continue
@@ -286,6 +310,8 @@ class CuroboPlanner:
                 raise
         goal, state = self._goal(arm, target, q_by_name)
         turn = self._max_turn(arm, plan, goal, state, False)
+        if strict and self._carry_deviation(arm, plan, goal, state, rot_tol, pos_tol) > rot_tol:
+            raise Unreachable('recorded carry fallback changes the object orientation')
         self.scene_note += f"; {'; '.join(notes)}; the joint path turns the hand {math.degrees(turn):.0f} deg"
         return plan
 
@@ -313,6 +339,26 @@ class CuroboPlanner:
         if turn > CARRY_TURN:
             raise Unreachable(f"the path {'tips' if free_yaw else 'turns'} the hand {math.degrees(turn):.0f} deg")
         return plan, turn
+
+    def _carry_deviation(self, arm, plan, goal, state, tolerance, pos_tolerance):
+        """Check the bounded requested turn, including every planned waypoint."""
+        names, waypoints, _ = plan
+        i = goal.tool_frames.index(TCP_LINK[arm])
+        initial = self.mp.compute_kinematics(state).tool_poses
+        start = initial.quaternion[0, 0, i].tolist()
+        start_z = float(initial.position[0, 0, i, 2])
+        finish = goal.quaternion[0, 0, i, 0].tolist()
+        orientations, heights = [], []
+        for q in waypoints:
+            p = self.mp.compute_kinematics(self._chain_state(names, q, state)).tool_poses
+            orientations.append(p.quaternion[0, 0, i].tolist())
+            heights.append(float(p.position[0, 0, i, 2]))
+        try:
+            check_carry_height(heights, start_z,
+                               float(goal.position[0, 0, i, 0, 2]), pos_tolerance)
+            return orientation_arc_deviation(orientations, start, finish, tolerance)
+        except ValueError as exc:
+            raise Unreachable(str(exc)) from exc
 
     def _max_turn(self, arm, plan, goal, state, tilt_only):
         """The largest angle between the TCP orientation on `plan` and the goal's, over CARRY_TURN_CHECKS waypoints.
@@ -508,7 +554,7 @@ class CuroboPlanner:
         return sorted((footprint_gap(obj, tip, self.table), obj[0]) for obj in self.objects
                       if obj[0] in in_world and obj[0] not in self.left_out)
 
-    def _descend_past_objects(self, arm, goal, state, target, failed):
+    def _descend_past_objects(self, arm, goal, state, target, failed, *, world_axes=False):
         """A straight descent from a free start failed: try it without the objects right under the fingertips."""
         near = self._under_fingers(target)
         self.scene_note += ", by the fingertips: " + (
@@ -516,7 +562,7 @@ class CuroboPlanner:
         names = [name for gap, name in near if gap <= UNDER_FINGERS]
         if not names:
             raise failed
-        result = self._without(names, lambda: self._plan_linear(arm, goal, state))
+        result = self._without(names, lambda: self._plan_linear(arm, goal, state, world_axes=world_axes))
         self.scene_note += f", descended without {', '.join(names)}"
         return result
 
@@ -643,12 +689,17 @@ class CuroboPlanner:
                 checker.enable_obstacle(name, True)
             self.mp.graph_planner.reset_buffer()
 
-    def _plan_linear(self, arm, goal, state):
+    def _plan_linear(self, arm, goal, state, *, world_axes=False, axis_tolerance=None):
         """plan_pose with the moving TCP held on the line through the goal along one axis of the goal frame.
 
         cuRobo's linear criterion frees one goal-frame axis on the way and pulls the other two and the orientation
         to the goal. A move that lies along one TCP axis uses that axis. A world-vertical move of a leaned hand
         does not: it is two axis moves, the one that gains height first, so the path is not pulled down into the table.
+
+        Recorded profiles specify their approach/lift in pelvis coordinates.
+        Use world axes for those moves: projecting a vertical Philips descent
+        onto its tilted TCP axes introduced a lateral dogleg and rejected the
+        recorded approach. cuRobo still checks the whole path and orientation.
         """
         import torch
 
@@ -662,6 +713,8 @@ class CuroboPlanner:
             [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
             [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)],
         ], device=end.device, dtype=end.dtype)
+        if world_axes:
+            rot = torch.eye(3, device=end.device, dtype=end.dtype)
         local = rot.T @ (end - start.to(end.dtype))
         length = float(torch.linalg.norm(local))
         dominant = int(local.abs().argmax().item())
@@ -675,7 +728,8 @@ class CuroboPlanner:
                 step = goal.clone()
                 step.position[0, 0, i, 0] = start.to(end.dtype) + (end - start.to(end.dtype)) * alpha
                 try:
-                    names, part, dt = self._plan_linear(arm, step, js)
+                    names, part, dt = self._plan_linear(arm, step, js, world_axes=world_axes,
+                                                       axis_tolerance=axis_tolerance)
                 except Unreachable as e:
                     raise Unreachable(f"at {alpha:.2f} of {length:.3f} m: {e}") from e
                 waypoints.extend(part)
@@ -683,8 +737,17 @@ class CuroboPlanner:
             return names, waypoints, dt
         # A leaned hand's world-vertical move is split across two TCP axes. Freeing only the larger one
         # pulls the path onto a line that, for the 45° pinch, points down into the table.
-        if length < 1e-4 or float(local[dominant].abs()) > 0.85 * length:
-            return self._linear_axis(link, goal, state, "xyz"[dominant])
+        aligned = float(local[dominant].abs()) > 0.85 * length
+        if axis_tolerance is not None:
+            # A refreshed contact can move sideways within the allowed pose
+            # drift. The angle-only test called 15.6 mm across / 98 mm down
+            # "vertical" on seed7, then the constrained Z plan had no path.
+            # Align across first at the pregrasp height, using the same world
+            # and the same single-object contact permission, then descend.
+            lateral = math.sqrt(max(0., length * length - float(local[dominant]) ** 2))
+            aligned = lateral <= axis_tolerance
+        if length < 1e-4 or aligned:
+            return self._linear_axis(link, goal, state, "xyz"[dominant], goal_frame=not world_axes)
         order = sorted(range(3), key=lambda k: -float(rot[2, k] * local[k]))  # gain height before sliding
         names, waypoints, dt = None, [], None
         here = start.to(end.dtype).clone()
@@ -695,7 +758,7 @@ class CuroboPlanner:
             step = goal.clone()
             here = here + rot[:, k] * local[k]
             step.position[0, 0, i, 0] = here
-            names, part, dt = self._linear_axis(link, step, js, "xyz"[k])
+            names, part, dt = self._linear_axis(link, step, js, "xyz"[k], goal_frame=not world_axes)
             waypoints.extend(part)
             js = self._chain_state(names, part[-1], js)
         return names, waypoints, dt
@@ -717,17 +780,19 @@ class CuroboPlanner:
             torch.tensor([q], device=prev.position.device, dtype=prev.position.dtype),
             joint_names=list(self.joint_names))
 
-    def _linear_axis(self, link, goal, state, axis):
+    def _linear_axis(self, link, goal, state, axis, *, goal_frame=True):
         """One Cartesian plan that may travel only along `axis` of the goal frame."""
         from curobo._src.cost.tool_pose_criteria import ToolPoseCriteria
 
-        self.mp.update_tool_pose_criteria({link: ToolPoseCriteria.linear_motion(axis=axis)})
+        self.mp.update_tool_pose_criteria({link: ToolPoseCriteria.linear_motion(
+            axis=axis, project_distance_to_goal=goal_frame)})
         try:
             result = self.mp.plan_pose(goal, state)
         finally:
             self.mp.update_tool_pose_criteria({link: ToolPoseCriteria()})
         if result is None or not _flag(result.success, any_ok=True):
-            raise Unreachable(f"no straight collision-free path along the goal {axis} axis; start {self._violated(state)}")
+            frame = 'goal' if goal_frame else 'world'
+            raise Unreachable(f"no straight collision-free path along the {frame} {axis} axis; start {self._violated(state)}")
         return self._trajectory(result)
 
     def _violated(self, state):

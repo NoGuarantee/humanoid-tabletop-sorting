@@ -1,0 +1,758 @@
+{
+  "candidate": "01aa6e2",
+  "server": "nssr-rtx6000",
+  "simulator_commit": "08247fc6ac9ed9f194d7bd2d1bfde434ea9cd578",
+  "scope": "sort3 --pool 4; recorded_objects=philips",
+  "qualified": false,
+  "rows": [
+    {
+      "case": "candidate_seed13051_01aa6e2",
+      "status": "completed",
+      "right": 3,
+      "wrong": 0,
+      "sim_step": 25558,
+      "philips": {
+        "tray": "tray_center",
+        "ok": true
+      },
+      "philips_transitions": [
+        {
+          "sim": 118.399997353,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 122.029997272,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 137.389996929,
+          "from": "APPROACH",
+          "to": "LOOK_GRASP",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 141.58999683500002,
+          "from": "LOOK_GRASP",
+          "to": "DESCEND",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 147.6199967,
+          "from": "DESCEND",
+          "to": "RECOVER",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 165.75999629400002,
+          "from": "RECOVER",
+          "to": "OPEN_HANDS",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 167.969996245,
+          "from": "OPEN_HANDS",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 169.449996212,
+          "from": "LOOK_TABLE",
+          "to": "OBSERVE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 169.599996209,
+          "from": "OBSERVE",
+          "to": "ARMS_READY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 184.929995866,
+          "from": "ARMS_READY",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 186.22999583700002,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 188.569995785,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 194.32999565600002,
+          "from": "APPROACH",
+          "to": "LOOK_GRASP",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 198.499995563,
+          "from": "LOOK_GRASP",
+          "to": "DESCEND",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 205.119995415,
+          "from": "DESCEND",
+          "to": "CLOSE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 208.52999533800002,
+          "from": "CLOSE",
+          "to": "VERIFY_GRASP",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 208.85999533100002,
+          "from": "VERIFY_GRASP",
+          "to": "LIFT",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 212.23999525600001,
+          "from": "LIFT",
+          "to": "VERIFY_LIFT",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "UNKNOWN"
+        },
+        {
+          "sim": 212.56999524800003,
+          "from": "VERIFY_LIFT",
+          "to": "DESTINATION",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 212.68999524600002,
+          "from": "DESTINATION",
+          "to": "VERIFY_TRANSFER",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 213.019995238,
+          "from": "VERIFY_TRANSFER",
+          "to": "TRANSFER",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 235.27999474100002,
+          "from": "TRANSFER",
+          "to": "VERIFY_HOLD",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 235.609994733,
+          "from": "VERIFY_HOLD",
+          "to": "LOWER",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 237.85999468300002,
+          "from": "LOWER",
+          "to": "RELEASE",
+          "reason": "",
+          "hand": "HOLDING",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 240.76999461800003,
+          "from": "RELEASE",
+          "to": "RETREAT",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 242.999994568,
+          "from": "RETREAT",
+          "to": "CLEAR",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 250.639994397,
+          "from": "CLEAR",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 251.609994376,
+          "from": "LOOK_TABLE",
+          "to": "VERIFY_PLACE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "LIFTED"
+        },
+        {
+          "sim": 251.92999436800002,
+          "from": "VERIFY_PLACE",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "LIFTED"
+        }
+      ],
+      "exit_code": 0,
+      "official": {
+        "in_right_tray": 3,
+        "in_wrong_tray": 0,
+        "not_in_tray": 6,
+        "objects": {
+          "Schleich_African_Black_Rhino": {
+            "tray": null,
+            "ok": false
+          },
+          "3D_Dollhouse_Sink": {
+            "tray": "tray_left",
+            "ok": true
+          },
+          "LADYBUG_BEAD": {
+            "tray": null,
+            "ok": false
+          },
+          "Threshold_Bamboo_Ceramic_Soap_Dish": {
+            "tray": null,
+            "ok": false
+          },
+          "Cole_Hardware_Bowl_Scirocco_YellowBlue": {
+            "tray": null,
+            "ok": false
+          },
+          "Ecoforms_Cup_B4_SAN": {
+            "tray": null,
+            "ok": false
+          },
+          "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g": {
+            "tray": null,
+            "ok": false
+          },
+          "Brother_Ink_Cartridge_Magenta_LC75M": {
+            "tray": "tray_center",
+            "ok": true
+          },
+          "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack": {
+            "tray": "tray_center",
+            "ok": true
+          }
+        },
+        "total": 9,
+        "task": "sort3",
+        "sim_step": 25558
+      },
+      "analysis": "Philips completed alternate-profile grasp, lift, carry, lower, release and retreat. All three placed objects remain in correct trays at DONE. Additional view-rescan branch was not needed in this run.",
+      "sha256": {
+        "solution.log": "dcc13b409dc91d975b0912ecb3fba2ceb4ee827220ee4de1b3cb1a8922877108",
+        "result.json": "71c5365897641bea1abd3d2f4a3cf65ac315939ad9adeec54a2849b14771629b",
+        "joint_states.jsonl": "f80bc3095713d7d6c0e73768a9f624083c563ab63273208924f8d608e710a6b3",
+        "perception_scenes.jsonl": "c7587bdf7ef5fbb96d9e113aa177ff837714d627ce4117322d3bd9a90e0d79f4"
+      }
+    },
+    {
+      "case": "candidate_seed146_01aa6e2",
+      "status": "completed",
+      "right": 2,
+      "wrong": 0,
+      "sim_step": 23731,
+      "philips": {
+        "tray": null,
+        "ok": false
+      },
+      "philips_transitions": [
+        {
+          "sim": 135.73999696500002,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 139.30999688600002,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 158.629996454,
+          "from": "APPROACH",
+          "to": "LOOK_GRASP",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 162.35999637,
+          "from": "LOOK_GRASP",
+          "to": "DESCEND",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 164.14999633000002,
+          "from": "DESCEND",
+          "to": "RECOVER",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 182.22999592600002,
+          "from": "RECOVER",
+          "to": "OPEN_HANDS",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 184.40999587800002,
+          "from": "OPEN_HANDS",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 185.72999584800002,
+          "from": "LOOK_TABLE",
+          "to": "OBSERVE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 185.869995845,
+          "from": "OBSERVE",
+          "to": "ARMS_READY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 201.93999548600002,
+          "from": "ARMS_READY",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 203.23999545700002,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 205.60999540400002,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 208.759995333,
+          "from": "APPROACH",
+          "to": "RECOVER",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 226.909994928,
+          "from": "RECOVER",
+          "to": "OPEN_HANDS",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 229.099994879,
+          "from": "OPEN_HANDS",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 229.45999487100002,
+          "from": "LOOK_TABLE",
+          "to": "OBSERVE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 229.62999486700002,
+          "from": "OBSERVE",
+          "to": "ARMS_READY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 233.30999478500001,
+          "from": "ARMS_READY",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        }
+      ],
+      "exit_code": 0,
+      "official": {
+        "in_right_tray": 2,
+        "in_wrong_tray": 0,
+        "not_in_tray": 7,
+        "objects": {
+          "Schleich_African_Black_Rhino": {
+            "tray": null,
+            "ok": false
+          },
+          "3D_Dollhouse_Sink": {
+            "tray": "tray_left",
+            "ok": true
+          },
+          "LADYBUG_BEAD": {
+            "tray": null,
+            "ok": false
+          },
+          "Threshold_Bamboo_Ceramic_Soap_Dish": {
+            "tray": null,
+            "ok": false
+          },
+          "Cole_Hardware_Bowl_Scirocco_YellowBlue": {
+            "tray": null,
+            "ok": false
+          },
+          "Ecoforms_Cup_B4_SAN": {
+            "tray": null,
+            "ok": false
+          },
+          "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g": {
+            "tray": null,
+            "ok": false
+          },
+          "Brother_Ink_Cartridge_Magenta_LC75M": {
+            "tray": "tray_center",
+            "ok": true
+          },
+          "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack": {
+            "tray": null,
+            "ok": false
+          }
+        },
+        "total": 9,
+        "task": "sort3",
+        "sim_step": 23731
+      },
+      "analysis": "No lift: DESCEND pose accepted, then contact validation rejects stale_recorded_contact_tcp. Existing log omits actual TCP age, so stale versus clock-ahead cannot be distinguished. 4f9219d samples TF before time, waits up to 0.5 wall second for valid age, keeps all age gates and logs numerical age on rejection.",
+      "sha256": {
+        "solution.log": "d79eee33321ffa9b68d6b2a07b18e4340d3355ec1872be748615e233417a6dde",
+        "result.json": "3274f53228cae0b86b9355c9628ab2ddf1b76c8feae2cb1e97c9f9a0c4184ce7",
+        "joint_states.jsonl": "b5d47df9588ebfce19a10cdc1ebb57e0007721db7e21e4b1f9683ec227adcd88",
+        "perception_scenes.jsonl": "2b18a42226f0ade89016db9190bfd0645fa3c4cd66657df6b092307ba9786be4"
+      }
+    },
+    {
+      "case": "candidate_seed7_01aa6e2",
+      "status": "completed",
+      "right": 2,
+      "wrong": 0,
+      "sim_step": 19784,
+      "philips": {
+        "tray": null,
+        "ok": false
+      },
+      "philips_transitions": [
+        {
+          "sim": 99.609997773,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 103.049997696,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 112.57999748300001,
+          "from": "APPROACH",
+          "to": "LOOK_GRASP",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 117.12999738100001,
+          "from": "LOOK_GRASP",
+          "to": "DESCEND",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 123.159997247,
+          "from": "DESCEND",
+          "to": "RECOVER",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 141.25999684200002,
+          "from": "RECOVER",
+          "to": "OPEN_HANDS",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 143.439996793,
+          "from": "OPEN_HANDS",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 144.91999676,
+          "from": "LOOK_TABLE",
+          "to": "OBSERVE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 145.069996757,
+          "from": "OBSERVE",
+          "to": "ARMS_READY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 161.76999638400002,
+          "from": "ARMS_READY",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 163.039996355,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 165.66999629600002,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 168.75999622700002,
+          "from": "APPROACH",
+          "to": "RECOVER",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 186.89999582200002,
+          "from": "RECOVER",
+          "to": "OPEN_HANDS",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 189.09999577300002,
+          "from": "OPEN_HANDS",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 189.46999576500002,
+          "from": "LOOK_TABLE",
+          "to": "OBSERVE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 189.619995761,
+          "from": "OBSERVE",
+          "to": "ARMS_READY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 193.45999567500002,
+          "from": "ARMS_READY",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        }
+      ],
+      "exit_code": 0,
+      "official": {
+        "in_right_tray": 2,
+        "in_wrong_tray": 0,
+        "not_in_tray": 7,
+        "objects": {
+          "Schleich_African_Black_Rhino": {
+            "tray": null,
+            "ok": false
+          },
+          "3D_Dollhouse_Sink": {
+            "tray": "tray_left",
+            "ok": true
+          },
+          "LADYBUG_BEAD": {
+            "tray": null,
+            "ok": false
+          },
+          "Threshold_Bamboo_Ceramic_Soap_Dish": {
+            "tray": null,
+            "ok": false
+          },
+          "Cole_Hardware_Bowl_Scirocco_YellowBlue": {
+            "tray": null,
+            "ok": false
+          },
+          "Ecoforms_Cup_B4_SAN": {
+            "tray": null,
+            "ok": false
+          },
+          "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g": {
+            "tray": null,
+            "ok": false
+          },
+          "Brother_Ink_Cartridge_Magenta_LC75M": {
+            "tray": "tray_center",
+            "ok": true
+          },
+          "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack": {
+            "tray": null,
+            "ok": false
+          }
+        },
+        "total": 9,
+        "task": "sort3",
+        "sim_step": 19784
+      },
+      "analysis": "No lift: declared c2 pose basis flips by 180 degrees between OPEN and DESCEND, causing association_unmatched. Fixed in d173d41; source observations are a regression fixture.",
+      "sha256": {
+        "solution.log": "7b0ae1e548e6c1090a85b01002e43df6418fded571fdcd17bbdd5fb982903aa8",
+        "result.json": "78604b2e2738a1c4ea342718f4ccab08164608fc84b46e5b7836f279d2f5571c",
+        "joint_states.jsonl": "9b4ffbe23aeec31ac637cdb453843d7e11947eb5d50ead16a19a371a9ce86d4d",
+        "perception_scenes.jsonl": "cd413808bd4a98ba11b8d7ed648b95fa41e453a9c74839f6b1cbe049387e2890"
+      }
+    }
+  ],
+  "same_server_main_evidence": "series_rtx6000_943e716.json",
+  "artifacts_sha256": {
+    "philips_seed13051_01aa6e2_final.jpg": "c0b5e21944de14a160e6d5ecd54cd71f1a3b272d9d13866d388098e492d0aa22",
+    "philips_seed13051_01aa6e2_4x.mp4": "fe6363321bd7fa1d4bc9344b52e1d26164bb2f8299d19035bd38c470ed2b3082"
+  },
+  "video_extraction": {
+    "first": {
+      "index": 1471,
+      "wall_elapsed_s": 311.397097454872,
+      "stamps": {
+        "cam_head": 185.929995844,
+        "cam_torso": 185.929995844
+      }
+    },
+    "last": {
+      "index": 2026,
+      "wall_elapsed_s": 428.310504573863,
+      "stamps": {
+        "cam_head": 253.999994323,
+        "cam_torso": 253.999994323
+      }
+    },
+    "speed": "4x relative to 5 fps source recording; camera overlay uses sim time",
+    "frames": 556,
+    "source_sha256": "4c25536be82052f3f31202120ce6f1b41f1809dc9cfe3ef35efdea7a1fc39eb3",
+    "clip_sha256": "b87fdb18b613758856cee38200f07aa5f43b48c32ea28ba8e22e0f1431a7f8be",
+    "bytes": 7860486
+  }
+}

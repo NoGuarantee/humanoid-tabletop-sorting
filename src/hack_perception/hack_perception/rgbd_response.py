@@ -50,20 +50,26 @@ def observed_components(points, plane):
     from scipy.sparse.csgraph import connected_components
     from scipy.spatial import cKDTree
 
+    if not len(points):
+        return []
     if len(points) < 30:
-        return [points]
-    _, first, inverse = np.unique(np.floor(points / .003).astype(np.int64), axis=0,
-                                  return_index=True, return_inverse=True)
-    samples = points[first]
+        samples, inverse = points, np.arange(len(points))
+    else:
+        # Preserve the pre-existing connectivity policy for substantial clouds.
+        _, first, inverse = np.unique(np.floor(points / .003).astype(np.int64), axis=0,
+                                      return_index=True, return_inverse=True)
+        samples = points[first]
     pairs = cKDTree(samples).query_pairs(.012, output_type='ndarray')
     graph = coo_matrix((np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])),
                        shape=(len(samples), len(samples)))
     _, labels = connected_components(graph, directed=False)
     labels = labels[inverse]
     substantial = np.flatnonzero(np.bincount(labels) >= 30)
+    order = np.argsort(labels, kind='stable')
+    all_groups = np.split(points[order], np.flatnonzero(np.diff(labels[order]))+1)
     if not len(substantial):
-        return [points]  # Sparse evidence is still an obstacle, as before.
-    groups = [points[labels == label] for label in substantial]
+        return all_groups  # Every disconnected sparse surface stays separate.
+    groups = [all_groups[label] for label in substantial]
     if plane is None:
         primary = max(range(len(groups)), key=lambda index: len(groups[index]))
     else:
@@ -73,11 +79,10 @@ def observed_components(points, plane):
         primary = max((index for index, height in enumerate(heights) if height <= lowest + .02),
                       key=lambda index: len(groups[index]))
     ordered = [groups[primary], *(group for index, group in enumerate(groups) if index != primary)]
-    # Pool small disconnected fragments conservatively rather than losing them
-    # or emitting one collision box for every isolated depth point.
-    residual = points[~np.isin(labels, substantial)]
-    if len(residual):
-        ordered.append(residual)
+    # Combining disconnected fragments invents an occupied bridge through empty
+    # space. Retain every fragment with its own bounds and source provenance.
+    substantial_set = set(substantial)
+    ordered.extend(group for label, group in enumerate(all_groups) if label not in substantial_set)
     return ordered
 
 
@@ -106,19 +111,26 @@ def observed_regions(sensors, segmentation, plane, categories=None):
             # and sparse fragments remain obstacles. These are visible bounds,
             # not a reconstruction of occluded geometry.
             for index, component in enumerate(observed_components(points, plane)):
-                low, high = component.min(axis=0), component.max(axis=0)
-                ident = proposal['instance_id']
-                if index:
-                    while extra_id in source_ids:
+                primary = index == 0 and len(component) >= 30
+                # A sparse curved surface can have an enclosing box that
+                # intersects the robot although every measured point clears it.
+                # Keep each point, including duplicates; the consumer inflates
+                # only zero-width axes using its existing obstacle policy.
+                fragments = component[:, None, :] if len(component) < 30 else (component,)
+                for fragment in fragments:
+                    low, high = fragment.min(axis=0), fragment.max(axis=0)
+                    ident = proposal['instance_id']
+                    if not primary:
+                        while extra_id in source_ids:
+                            extra_id -= 1
+                        ident = extra_id
                         extra_id -= 1
-                    ident = extra_id
-                    extra_id -= 1
-                region = dict(low_pelvis_m=low.tolist(), high_pelvis_m=high.tolist(),
-                              category=CLASS_BY_ID.get(proposal['class_id'], 'unknown') if index == 0 else 'unknown',
-                              instances={camera: ident}, depth_points=len(component))
-                if index:
-                    region['source_instances'] = {camera: proposal['instance_id']}
-                regions.append(region)
+                    region = dict(low_pelvis_m=low.tolist(), high_pelvis_m=high.tolist(),
+                                  category=CLASS_BY_ID.get(proposal['class_id'], 'unknown') if primary else 'unknown',
+                                  instances={camera: ident}, depth_points=len(fragment))
+                    if not primary:
+                        region['source_instances'] = {camera: proposal['instance_id']}
+                    regions.append(region)
     return regions
 
 

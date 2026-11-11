@@ -79,6 +79,7 @@ class PerceptionNode(Node):
         pool = self.declare_parameter("rgbd_pool", 0).value
         enable_poses = self.declare_parameter("rgbd_enable_model_poses", False).value
         on_demand = self.declare_parameter("rgbd_on_demand", False).value
+        robot_self_filter = self.declare_parameter('rgbd_robot_self_filter', False).value
         device = self.declare_parameter("rgbd_device", os.environ.get('NSSR_RGBD_DEVICE', 'cpu')).value
         self.declare_parameter("rgbd_model_names", "", ParameterDescriptor(read_only=True))
         torch_threads = self.declare_parameter("rgbd_torch_threads", 2).value
@@ -88,7 +89,7 @@ class PerceptionNode(Node):
 
                 self.model_poses = ModelPoseService(self, self.tf, model_dir, pool, enable_poses, torch_threads,
                                                     lock=self.lock, clear_baseline=self.clear_baseline,
-                                                    on_demand=on_demand, device=device)
+                                                    on_demand=on_demand, device=device, robot_self_filter=robot_self_filter)
             except Exception as e:
                 self.get_logger().error(f"could not enable RGB-D model pose service: {e!r}")
         camera_qos = QoSProfile(depth=2, reliability=ReliabilityPolicy.RELIABLE)
@@ -376,16 +377,32 @@ class PerceptionNode(Node):
                 center=Point(x=float(c.center[0]), y=float(c.center[1]), z=float(c.center[2])),
                 size=Vector3(x=float(c.size[0]), y=float(c.size[1]), z=float(c.size[2]))))
         rejected = result.rejected if result is not None else []
-        trays = classify.merge_trays(model_trays, rejected, rgb, tray_of_color)
+        # With recorded geometry enabled, fit the opening before accepting a
+        # whole-cluster box. A placed Brother merged with the green tray made
+        # its supposed rim 26 mm too high, raising the next Philips carry.
+        # Keep the baseline ordering when the RGB-D worker is disabled.
+        fallback = [] if self.model_poses is not None else rejected
+        trays = classify.merge_trays(model_trays, fallback, rgb, tray_of_color)
         missing = {color: ident for color, ident in tray_of_color.items()
                    if ident not in {tray[0] for tray in trays}}
+        measured = []
         if result is not None and missing:
             dtype = '>u2' if f['depth'].is_bigendian else '<u2'
             depth_mm = decode_image(f['depth'], '16UC1', dtype, 1)[..., 0].astype(np.uint16, copy=False)
             sensor = dict(rgb=rgb, depth=depth_mm,
                           K=np.asarray(f['info'].k).reshape(3, 3), T=camera_tf)
             measured = color_openings(sensor, cloud, result.plane, missing) if rgb is not None else []
-            trays.extend((tray.id, tray.color, tray.center, tray.yaw, tray.size) for tray in measured)
+        # An occluded rim is missing evidence, not a license to replace it with
+        # the box around tray + contents (seed146: 58 mm / 63 deg jump). Both
+        # brain and motion already retain the last observed stationary tray.
+        trays = classify.merge_trays(model_trays, rejected, rgb, tray_of_color, measured=measured,
+                                     allow_clusters=self.model_poses is None)
+        model_ids, rim_ids = {t.id for t in model_trays}, {t.id for t in measured}
+        timing['tray_geometry'] = [
+            dict(id=ident, source='model_opening' if ident in model_ids else
+                 'color_rim' if ident in rim_ids else 'color_cluster',
+                 center=[float(v) for v in center], yaw=float(yaw), size=[float(v) for v in size])
+            for ident, _, center, yaw, size in trays]
         for tray_id, color, center, yaw, size in trays:
             x, y, z = map(float, center)
             scene.containers.append(Container(
@@ -400,12 +417,19 @@ class PerceptionNode(Node):
         timing['trays'] = trays
 
 
+def perception_executor(node):
+    # Main uses eight workers for blocking Perceive and camera/clock delivery.
+    # The additional high-rate encoder reader makes four-worker dispatch
+    # starve fresh camera/clock callbacks. Two workers preserve the concurrent
+    # sensor/TF delivery needed by legacy Perceive's blocking waits.
+    filtered = node.model_poses is not None and node.model_poses.robot_self_filter
+    return MultiThreadedExecutor(num_threads=2 if filtered else 8, context=node.context)
+
+
 def main():
     rclpy.init()
     node = PerceptionNode()
-    # Perceive, the RGB-D pump, the cameras, /tf and /clock each hold a thread at times. With 4, /clock and camera
-    # frames once stopped for over 10 s while a Perceive call waited on them (eval 2026-11-08).
-    executor = MultiThreadedExecutor(num_threads=8)
+    executor = perception_executor(node)
     executor.add_node(node)
     try:
         executor.spin()

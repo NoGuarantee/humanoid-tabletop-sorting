@@ -107,6 +107,7 @@ class MotionNode(Node):
         self._execution_lock = threading.Lock()
         self._execution = threading.local()
         self.q = {}
+        self.joint_stamp = None
         self.compensation = {}  # joint -> rad on top of the target, kept between moves (see move_joints)
         self.hand_state = {"left": None, "right": None}
         # What the last Hand goal of each side found: False after a close that met nothing or an open, True after a
@@ -218,6 +219,7 @@ class MotionNode(Node):
     def on_joints(self, msg):
         with self.lock:
             self.q.update(zip(msg.name, msg.position))
+            self.joint_stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
 
     def on_hand(self, side, msg):
         with self.lock:
@@ -385,6 +387,36 @@ class MotionNode(Node):
             finally:
                 self._execution.handle = None
 
+    def _wait_head_settled(self, names):
+        """Do not bake the head collision model while the drives still coast.
+
+        The joint move accepts 0.02 rad; the head then moved another 0.03 rad
+        on seed 13051, invalidating the just-prepared model. Require fresh
+        measurements over 0.3 sim seconds with at most 0.005 rad spread.
+        """
+        start, wall = self.now(), time.monotonic()
+        recent = []
+        while rclpy.ok() and self.now()-start <= 3.:
+            if self.cancelled() or time.monotonic()-wall > 30.:
+                return False
+            time.sleep(PERIOD)
+            with self.lock:
+                stamp = self.joint_stamp
+                values = [self.q.get(n) for n in names]
+            if (stamp is None or stamp < start or not 0 <= self.now()-stamp <= .2
+                    or any(v is None or not math.isfinite(v) for v in values)):
+                continue
+            if recent and stamp <= recent[-1][0]:
+                continue
+            recent.append((stamp, values))
+            while len(recent) > 1 and recent[1][0] <= stamp-.3:
+                recent.pop(0)
+            if (len(recent) >= 3 and stamp-recent[0][0] >= .3
+                    and all(max(q[i] for _, q in recent)-min(q[i] for _, q in recent) <= .005
+                            for i in range(len(names)))):
+                return True
+        return False
+
     def exec_move_joints(self, handle):
         def run():
             g = handle.request
@@ -398,6 +430,8 @@ class MotionNode(Node):
                 # here, before LOOK_GRASP finishes and brain requests a fresh
                 # exposure. Rebuilding during DESCEND consumed the contact
                 # pose's 1.75 s age budget on seed 7. No motor command below.
+                if not self._wait_head_settled(list(g.joints)):
+                    return MoveJoints.Result(success=False, max_error=float(err), message='head_not_settled')
                 with self._tcp_lock:
                     planner = self._planner_obj()
                     with self.lock:

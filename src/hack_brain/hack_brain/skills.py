@@ -112,16 +112,17 @@ class Skills:
         g = self.grasp
         if phase == State.LOOK_GRASP:
             # APPROACH may turn the shared waist. On seed 13051 it turned
-            # +0.576 rad and put Philips outside both cameras. Turn only the
-            # head towards the measured object before requesting a new pose;
+            # +0.576 rad and put Philips outside both cameras. Restore the
+            # LOOK_TABLE camera heading before requesting a new pose;
             # changing body yaw here would also move the pregrasp TCP.
             if not isinstance(g, recorded_grasps.RecordedGrasp):
                 raise ValueError('missing_recorded_model_pose')
             body_yaw = (joint_positions or {}).get('body_yaw_joint')
             if body_yaw is None or not math.isfinite(body_yaw):
                 raise ValueError('missing_measured_body_yaw')
-            x, y = g.observed_center[:2]
-            yaw = math.atan2(y, x) - body_yaw
+            # Looking directly down the arm at a side object hides it behind
+            # the forearm (seed 13051). The original table view contained it.
+            yaw = -body_yaw
             yaw = math.atan2(math.sin(yaw), math.cos(yaw))
             from hack_motion.robot import JOINTS
             lo, hi = JOINTS['head_yaw_joint'][2:]

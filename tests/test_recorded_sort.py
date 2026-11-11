@@ -55,12 +55,12 @@ class RecordedSortTests(unittest.TestCase):
             kind, goal = skills.command(effect, None, joint_positions={'body_yaw_joint': .576378})
             self.assertEqual(kind, 'joints')
             self.assertEqual(goal.joints, ['head_pitch_joint', 'head_yaw_joint'])
-            self.assertAlmostEqual(goal.positions[1] + .576378, np.arctan2(-.419326, .414847))
+            self.assertAlmostEqual(goal.positions[1] + .576378, 0.)
             self.assertTrue(-1.57 <= goal.positions[1] <= 1.57)
             for q in (None, {}, {'body_yaw_joint': float('nan')}):
                 with self.assertRaisesRegex(ValueError, 'body_yaw'):
                     skills.command(effect, None, joint_positions=q)
-            _, clamped = skills.command(effect, None, joint_positions={'body_yaw_joint': 1.5})
+            _, clamped = skills.command(effect, None, joint_positions={'body_yaw_joint': 2.})
             self.assertEqual(clamped.positions[1], -1.57)
 
     def test_descent_association_applies_existing_pose_drift_gate_before_ambiguity(self):
@@ -551,24 +551,56 @@ class RecordedHandTests(unittest.TestCase):
                       if isinstance(n, ast.FunctionDef) and n.name == 'exec_move_joints')
         ns = dict(MoveJoints=NS(Result=NS, Feedback=NS))
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), 'exec'), ns)
-        for names, ok, loaded, prepares in [(['head_yaw_joint'], True, True, True),
-                                           (['head_yaw_joint'], False, True, False),
-                                           (['head_yaw_joint', 'body_yaw_joint'], True, True, False),
-                                           (['head_yaw_joint'], True, False, False)]:
+        for names, ok, loaded, stable, prepares in [(['head_yaw_joint'], True, True, True, True),
+                                                   (['head_yaw_joint'], True, True, False, False),
+                                                   (['head_yaw_joint'], False, True, True, False),
+                                                   (['head_yaw_joint', 'body_yaw_joint'], True, True, True, False),
+                                                   (['head_yaw_joint'], True, False, True, False)]:
             events = []
             planner = Mock()
             planner.load.side_effect = lambda q: events.append(('prepare', q.copy())) or 'ready'
             node = NS(_planner=planner if loaded else None, _planner_obj=lambda: planner,
                       lock=RLock(), _tcp_lock=RLock(), q={'head_yaw_joint': -.31}, scene_objects=(), carrying=False,
+                      _wait_head_settled=lambda n: events.append(('settle', n)) or stable,
                       get_logger=Mock(), execute=lambda h,a,run: run(),
                       move_joints=lambda *a: events.append(('move', a[0])) or (ok, .01, 'ok'))
             handle = NS(request=NS(joints=names, positions=[0.]*len(names), speed=0., tol=0., max_time=0.),
                         publish_feedback=Mock())
             result = ns['exec_move_joints'](node, handle)
             events.append(('result', result.success))
-            self.assertEqual([e[0] for e in events], ['move', 'prepare', 'result'] if prepares else ['move', 'result'])
+            expected = ['move']
+            if ok and loaded and all(n.startswith('head_') for n in names): expected.append('settle')
+            if prepares: expected.append('prepare')
+            self.assertEqual([e[0] for e in events], expected+['result'])
             if prepares:
                 planner.load.assert_called_once_with({'head_yaw_joint': -.31})
+            elif not stable:
+                self.assertFalse(result.success)
+                planner.load.assert_not_called()
+
+    def test_head_settle_waits_out_coasting_and_rejects_stale_or_moving_samples(self):
+        import math
+        from threading import RLock
+        source = Path(__file__).resolve().parents[1] / 'src/hack_motion/hack_motion/motion_node.py'
+        method = next(n for n in ast.walk(ast.parse(source.read_text()))
+                      if isinstance(n, ast.FunctionDef) and n.name == '_wait_head_settled')
+        for mode in ('coasting', 'moving', 'stale', 'clock_stall'):
+            clock, wall = [0.], [0.]
+            node = NS(lock=RLock(), joint_stamp=None, q={}, now=lambda:clock[0], cancelled=lambda:False)
+            def sleep(dt):
+                wall[0] += dt
+                if mode == 'clock_stall': return
+                clock[0] += dt
+                node.joint_stamp = 0. if mode == 'stale' else clock[0]
+                node.q['head_yaw_joint'] = (-1.108-.1*clock[0] if mode == 'moving'
+                                           else -1.1362+.0282*math.exp(-clock[0]/.08))
+            ns = dict(time=NS(monotonic=lambda:wall[0], sleep=sleep), PERIOD=.05, math=math, rclpy=NS(ok=lambda:True))
+            exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), 'exec'), ns)
+            ready = ns['_wait_head_settled'](node, ['head_yaw_joint'])
+            self.assertEqual(ready, mode == 'coasting')
+            if ready:
+                self.assertGreater(clock[0], .4)
+                self.assertLess(clock[0], 1.)
 
     def run_hand(self, *, side='right', preset=CLOSE, cancel_at=None, stale=False, force_ok=True, force=.6, sim_rate=1.):
         import math

@@ -417,6 +417,24 @@ class RecordedClientTests(unittest.TestCase):
     def response(self, data=None):
         self.future.set_result(NS(success=True, message=json.dumps(data or observation())))
 
+    def test_head_look_uses_recent_joints_at_reducer_time_and_rejects_stale(self):
+        from dataclasses import replace
+        from threading import RLock
+        effect = replace(self.effect, phase=self.State.LOOK_GRASP)
+        self.client.send_motion = Mock()
+        self.client.skills.command.return_value = ('joints', 'head_goal')
+        self.client.measurements = NS(lock=RLock(), samples={'joints': [
+            (10., {'body_yaw_joint': .576}, None),
+            (10.2, {'body_yaw_joint': .58}, None)]})
+        type(self.client).execute_motion(self.client, effect, self.context)
+        self.assertEqual(self.client.skills.command.call_args.kwargs['joint_positions'], {'body_yaw_joint': .576})
+        self.client.send_motion.assert_called_once_with(effect, 'joints', 'head_goal', 10.1)
+        self.client.send_motion.reset_mock()
+        self.context.sim = 11.
+        type(self.client).execute_motion(self.client, effect, self.context)
+        self.client.send_motion.assert_not_called()
+        self.assertIn('stale_grasp_look_joints', self.events[-1].data)
+
     def test_fresh_pose_dispatches_once_on_owner_poll(self):
         self.response()
         self.client.execute_motion.assert_not_called()

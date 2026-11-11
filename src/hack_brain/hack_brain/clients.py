@@ -145,8 +145,10 @@ class Clients:
             if effect.phase == State.LOOK_GRASP:
                 with self.measurements.lock:
                     samples = self.measurements.samples['joints']
-                    latest = samples[-1] if samples else None
-                if latest is None or not 0 <= context.sim-latest[0] <= .5:
+                    # Joint callbacks can be one clock tick ahead of the
+                    # reducer. Use the newest sample at its current sim time.
+                    latest = next((row for row in reversed(samples) if 0 <= context.sim-row[0] <= .5), None)
+                if latest is None:
                     raise ValueError('stale_grasp_look_joints')
                 kwargs['joint_positions'] = latest[1]
             name, goal = self.skills.command(effect, scene, context.history[effect.target.id].attempts if effect.target else 0,

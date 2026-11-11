@@ -211,7 +211,11 @@ class MotionNode(Node):
             # A tray the arm hides keeps the pose it was last seen at: trays are not moved during the task.
             self.seen_trays.update(seen)
         table = f"z = {-plane[3] / plane[2]:.4f} + {-plane[0] / plane[2]:.4f} x" if found else "none"
-        self.get_logger().info(f"perception scene: {len(objs)} objects, trays {sorted(seen)}, table {table}")
+        geometry = [{"id": t[0], "center": list(t[1:4]), "yaw": t[4], "size": list(t[5:8])}
+                    for _, t in sorted(seen.items())]
+        self.get_logger().info(
+            f"perception scene: {len(objs)} objects, trays {sorted(seen)}, table {table}; "
+            f"tray_geometry={json.dumps(geometry)}")
 
     def _world(self):
         """(table plane, trays) for the cuRobo world: what perception measured, limited to the trays of the task."""

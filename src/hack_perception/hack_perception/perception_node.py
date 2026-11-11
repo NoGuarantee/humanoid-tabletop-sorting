@@ -392,7 +392,17 @@ class PerceptionNode(Node):
             sensor = dict(rgb=rgb, depth=depth_mm,
                           K=np.asarray(f['info'].k).reshape(3, 3), T=camera_tf)
             measured = color_openings(sensor, cloud, result.plane, missing) if rgb is not None else []
-        trays = classify.merge_trays(model_trays, rejected, rgb, tray_of_color, measured=measured)
+        # An occluded rim is missing evidence, not a license to replace it with
+        # the box around tray + contents (seed146: 58 mm / 63 deg jump). Both
+        # brain and motion already retain the last observed stationary tray.
+        trays = classify.merge_trays(model_trays, rejected, rgb, tray_of_color, measured=measured,
+                                     allow_clusters=self.model_poses is None)
+        model_ids, rim_ids = {t.id for t in model_trays}, {t.id for t in measured}
+        timing['tray_geometry'] = [
+            dict(id=ident, source='model_opening' if ident in model_ids else
+                 'color_rim' if ident in rim_ids else 'color_cluster',
+                 center=[float(v) for v in center], yaw=float(yaw), size=[float(v) for v in size])
+            for ident, _, center, yaw, size in trays]
         for tray_id, color, center, yaw, size in trays:
             x, y, z = map(float, center)
             scene.containers.append(Container(

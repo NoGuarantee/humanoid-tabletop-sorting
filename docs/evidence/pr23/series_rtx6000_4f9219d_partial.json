@@ -353,5 +353,7 @@
     13051,
     146
   ],
-  "same_server_main_evidence": "series_rtx6000_943e716.json"
+  "same_server_main_evidence": "series_rtx6000_943e716.json",
+  "superseded_by": "series_rtx6000_4f9219d.json",
+  "snapshot_only": true
 }

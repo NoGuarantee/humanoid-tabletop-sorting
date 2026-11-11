@@ -749,6 +749,9 @@ class MotionNode(Node):
         start.orientation = copy.deepcopy(tf.transform.rotation)
         try:
             waypoints = carry_waypoints(pose_matrix(start), pose_matrix(g.target))
+            self.get_logger().info('recorded carry: ' + json.dumps(dict(
+                arm=g.arm, start=pose_matrix(start).tolist(), target=pose_matrix(g.target).tolist(),
+                pos_tol=g.pos_tol, rot_tol=g.rot_tol, waypoints=len(waypoints))))
         except ValueError as exc:
             return MoveTcp.Result(success=False, message=str(exc))
         for matrix in waypoints:

@@ -154,7 +154,7 @@ class PR9TransferTests(unittest.TestCase):
     def test_recorded_action_retries_only_failed_segment_and_stops_on_cancel(self):
         execute = method('motion_node.py', '_recorded_carry_legs', MoveTcp=NS(Goal=NS, Result=NS),
                          copy=NS(deepcopy=deepcopy), carry_waypoints=carry_waypoints,
-                         pose_matrix=pose_matrix, with_matrix=with_matrix)
+                         pose_matrix=pose_matrix, with_matrix=with_matrix, json=json)
         target = base.planner.pose(.4, .6, .4, base.planner.quat_from_rpy(.4, 0, -1.47215))
         g = NS(arm='right', target=target, pos_tol=.005, rot_tol=.05, max_time=0.)
         tf = NS(header=NS(stamp=NS(sec=10, nanosec=0)),
@@ -164,7 +164,8 @@ class PR9TransferTests(unittest.TestCase):
             def move(goal):
                 sent.append(goal)
                 return NS(success=not fail, message='blocked')
-            node = NS(now=lambda:10.1, move_tcp=move, cancelled=lambda:cancel and len(sent) == 1)
+            node = NS(now=lambda:10.1, move_tcp=move, cancelled=lambda:cancel and len(sent) == 1,
+                      get_logger=lambda:Mock())
             result = execute(node, g, tf)
             self.assertFalse(result.success)
             self.assertEqual(len(sent), 1 if cancel else 2)

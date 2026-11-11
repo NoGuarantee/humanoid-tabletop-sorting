@@ -8,6 +8,32 @@ from fakes import Fake, sort_spec, tubes_spec
 
 
 class MissionTests(unittest.TestCase):
+    def test_weak_recorded_cluster_can_request_canonical_validation(self):
+        obj = Object('philips', 'figure', name='philips', confidence=.331, track_id='obj_0')
+        normal = Fake(objects=[obj])
+        normal.run()
+        self.assertFalse(any(e.phase == State.OPEN for e in normal.commands))
+        recorded = Fake(objects=[obj], config=Config(recorded_arms=(('philips', ('right',)),)))
+        recorded.until(State.OPEN)
+        self.assertEqual(recorded.c.target.track_id, 'obj_0')
+        # This tests only the proposal. Real Clients still gate OPEN on the
+        # canonical model response; the final placement threshold is unchanged.
+        self.assertEqual(recorded.c.config.min_confidence_for('philips'), .6)
+
+    def test_recorded_proposals_keep_partial_zero_and_nan_filters(self):
+        for confidence, partial in ((0., False), (float('nan'), False), (.9, True)):
+            f = Fake(objects=[Object('p', 'figure', name='p', confidence=confidence, partial=partial)],
+                     config=Config(recorded_arms=(('p', ('right',)),)))
+            f.run()
+            self.assertFalse(any(e.phase == State.OPEN for e in f.commands))
+
+    def test_recorded_duplicate_name_uses_stronger_cluster_for_model_request(self):
+        objects = [Object('p', 'figure', name='p', confidence=score, track_id=track)
+                   for score, track in ((.02, 'noise'), (.331, 'box'))]
+        f = Fake(objects=objects, config=Config(recorded_arms=(('p', ('right',)),)))
+        f.until(State.OPEN)
+        self.assertEqual(f.c.target.track_id, 'box')
+
     def test_multiple_objects_and_task_mapping(self):
         f = Fake()
         c = f.run()

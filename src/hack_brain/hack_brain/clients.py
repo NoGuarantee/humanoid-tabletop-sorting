@@ -329,7 +329,9 @@ class Clients:
                         'object': effect.target.name, 'profile': self.skills.grasp.profile_key,
                         'arm': self.skills.grasp.arm, 'phase': effect.phase.value,
                         'destination': effect.destination, 'exposure': self.skills.grasp.exposure,
-                        'association': data.get('target_association')}))
+                        'association': data.get('target_association'),
+                        'model_pose': next((row for row in data.get('objects', [])
+                                            if row.get('name') == effect.target.name), None)}))
                     self.execute_motion(effect, context)
                 except Exception as exc:
                     self.emit(Event('REJECTED', effect.op_id, repr(exc), ok=False, stopped=True))

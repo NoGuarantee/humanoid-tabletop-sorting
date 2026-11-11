@@ -9,14 +9,18 @@
 # never be published. Without cuRobo the nodes still start and MoveTcp answers with the error.
 cd "$(dirname "$0")" || exit 0
 setup_started=$SECONDS
-rm -f weights/.rgbd-ready
 if bash tools/curobo_install.sh; then
     python3 tools/curobo_warmup.py || echo "[setup] cuRobo warmup failed, the first MoveTcp compiles the kernels"
 else
     echo "[setup] cuRobo install FAILED, MoveTcp will not work"
 fi
-# The bundled 12 MB archive works in a clean checkout without GitHub credentials.
+# Keep a disabled recorded mode cheap, including during evaluator installation.
+# Use the same opt-in as run.sh; a ready marker alone never enables the mode.
 rgbd_started=$SECONDS
+case "${NSSR_RECORDED_GRASPS:-false}" in
+true|True|TRUE)
+rm -f weights/.rgbd-ready
+# The bundled 12 MB archive works in a clean checkout without GitHub credentials.
 if bash tools/stage_perception_rgbd.sh &&
        /usr/bin/python3 -m pip install 'numpy<2' -r tools/perception_rgbd_requirements.txt &&
        PYTHONPATH="$PWD/src/hack_perception${PYTHONPATH:+:$PYTHONPATH}" YOLO_OFFLINE=true YOLO_AUTOINSTALL=false /usr/bin/python3 -c \
@@ -25,5 +29,8 @@ if bash tools/stage_perception_rgbd.sh &&
 else
     echo "[setup] RGB-D setup failed, using baseline perception"
 fi
+;;
+*) echo "[setup] RGB-D disabled, using baseline perception" ;;
+esac
 echo "[setup] RGB-D elapsed $((SECONDS-rgbd_started))s; total $((SECONDS-setup_started))s"
 exit 0

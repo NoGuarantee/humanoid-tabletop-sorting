@@ -91,7 +91,24 @@ class RecordedStartupTests(unittest.TestCase):
             (root/'tools').mkdir();(root/'weights').mkdir();(root/'weights/.rgbd-ready').touch()
             for name in ('curobo_install.sh','stage_perception_rgbd.sh'):
                 (root/'tools'/name).write_text('exit 1\n')
-            result=subprocess.run(['bash','setup.sh'],cwd=root,capture_output=True,text=True)
+            result=subprocess.run(['bash','setup.sh'],cwd=root,capture_output=True,text=True,
+                                  env=dict(os.environ, NSSR_RECORDED_GRASPS='true'))
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertFalse((root/'weights/.rgbd-ready').exists())
             self.assertIn('using baseline perception',result.stdout)
+
+    def test_disabled_setup_never_stages_or_loads_rgbd_even_with_existing_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);shutil.copy(ROOT/'setup.sh',root)
+            (root/'tools').mkdir();(root/'weights').mkdir();(root/'weights/.rgbd-ready').touch()
+            (root/'tools/curobo_install.sh').write_text('exit 1\n')
+            (root/'tools/stage_perception_rgbd.sh').write_text('touch rgbd_was_called\nexit 1\n')
+            clean_env={k:v for k,v in os.environ.items() if k!='NSSR_RECORDED_GRASPS'}
+            for extra in ({}, {'NSSR_RECORDED_GRASPS':'false'}):
+                result=subprocess.run(['bash','setup.sh'],cwd=root,capture_output=True,text=True,
+                                      env=dict(clean_env,**extra))
+                self.assertEqual(result.returncode,0,result.stderr)
+                self.assertFalse((root/'rgbd_was_called').exists())
+                self.assertTrue((root/'weights/.rgbd-ready').exists())
+                self.assertIn('RGB-D disabled',result.stdout)
+                self.assertIn('[setup] RGB-D elapsed 0s',result.stdout)

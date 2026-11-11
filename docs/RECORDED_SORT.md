@@ -47,16 +47,21 @@ Butter Rum, Jell-O, мыши и двуручных захватов — в эт�
 
 ## Исполнение и границы переноса
 
-`setup.sh` берёт включённый в исходники архив `assets/perception/geometry_only_ros_bundle.tar.gz`
-из PR №9, проверяет SHA256, устанавливает зависимости и загружает PoseBackend на CPU.
+`setup.sh` устанавливает RGB-D только при `NSSR_RECORDED_GRASPS=true`.
+Без флага он пропускает распаковку, зависимости и PoseBackend, сохраняя обычную
+установку cuRobo. Для включённого режима берётся архив
+`assets/perception/geometry_only_ros_bundle.tar.gz` из PR №9, проверяется SHA256
+и загружается PoseBackend на CPU.
 Только после успешной проверки появляется `weights/.rgbd-ready`. Архив под `weights/`
 имеет приоритет; при отсутствии обоих архивов доступна ограниченная загрузка
 `NSSR_RGBD_BUNDLE_URL` (по умолчанию private release). Bundled-вариант не требует
 GitHub-токена. Ошибка установки оставляет baseline и не меняет `exit 0` setup.
 
 `run.sh` разрешает включение через `NSSR_RECORDED_GRASPS=true` только при ready
-marker и manifest. **Автоматическое включение пока выключено:** seed 7 не
-подтвердил полный цикл Philips. Для проверки: `bash run.sh recorded_grasps:=true`;
+marker и manifest. **Автоматическое включение пока выключено:** приёмка
+на всех трёх сидах не закрыта. Для чистого checkout сначала
+`NSSR_RECORDED_GRASPS=true bash setup.sh`, затем сборка ROS-пакетов и
+`bash run.sh recorded_grasps:=true`;
 выбор по умолчанию — **только Philips**. Остальные предметы требуют явного выбора
 через `NSSR_RECORDED_OBJECTS` или `recorded_objects:=brother`. Без готового bundle
 окружение принудительно отключает recorded. Явные launch-аргументы имеют приоритет при готовом bundle.

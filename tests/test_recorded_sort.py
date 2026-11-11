@@ -544,6 +544,32 @@ class RecordedClientTests(unittest.TestCase):
 
 class RecordedHandTests(unittest.TestCase):
     """Run the actual action method with a deterministic clock and measured hand."""
+    def test_head_look_prepares_collision_model_before_returning_success(self):
+        from threading import RLock
+        source = Path(__file__).resolve().parents[1] / 'src/hack_motion/hack_motion/motion_node.py'
+        method = next(n for n in ast.walk(ast.parse(source.read_text()))
+                      if isinstance(n, ast.FunctionDef) and n.name == 'exec_move_joints')
+        ns = dict(MoveJoints=NS(Result=NS, Feedback=NS))
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), 'exec'), ns)
+        for names, ok, loaded, prepares in [(['head_yaw_joint'], True, True, True),
+                                           (['head_yaw_joint'], False, True, False),
+                                           (['head_yaw_joint', 'body_yaw_joint'], True, True, False),
+                                           (['head_yaw_joint'], True, False, False)]:
+            events = []
+            planner = Mock()
+            planner.load.side_effect = lambda q: events.append(('prepare', q.copy())) or 'ready'
+            node = NS(_planner=planner if loaded else None, _planner_obj=lambda: planner,
+                      lock=RLock(), _tcp_lock=RLock(), q={'head_yaw_joint': -.31}, scene_objects=(), carrying=False,
+                      get_logger=Mock(), execute=lambda h,a,run: run(),
+                      move_joints=lambda *a: events.append(('move', a[0])) or (ok, .01, 'ok'))
+            handle = NS(request=NS(joints=names, positions=[0.]*len(names), speed=0., tol=0., max_time=0.),
+                        publish_feedback=Mock())
+            result = ns['exec_move_joints'](node, handle)
+            events.append(('result', result.success))
+            self.assertEqual([e[0] for e in events], ['move', 'prepare', 'result'] if prepares else ['move', 'result'])
+            if prepares:
+                planner.load.assert_called_once_with({'head_yaw_joint': -.31})
+
     def run_hand(self, *, side='right', preset=CLOSE, cancel_at=None, stale=False, force_ok=True, force=.6, sim_rate=1.):
         import math
         import threading

@@ -393,6 +393,19 @@ class MotionNode(Node):
                 fb.max_error = float(e)
                 handle.publish_feedback(fb)
             ok, err, msg = self.move_joints(list(g.joints), list(g.positions), g.speed, g.tol, g.max_time, feedback)
+            if ok and g.joints and all(n.startswith('head_') for n in g.joints) and self._planner is not None:
+                # cuRobo bakes head joints into its collision model. Rebuild
+                # here, before LOOK_GRASP finishes and brain requests a fresh
+                # exposure. Rebuilding during DESCEND consumed the contact
+                # pose's 1.75 s age budget on seed 7. No motor command below.
+                with self._tcp_lock:
+                    planner = self._planner_obj()
+                    with self.lock:
+                        snapshot = dict(self.q)
+                        planner.objects, planner.carrying = self.scene_objects, self.carrying
+                    note = planner.load(snapshot)
+                    if note != 'curobo already loaded':
+                        self.get_logger().info('head look prepared planner: ' + note)
             return MoveJoints.Result(success=ok, max_error=float(err), message=msg)
         return self.execute(handle,MoveJoints,run)
 

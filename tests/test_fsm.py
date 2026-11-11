@@ -1,6 +1,6 @@
 import unittest
 from dataclasses import replace
-from hack_brain.context import Context, Config, Container, Event, Evidence, Hand, Lift, Object, Scene, State
+from hack_brain.context import Context, Config, Container, Event, Evidence, Hand, History, Lift, Object, Scene, State
 from hack_brain.fsm import transition
 from hack_brain.policies import destinations
 from hack_brain.task import TaskSpec, parse_task
@@ -8,6 +8,23 @@ from fakes import Fake, sort_spec, tubes_spec
 
 
 class MissionTests(unittest.TestCase):
+    def test_enabled_recorded_object_is_attempted_before_baseline_can_occlude_it(self):
+        objects = [Object('a_sink', 'figure', name='a_sink'),
+                   Object('b_brother', 'figure', name='b_brother'),
+                   Object('p_philips', 'figure', name='p_philips', confidence=.84)]
+        for enabled, expected in ((False, 'a_sink'), (True, 'p_philips')):
+            f = Fake(objects=objects, config=Config(
+                recorded_arms=(('p_philips', ('right',)),) if enabled else ()))
+            f.until(State.OPEN)
+            self.assertEqual(f.c.target.id, expected)
+        # An already lifted baseline object still takes precedence, even when
+        # a visible recorded profile has never been attempted.
+        f = Fake(objects=objects, config=Config(recorded_arms=(('p_philips', ('right',)),)))
+        f.until(State.OBSERVE)
+        f.c = replace(f.c, history={'a_sink': History(lift=Lift.LIFTED)})
+        f.answer()
+        self.assertEqual(f.c.target.id, 'a_sink')
+
     def test_recorded_approach_looks_with_head_before_fresh_descent(self):
         for enabled in (False, True):
             f = Fake(objects=[Object('p', 'figure', name='p')],

@@ -383,6 +383,34 @@ class RecordedClientTests(unittest.TestCase):
         self.assertEqual(self.events[-1].kind, 'REJECTED')
         self.assertEqual(self.events[-1].data, 'fresh_recorded_pose_unavailable')
 
+    def test_cold_worker_can_finish_before_open_without_spending_a_grasp_attempt(self):
+        self.future.set_result(NS(success=False, message='{"status":"worker_loading"}'))
+        self.client.poll_model_pose(self.context)
+        self.context.sim = 16.2  # > normal six-second scene budget
+        self.client.poll_model_pose(self.context)
+        self.assertEqual(self.events, [])
+        self.client.execute_motion.assert_not_called()
+        data = observation()
+        data['stamp_ns'] = data['exposure_key']['stamp_ns'] = 16_200_000_000
+        for row in data['objects']:
+            row['exposure_key'] = dict(data['exposure_key'])
+        self.client.model_future = Future()
+        self.client.model_future.set_result(NS(success=True, message=json.dumps(data)))
+        self.context.sim = 16.3
+        self.client.poll_model_pose(self.context)
+        self.client.execute_motion.assert_called_once_with(self.effect, self.context)
+
+    def test_worker_initialization_budget_is_bounded_and_does_not_extend_descent(self):
+        from dataclasses import replace
+        for phase, elapsed in ((self.State.OPEN, 15.1), (self.State.DESCEND, 6.1)):
+            self.setUp()
+            self.client.model_pending = replace(self.effect, phase=phase)
+            self.client.model_pose_error = 'worker_loading'
+            self.context.sim = self.context.active.sim_start + elapsed
+            self.client.poll_model_pose(self.context)
+            self.assertEqual(self.events[-1].data, 'fresh_recorded_pose_unavailable')
+            self.client.execute_motion.assert_not_called()
+
     def test_invalid_geometry_rejects_before_motor_dispatch(self):
         self.client.skills.prepare_recorded.side_effect = ValueError('object does not fit')
         self.response()

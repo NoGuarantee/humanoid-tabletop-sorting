@@ -282,7 +282,12 @@ class Clients:
         if not context.active or context.active.id != effect.op_id or context.state == State.CANCELLING:
             self.model_pending = self.model_future = None
             return
-        if context.sim - context.active.sim_start >= SCENE_WAIT_S:
+        # A freshly started CPU worker can still be loading at the normal
+        # six-second scene deadline (4090 seed 7: ready just after it). Allow
+        # bounded initialization before OPEN, without relaxing exposure age or
+        # waiting longer with the hand already at DESCEND.
+        budget = 15. if effect.phase == State.OPEN and self.model_pose_error == 'worker_loading' else SCENE_WAIT_S
+        if context.sim - context.active.sim_start >= budget:
             self.model_pending = self.model_future = None
             self.node.get_logger().warning('recorded pose unavailable: ' + json.dumps({
                 'object': effect.target.name, 'phase': effect.phase.value,

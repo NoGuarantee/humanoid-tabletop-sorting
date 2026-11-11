@@ -71,15 +71,19 @@ class RecordedStartupTests(unittest.TestCase):
             self.assertEqual(launch()['NSSR_RECORDED_GRASPS'],'false')
             bundle = root/'weights'/('rgbd-'+DIGEST[:12]);bundle.mkdir();(bundle/'bundle.json').write_text('{}')
             result=launch()
-            self.assertEqual(result['NSSR_RECORDED_GRASPS'],'false')
-            self.assertNotIn('NSSR_RGBD_MODEL_DIR',result)
-            self.assertNotIn('NSSR_RGBD_ON_DEMAND',result)
+            self.assertEqual(result['NSSR_RECORDED_GRASPS'],'true')
+            self.assertEqual(result['NSSR_RECORDED_OBJECTS'],'philips')
+            self.assertEqual(Path(result['NSSR_RGBD_MODEL_DIR']).resolve(),bundle.resolve())
+            self.assertEqual(result['NSSR_RGBD_ON_DEMAND'],'true')
             result=launch('recorded_grasps:=true')
             self.assertEqual(result['NSSR_RECORDED_GRASPS'],'true')
             self.assertEqual(result['NSSR_RECORDED_OBJECTS'],'philips')
             self.assertEqual(result['NSSR_RGBD_ON_DEMAND'],'true')
             self.assertEqual(launch(NSSR_RECORDED_GRASPS='true')['NSSR_RECORDED_GRASPS'],'true')
-            self.assertEqual(launch(NSSR_RECORDED_GRASPS='false')['NSSR_RECORDED_GRASPS'],'false')
+            disabled=launch(NSSR_RECORDED_GRASPS='false')
+            self.assertEqual(disabled['NSSR_RECORDED_GRASPS'],'false')
+            self.assertNotIn('NSSR_RGBD_MODEL_DIR',disabled)
+            self.assertNotIn('NSSR_RGBD_ON_DEMAND',disabled)
             opted_out=launch('recorded_grasps:=false',NSSR_RECORDED_GRASPS='true')
             self.assertEqual(opted_out['NSSR_RECORDED_GRASPS'],'false')
             self.assertNotIn('NSSR_RGBD_MODEL_DIR',opted_out)
@@ -91,11 +95,14 @@ class RecordedStartupTests(unittest.TestCase):
             (root/'tools').mkdir();(root/'weights').mkdir();(root/'weights/.rgbd-ready').touch()
             for name in ('curobo_install.sh','stage_perception_rgbd.sh'):
                 (root/'tools'/name).write_text('exit 1\n')
-            result=subprocess.run(['bash','setup.sh'],cwd=root,capture_output=True,text=True,
-                                  env=dict(os.environ, NSSR_RECORDED_GRASPS='true'))
-            self.assertEqual(result.returncode,0,result.stderr)
-            self.assertFalse((root/'weights/.rgbd-ready').exists())
-            self.assertIn('using baseline perception',result.stdout)
+            clean_env={k:v for k,v in os.environ.items() if k!='NSSR_RECORDED_GRASPS'}
+            for extra in ({}, {'NSSR_RECORDED_GRASPS':'true'}):
+                (root/'weights/.rgbd-ready').touch()
+                result=subprocess.run(['bash','setup.sh'],cwd=root,capture_output=True,text=True,
+                                      env=dict(clean_env,**extra))
+                self.assertEqual(result.returncode,0,result.stderr)
+                self.assertFalse((root/'weights/.rgbd-ready').exists())
+                self.assertIn('RGB-D setup failed',result.stdout)
 
     def test_disabled_setup_never_stages_or_loads_rgbd_even_with_existing_marker(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -104,11 +111,10 @@ class RecordedStartupTests(unittest.TestCase):
             (root/'tools/curobo_install.sh').write_text('exit 1\n')
             (root/'tools/stage_perception_rgbd.sh').write_text('touch rgbd_was_called\nexit 1\n')
             clean_env={k:v for k,v in os.environ.items() if k!='NSSR_RECORDED_GRASPS'}
-            for extra in ({}, {'NSSR_RECORDED_GRASPS':'false'}):
-                result=subprocess.run(['bash','setup.sh'],cwd=root,capture_output=True,text=True,
-                                      env=dict(clean_env,**extra))
-                self.assertEqual(result.returncode,0,result.stderr)
-                self.assertFalse((root/'rgbd_was_called').exists())
-                self.assertTrue((root/'weights/.rgbd-ready').exists())
-                self.assertIn('RGB-D disabled',result.stdout)
-                self.assertIn('[setup] RGB-D elapsed 0s',result.stdout)
+            result=subprocess.run(['bash','setup.sh'],cwd=root,capture_output=True,text=True,
+                                  env=dict(clean_env,NSSR_RECORDED_GRASPS='false'))
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertFalse((root/'rgbd_was_called').exists())
+            self.assertTrue((root/'weights/.rgbd-ready').exists())
+            self.assertIn('RGB-D disabled',result.stdout)
+            self.assertIn('[setup] RGB-D elapsed 0s',result.stdout)

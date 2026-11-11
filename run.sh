@@ -4,13 +4,13 @@
 cd "$(dirname "$0")" || exit 1
 # Explicit launch arguments take precedence over the environment, including
 # when deciding whether to start the optional RGB-D worker.
-requested="${NSSR_RECORDED_GRASPS:-false}"
+requested="${NSSR_RECORDED_GRASPS:-true}"
 for arg in "$@"; do
     case "$arg" in recorded_grasps:=*) requested="${arg#recorded_grasps:=}";; esac
 done
 if [ -f weights/.rgbd-ready ] && [ -f weights/rgbd-b33b2debe3c1/bundle.json ]; then
-    # Full ROS lift/carry/release qualification is tracked in ROADMAP.
-    # Enable by default only after full-placement qualification on all three seeds.
+    # Philips completed lift/carry/release/retreat on seeds 7/13051/146 (c88589d).
+    # Results and remaining legacy-grasp limitations are tracked in ROADMAP.
     export NSSR_RECORDED_GRASPS="$requested"
     case "$requested" in true|True|TRUE)
         export NSSR_RGBD_MODEL_DIR="${NSSR_RGBD_MODEL_DIR:-$PWD/weights/rgbd-b33b2debe3c1}"

@@ -15,9 +15,9 @@ else
     echo "[setup] cuRobo install FAILED, MoveTcp will not work"
 fi
 # Keep a disabled recorded mode cheap, including during evaluator installation.
-# Use the same opt-in as run.sh; a ready marker alone never enables the mode.
+# Use the same default and explicit opt-out as run.sh.
 rgbd_started=$SECONDS
-case "${NSSR_RECORDED_GRASPS:-false}" in
+case "${NSSR_RECORDED_GRASPS:-true}" in
 true|True|TRUE)
 rm -f weights/.rgbd-ready
 # The bundled 12 MB archive works in a clean checkout without GitHub credentials.

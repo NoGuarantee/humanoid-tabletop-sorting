@@ -151,6 +151,43 @@ class PR9TransferTests(unittest.TestCase):
             self.assertLessEqual(np.linalg.norm(a[:3, 3] - b[:3, 3]), .08 + 1e-10)
         np.testing.assert_allclose(route[-1], target, atol=1e-12)
 
+    def test_native_inward_raise_preserves_orientation_height_and_final_goal(self):
+        start = axis_angle([1., 0., 0.], .4); start[:3, 3] = [.40936, .12185, .22]
+        target = axis_angle([0., 1., 0.], -.52) @ start; target[:3, 3] = [.47, .03, .326]
+        offset = -.08*np.array([.34156, .08476])/np.linalg.norm([.34156, .08476])
+        route = carry_waypoints(start, target, raise_offset=offset)
+        np.testing.assert_allclose(route[0][:2, 3], start[:2, 3]+offset)
+        np.testing.assert_allclose(route[0][:3, :3], start[:3, :3])
+        self.assertEqual(route[0][2, 3], target[2, 3])
+        np.testing.assert_allclose(route[-1], target, atol=1e-12)
+        for invalid in ((.08, 0.), (-.081, 0.), (float('nan'), 0.)):
+            with self.assertRaises(ValueError):carry_waypoints(start, target, raise_offset=invalid)
+
+    def test_inward_retry_only_after_first_raise_planning_failure(self):
+        execute = method('motion_node.py', '_recorded_carry_legs', MoveTcp=NS(Goal=NS, Result=NS),
+                         copy=NS(deepcopy=deepcopy), carry_waypoints=carry_waypoints,
+                         pose_matrix=pose_matrix, with_matrix=with_matrix, json=json)
+        target = base.planner.pose(.47, .03, .326, base.planner.quat_from_rpy(.4, 0, -.3))
+        g = NS(arm='right', target=target, pos_tol=.01, rot_tol=.05, max_time=0., carry_inward_xy=[-.08, 0.])
+        tf = NS(header=NS(stamp=NS(sec=10, nanosec=0)),
+                transform=NS(translation=NS(x=.41, y=.12, z=.22), rotation=base.planner.quat_from_rpy(.4, 0, 0)))
+        for error in ('unreachable: no path', 'timeout'):
+            sent=[]
+            def move(goal):
+                sent.append(goal)
+                return NS(success=len(sent)>2, message=error if len(sent)<=2 else 'ok')
+            node=NS(now=lambda:10.1,move_tcp=move,cancelled=lambda:False,get_logger=lambda:Mock())
+            result=execute(node,g,tf)
+            if error.startswith('unreachable:'):
+                self.assertTrue(result.success)
+                self.assertEqual(sent[2].mode, 'direct_fixed')
+                self.assertAlmostEqual(sent[2].target.position.x, .33)
+                self.assertEqual(sent[2].target.orientation, tf.transform.rotation)
+                np.testing.assert_allclose(pose_matrix(sent[-1].target), pose_matrix(target), atol=1e-12)
+            else:
+                self.assertFalse(result.success)
+                self.assertEqual(len(sent),2)
+
     def test_recorded_action_retries_only_failed_segment_and_stops_on_cancel(self):
         execute = method('motion_node.py', '_recorded_carry_legs', MoveTcp=NS(Goal=NS, Result=NS),
                          copy=NS(deepcopy=deepcopy), carry_waypoints=carry_waypoints,

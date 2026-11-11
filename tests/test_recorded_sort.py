@@ -43,6 +43,21 @@ DB = pick.evaluation_db({}, True)
 
 
 class RecordedSortTests(unittest.TestCase):
+    def test_philips_transfer_requests_native_inward_offset_from_observed_center(self):
+        from hack_brain.context import State
+        name = PROFILES['philips_right']['object_name']
+        data = observation(name)
+        data['objects'][0]['center_pelvis_m'] = [.34, .08, -.1]
+        for i, v in enumerate((.34, .08, -.1)):
+            data['objects'][0]['T_pelvis_object'][i][3] = v
+        container = tray(y=0., yaw=0., size=(.32, .32))
+        skills = skills_module.Skills(DB)
+        skills.grasp = pick.candidate(data, 10.1, detected(name), container, DB, 0, profile_key='philips_right')
+        with patch.dict('sys.modules', {'hack_interfaces.action': NS(Hand=NS(Goal=NS), MoveTcp=NS(Goal=NS), MoveJoints=NS(Goal=NS))}):
+            _, goal = skills.command(NS(phase=State.TRANSFER, destination=container.id), NS(containers=[container]))
+        np.testing.assert_allclose(goal.carry_inward_xy, -.08*np.array([.34,.08])/np.linalg.norm([.34,.08]))
+        self.assertEqual(goal.mode, 'carry_fixed')
+
     def test_targets_rotate_and_translate_in_object_frame(self):
         world = np.array([[0., -1., 0., .4], [1., 0., 0., -.3], [0., 0., 1., -.1], [0., 0., 0., 1.]])
         result = pick.targets(world, RHINO)

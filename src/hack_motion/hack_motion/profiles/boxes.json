@@ -520,7 +520,8 @@
       },
       "placement": {
         "carry_clearance_m": 0.15,
-        "pitch_preference_rad": -0.5235987755982988
+        "pitch_preference_rad": -0.5235987755982988,
+        "carry_inward_fallback_m": 0.08
       }
     },
     {

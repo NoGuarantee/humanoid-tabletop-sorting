@@ -13,6 +13,7 @@ So a skill must know whether it holds the object, and putting it back on the tab
 Tube insertion/reorientation deliberately have no fabricated geometric implementation.
 """
 from geometry_msgs.msg import Pose
+import math
 
 from .context import State
 from .grasp_planner import FINGERTIP, flat_hold_point, plan_grasps, plan_place, pose, tcp_from_local
@@ -129,6 +130,11 @@ class Skills:
         recorded = isinstance(g, recorded_grasps.RecordedGrasp)
         mode = {State.APPROACH: 'direct', State.TRANSFER: 'carry'}.get(phase, 'linear')
         contact = {}
+        if recorded and phase == State.TRANSFER:
+            inward = recorded_grasps.PROFILES[g.profile_key].get('placement', {}).get('carry_inward_fallback_m', 0.)
+            x, y = g.observed_center[:2]
+            radius = math.hypot(x, y)
+            contact['carry_inward_xy'] = [-inward*x/radius, -inward*y/radius] if radius > 1e-6 else [0., 0.]
         if recorded and phase == State.DESCEND:
             contact = dict(contact_object=g.contact_object_id, contact_center=list(g.observed_center),
                            contact_stamp_ns=g.exposure['stamp_ns'])

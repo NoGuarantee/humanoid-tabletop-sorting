@@ -749,12 +749,15 @@ class MotionNode(Node):
         start.orientation = copy.deepcopy(tf.transform.rotation)
         try:
             waypoints = carry_waypoints(pose_matrix(start), pose_matrix(g.target))
+            inward = list(getattr(g, 'carry_inward_xy', (0., 0.)))
+            fallback = (carry_waypoints(pose_matrix(start), pose_matrix(g.target), raise_offset=inward)
+                        if any(inward) and g.target.position.z > start.position.z+.001 else None)
             self.get_logger().info('recorded carry: ' + json.dumps(dict(
                 arm=g.arm, start=pose_matrix(start).tolist(), target=pose_matrix(g.target).tolist(),
-                pos_tol=g.pos_tol, rot_tol=g.rot_tol, waypoints=len(waypoints))))
+                pos_tol=g.pos_tol, rot_tol=g.rot_tol, waypoints=len(waypoints), inward_xy=inward)))
         except ValueError as exc:
             return MoveTcp.Result(success=False, message=str(exc))
-        for matrix in waypoints:
+        for index, matrix in enumerate(waypoints):
             if self.cancelled():
                 return MoveTcp.Result(success=False, message='cancelled')
             target = with_matrix(g.target, matrix)
@@ -769,6 +772,19 @@ class MotionNode(Node):
                                       pos_tol=g.pos_tol, rot_tol=g.rot_tol, max_time=g.max_time))
                 if self.cancelled():
                     return MoveTcp.Result(success=False, message='cancelled')
+                if (not result.success and index == 0 and fallback is not None
+                        and result.message.startswith('unreachable:')):
+                    # Native clear_table raises and retracts together. Try it
+                    # only after a planning failure of the original first raise;
+                    # successful routes and later steps remain unchanged.
+                    self.get_logger().info('recorded carry: first raise retry inward ' + json.dumps(inward))
+                    result = self.move_tcp(MoveTcp.Goal(arm=g.arm, target=with_matrix(g.target, fallback[0]),
+                                          mode='direct_fixed', pos_tol=g.pos_tol, rot_tol=g.rot_tol,
+                                          max_time=g.max_time))
+                    if self.cancelled():
+                        return MoveTcp.Result(success=False, message='cancelled')
+                    if result.success:
+                        waypoints[1:] = fallback[1:]
                 if not result.success:
                     return result
         return result
@@ -831,6 +847,8 @@ class MotionNode(Node):
         if backend != "curobo":
             return MoveTcp.Result(success=False, message=f"not_implemented: planner {backend}")
         mode = g.mode or "direct"
+        if any(getattr(g, 'carry_inward_xy', (0., 0.))) and mode != 'carry_fixed':
+            return MoveTcp.Result(success=False, message='carry_inward_offset_requires_carry_fixed')
         keep_orientation = mode in ('direct_fixed', 'linear_fixed', 'carry_fixed')
         if keep_orientation:
             mode = mode.removesuffix('_fixed')

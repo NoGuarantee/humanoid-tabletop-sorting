@@ -56,15 +56,21 @@ def with_matrix(prototype, matrix):
     return result
 
 
-def carry_waypoints(start, target, rotation_step=CARRY_ROTATION_STEP, distance_step=.08):
+def carry_waypoints(start, target, rotation_step=CARRY_ROTATION_STEP, distance_step=.08, raise_offset=(0., 0.)):
     """PR9 raise -> bounded traverse/turn; retain the start orientation on the raise.
 
     Target height includes the swept-object reserve calculated by the brain.
     Each waypoint is still planned and checked by the existing motion owner.
     """
     start, target = as_transform(start), as_transform(target)
+    offset = np.asarray(raise_offset, dtype=float)
+    if offset.shape != (2,) or not np.isfinite(offset).all() or np.linalg.norm(offset) > .080001:
+        raise ValueError('invalid_recorded_carry_inward_offset')
+    if np.linalg.norm(offset) > 1e-8 and (offset @ start[:2, 3] >= 0 or target[2, 3] <= start[2, 3]+.001):
+        raise ValueError('recorded_carry_offset_requires_inward_raise')
     raised = start.copy()
     raised[2, 3] = max(start[2, 3], target[2, 3])
+    raised[:2, 3] += offset
     across = target.copy()
     across[2, 3] = raised[2, 3]
     count = max(1, math.ceil(np.linalg.norm(across[:3, 3] - raised[:3, 3]) / distance_step),

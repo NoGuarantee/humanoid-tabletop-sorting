@@ -1,0 +1,186 @@
+{
+  "candidate": "677ec29",
+  "qualified": false,
+  "rows": [
+    {
+      "case": "candidate_seed7_677ec29",
+      "status": "completed",
+      "right": 1,
+      "wrong": 0,
+      "sim_step": 16149,
+      "philips": {
+        "tray": null,
+        "ok": false
+      },
+      "philips_transitions": [
+        {
+          "sim": 111.74999750200001,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 115.169997425,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 116.19999740200001,
+          "from": "APPROACH",
+          "to": "RECOVER",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 116.52999739500001,
+          "from": "RECOVER",
+          "to": "CLEAR",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 125.04999720400001,
+          "from": "CLEAR",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 125.409997196,
+          "from": "LOOK_TABLE",
+          "to": "OBSERVE",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 125.569997193,
+          "from": "OBSERVE",
+          "to": "OPEN",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 127.879997141,
+          "from": "OPEN",
+          "to": "APPROACH",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 128.909997118,
+          "from": "APPROACH",
+          "to": "RECOVER",
+          "reason": "",
+          "hand": "EMPTY",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 147.009996714,
+          "from": "RECOVER",
+          "to": "OPEN_HANDS",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 150.30999664,
+          "from": "OPEN_HANDS",
+          "to": "LOOK_TABLE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 150.66999663200002,
+          "from": "LOOK_TABLE",
+          "to": "OBSERVE",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 150.79999662900002,
+          "from": "OBSERVE",
+          "to": "ARMS_READY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        },
+        {
+          "sim": 157.39999648100002,
+          "from": "ARMS_READY",
+          "to": "VERIFY_EMPTY",
+          "reason": "",
+          "hand": "UNKNOWN",
+          "lift": "NEVER_LIFTED"
+        }
+      ],
+      "exit_code": null,
+      "official": {
+        "in_right_tray": 1,
+        "in_wrong_tray": 0,
+        "not_in_tray": 8,
+        "objects": {
+          "Schleich_African_Black_Rhino": {
+            "tray": null,
+            "ok": false
+          },
+          "3D_Dollhouse_Sink": {
+            "tray": null,
+            "ok": false
+          },
+          "LADYBUG_BEAD": {
+            "tray": null,
+            "ok": false
+          },
+          "Threshold_Bamboo_Ceramic_Soap_Dish": {
+            "tray": null,
+            "ok": false
+          },
+          "Cole_Hardware_Bowl_Scirocco_YellowBlue": {
+            "tray": null,
+            "ok": false
+          },
+          "Ecoforms_Cup_B4_SAN": {
+            "tray": null,
+            "ok": false
+          },
+          "Nescafe_Memento_Latte_Caramel_8_08_oz_23_g_packets_64_oz_184_g": {
+            "tray": null,
+            "ok": false
+          },
+          "Brother_Ink_Cartridge_Magenta_LC75M": {
+            "tray": "tray_center",
+            "ok": true
+          },
+          "Philips_EcoVantage_43_W_Light_Bulbs_Natural_Light_2_pack": {
+            "tray": null,
+            "ok": false
+          }
+        },
+        "total": 9,
+        "task": "sort3",
+        "sim_step": 16149
+      },
+      "source_sha256": {
+        "solution.log": "7933fb4c6fde205a19c76949246b1bb3e71a80ceeb647f759e51753241222e4b",
+        "result.json": "349fe9204b0345209fe2e4b03a2ba0a37016279e623b2473ef1b179ddcbcf67a",
+        "joint_states.jsonl": "88b63b3752a503aec3fb6d798d613d83cd0f70299825550d0121b8471ec05504",
+        "perception_scenes.jsonl": "18afc6e295c2766ca04b145a93c7d85e32da657107f4dc571780559c09b20e64"
+      }
+    }
+  ],
+  "reason": "Series stopped at seed7: Sink had two empty grasps and was never lifted; Brother completed placement; both Philips pregrasps were blocked by IK while the other hand was not open and its arm was >1 rad from ready. Contact-alignment change did not execute in this case.",
+  "remaining_seeds": "13051 and 146 not started on this version"
+}

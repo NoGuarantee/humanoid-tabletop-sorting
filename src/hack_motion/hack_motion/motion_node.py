@@ -98,6 +98,10 @@ HELD_TOL = 0.05  # rad, the arm MoveTcp did not ask for: it only holds its pose
 # Joint step of one follow segment. 0.3 rad left the 10 cm grasp descent (21 planned waypoints, no joint
 # past 0.3) as a single joint-space chord, so the hand did not travel the straight line cuRobo had planned.
 PATH_STEP = 0.1
+# A 0.01 rad endpoint error can already exceed the recorded grasp's 5 mm TCP
+# budget at arm reach. Keep the same planned path and Cartesian acceptance,
+# but let the existing droop controller converge further at its final point.
+RECORDED_PRECISE_JOINT_TOL = 0.003
 
 
 class MotionNode(Node):
@@ -990,7 +994,8 @@ class MotionNode(Node):
                                    f"start moved {planner.start_moved:.3f} rad, {planner.scene_note}")
             free_yaw = planner.free_yaw
             other = next(joints for arm, joints in ARM_JOINTS.items() if arm != g.arm)
-            ok, err, msg = self.follow(names, waypoints, dt, tol=0.01, max_time=g.max_time, held=other)
+            joint_tol = RECORDED_PRECISE_JOINT_TOL if keep_orientation and pos_tol <= .005 else .01
+            ok, err, msg = self.follow(names, waypoints, dt, tol=joint_tol, max_time=g.max_time, held=other)
         if mode == "ready":  # the goal is joints, the target pose is not used
             reached = ok or (msg == "timeout" and err <= READY_TOL)
             note = f" ({planner.ready_note})" if planner.ready_note else ""
@@ -1013,6 +1018,12 @@ class MotionNode(Node):
             message = "tolerance"
         else:
             message = msg
+        if not reached and keep_orientation:
+            self.get_logger().info('recorded endpoint rejection: ' + json.dumps(dict(
+                arm=g.arm, mode=mode, joint_tolerance=joint_tol,
+                position_error=pos_err, rotation_error=rot_err,
+                target_joints=dict(zip(names, waypoints[-1])),
+                measured_joints=dict(zip(names, self.joints(names))))))
         self.get_logger().info(
             f"move_tcp {g.arm} {mode}: tcp {pos_err * 100:.2f} cm, {math.degrees(rot_err):.1f} deg, {message}")
         return MoveTcp.Result(success=reached, pos_error=float(pos_err), rot_error=float(rot_err), message=message)

@@ -601,6 +601,7 @@ class RecordedCarryTests(unittest.TestCase):
             return 'level', level_turn
         planner = NS(free_yaw=False, scene_note='', _plan_level=level,
                      _plan_direct=lambda *_:'direct', _goal=lambda *_:(None, None),
+                     _carry_deviation=lambda arm, plan, *args:level_turn if plan == 'level' else fallback_turn,
                      _max_turn=lambda *_:fallback_turn)
         namespace = dict(Unreachable=Unreachable, tilt=lambda _:0., _xyzw=lambda _:None, VERTICAL=.1, math=math)
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), 'exec'), namespace)

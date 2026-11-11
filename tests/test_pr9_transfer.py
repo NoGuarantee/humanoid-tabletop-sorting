@@ -164,7 +164,7 @@ class PR9TransferTests(unittest.TestCase):
         for held in ([], ['held_object']):
             node = NS(mp=object(), carrying=True, sync_world=lambda _:None, _held=lambda _:held,
                       _without=lambda _, fn:fn(), _plan_in_world=lambda *_:'path',
-                      _goal=lambda *_:('goal', 'state'), _max_turn=lambda *_:.08, scene_note='')
+                      _goal=lambda *_:('goal', 'state'), _carry_deviation=lambda *_:.08, scene_note='')
             with self.assertRaises(Unreachable):
                 plan(node, 'right', None, {}, 'linear', rot_tol=.05, keep_orientation=True)
             self.assertEqual(plan(node, 'right', None, {}, 'linear', rot_tol=.05), 'path')

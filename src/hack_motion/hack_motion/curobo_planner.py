@@ -12,6 +12,7 @@ import time
 from types import SimpleNamespace
 
 from .curobo_robot import load_robot_cfg
+from .recorded_carry import orientation_arc_deviation
 from .robot import (
     ARM_JOINTS, CUBOID_CACHE, JOINTS, TCP_LINK, VERTICAL, clearance_z, fingertip, footprint_gap, on_the_way,
     plan_limits, ready_pose, sphere_cuboid_overlap, spheres_hit, tilt, world_scene)
@@ -222,7 +223,7 @@ class CuroboPlanner:
             self.scene_note += f", without {', '.join(held)} (carried, the start touches them)"
         if keep_orientation and self.carrying and mode == 'linear':
             goal, state = self._goal(arm, target, q_by_name)
-            if self._max_turn(arm, result, goal, state, False) > rot_tol:
+            if self._carry_deviation(arm, result, goal, state, rot_tol) > rot_tol:
                 raise Unreachable('recorded carry linear path changes the object orientation')
         return result
 
@@ -289,8 +290,10 @@ class CuroboPlanner:
         for free_yaw in tries:
             try:
                 plan, turn = self._plan_level(arm, target, q_by_name, free_yaw)
-                if strict and turn > rot_tol:
-                    raise Unreachable('recorded carry changes the object orientation')
+                if strict:
+                    goal, state = self._goal(arm, target, q_by_name)
+                    if self._carry_deviation(arm, plan, goal, state, rot_tol) > rot_tol:
+                        raise Unreachable('recorded carry changes the object orientation')
             except Unreachable as e:
                 notes.append(f"level{' any yaw' if free_yaw else ''}: {e}")
                 continue
@@ -306,7 +309,7 @@ class CuroboPlanner:
                 raise
         goal, state = self._goal(arm, target, q_by_name)
         turn = self._max_turn(arm, plan, goal, state, False)
-        if strict and turn > rot_tol:
+        if strict and self._carry_deviation(arm, plan, goal, state, rot_tol) > rot_tol:
             raise Unreachable('recorded carry fallback changes the object orientation')
         self.scene_note += f"; {'; '.join(notes)}; the joint path turns the hand {math.degrees(turn):.0f} deg"
         return plan
@@ -335,6 +338,19 @@ class CuroboPlanner:
         if turn > CARRY_TURN:
             raise Unreachable(f"the path {'tips' if free_yaw else 'turns'} the hand {math.degrees(turn):.0f} deg")
         return plan, turn
+
+    def _carry_deviation(self, arm, plan, goal, state, tolerance):
+        """Check the bounded requested turn, including every planned waypoint."""
+        names, waypoints, _ = plan
+        i = goal.tool_frames.index(TCP_LINK[arm])
+        start = self.mp.compute_kinematics(state).tool_poses.quaternion[0, 0, i].tolist()
+        finish = goal.quaternion[0, 0, i, 0].tolist()
+        orientations = [self.mp.compute_kinematics(self._chain_state(names, q, state))
+                        .tool_poses.quaternion[0, 0, i].tolist() for q in waypoints]
+        try:
+            return orientation_arc_deviation(orientations, start, finish, tolerance)
+        except ValueError as exc:
+            raise Unreachable(str(exc)) from exc
 
     def _max_turn(self, arm, plan, goal, state, tilt_only):
         """The largest angle between the TCP orientation on `plan` and the goal's, over CARRY_TURN_CHECKS waypoints.

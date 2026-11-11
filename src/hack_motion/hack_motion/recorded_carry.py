@@ -4,6 +4,40 @@ import copy
 import numpy as np
 from .recorded_geometry import interpolate, rotation_error, as_transform, quaternion_matrix, matrix_quaternion
 
+CARRY_ROTATION_STEP = .04
+
+
+def orientation_arc_deviation(quaternions, start, finish, tolerance):
+    """Largest angular departure from the requested short SLERP arc (wxyz).
+
+    A previous segment may finish within its tolerance, behind the nominal
+    waypoint. Comparing the next path to its final orientation alone counts
+    that permitted tracking error plus the deliberate turn as unwanted motion.
+    Limit the requested turn separately, then check every supplied orientation
+    against the measured-start -> goal arc. This never licenses a large turn.
+    """
+    rows = np.asarray([start, finish, *quaternions], dtype=float)
+    norms = np.linalg.norm(rows, axis=1)
+    if rows.ndim != 2 or rows.shape[1] != 4 or not np.isfinite(rows).all() or np.min(norms) < 1e-12:
+        raise ValueError('invalid_carry_orientation')
+    rows = rows / norms[:, None]
+    a, b = rows[:2]
+    if a @ b < 0:
+        b = -b
+    half_turn = math.acos(float(np.clip(a @ b, -1., 1.)))
+    if 2*half_turn > CARRY_ROTATION_STEP + tolerance + .001:
+        raise ValueError('recorded_carry_rotation_step_exceeded')
+    got = rows[2:]
+    closest = np.maximum(np.abs(got @ a), np.abs(got @ b))
+    if half_turn > 1e-8:
+        tangent = (b - math.cos(half_turn)*a) / math.sin(half_turn)
+        x, y = got @ a, got @ tangent
+        # |dot(q, SLERP(t))| has its interior maximum at this angle modulo pi.
+        critical = np.arctan2(y, x) % math.pi
+        inside = critical <= half_turn
+        closest[inside] = np.hypot(x[inside], y[inside])
+    return float(np.max(2*np.arccos(np.clip(closest, 0., 1.)), initial=0.))
+
 
 def pose_matrix(pose):
     matrix = np.eye(4)
@@ -22,7 +56,7 @@ def with_matrix(prototype, matrix):
     return result
 
 
-def carry_waypoints(start, target, rotation_step=.04, distance_step=.08):
+def carry_waypoints(start, target, rotation_step=CARRY_ROTATION_STEP, distance_step=.08):
     """PR9 raise -> bounded traverse/turn; retain the start orientation on the raise.
 
     Target height includes the swept-object reserve calculated by the brain.

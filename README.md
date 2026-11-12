@@ -9,6 +9,12 @@ TienKung 2.0 Pro в симуляторе NVIDIA Isaac Sim раскладывае
 ![cuRobo](https://img.shields.io/badge/cuRobo-0.8.0-76B900)
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB)
 
+![Робот раскладывает предметы по ящикам, sort3, сид 7](docs/media/sort3-seed7.gif)
+
+*`sort3`, раскладка с сидом 7, ускорено в 15 раз: 3 предмета из 9 в своих ящиках, ни одного в чужом.
+Полная запись без монтажа, с логами симулятора и решения:
+[релиз demo-sort3-seed7](https://github.com/NoGuarantee/tienkung-sorting/releases/tag/demo-sort3-seed7).*
+
 ## Задача
 
 - На столе 9 предметов трёх категорий: фигурки, посуда, коробки. Их нужно разложить по трём ящикам (красный, синий,

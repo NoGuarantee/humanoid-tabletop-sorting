@@ -1,8 +1,11 @@
-# Сортировка предметов гуманоидным роботом TienKung 2.0 Pro
+# Сортировка предметов гуманоидным роботом по RGB-D камерам
 
-Решение команды 049 для трека манипуляции хакатона **NSSR Polygon** (ноябрь 2026). Гуманоидный робот
-TienKung 2.0 Pro в симуляторе NVIDIA Isaac Sim раскладывает предметы со стола по цветным ящикам. Робот управляется
-узлами ROS 2 Humble.
+Командный проект хакатона [ROS Humanoid Hack 2026](https://hackathon.rusindustrial.ai/), первого в России хакатона
+по программированию антропоморфных роботов. Онлайн-этап проходил с 29 октября по 11 ноября 2026. Задачи хакатона
+посвящены манипуляции, наша команда решала сортировку предметов по ящикам.
+
+Гуманоидный робот **TienKung 2.0 Pro** в симуляторе **NVIDIA Isaac Sim** находит предметы на столе по RGB-D камерам
+и раскладывает их по цветным ящикам. Робот управляется узлами **ROS 2 Humble**, движения рук планирует **cuRobo**.
 
 ![ROS 2 Humble](https://img.shields.io/badge/ROS_2-Humble-22314E)
 ![Isaac Sim](https://img.shields.io/badge/Isaac_Sim-5.0-76B900)
@@ -13,7 +16,7 @@ TienKung 2.0 Pro в симуляторе NVIDIA Isaac Sim раскладывае
 
 *`sort3`, раскладка с сидом 7, ускорено в 15 раз: 3 предмета из 9 в своих ящиках, ни одного в чужом.
 Полная запись без монтажа, с логами симулятора и решения:
-[релиз demo-sort3-seed7](https://github.com/NoGuarantee/tienkung-sorting/releases/tag/demo-sort3-seed7).*
+[релиз demo-sort3-seed7](https://github.com/NoGuarantee/humanoid-tabletop-sorting/releases/tag/demo-sort3-seed7).*
 
 ## Задача
 
